@@ -335,39 +335,32 @@ function drawHeat(list){
   if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
   document.getElementById("heatLegend").style.display = heatOn ? "flex" : "none";
   if(!heatOn) return;
-  // ズームに応じてマスの大きさを調整(ズーム14で約280m四方)
-  const z=map.getZoom();
-  const SIZE=Math.max(0.00125, 0.005*Math.pow(2, 13-z));
-  // 表示中のエリアの少し外側までを対象にする
-  const b=map.getBounds().pad(0.15);
-  const iMin=Math.floor(b.getSouth()/SIZE), iMax=Math.floor(b.getNorth()/SIZE);
-  const jMin=Math.floor(b.getWest()/SIZE),  jMax=Math.floor(b.getEast()/SIZE);
-  if((iMax-iMin+1)*(jMax-jMin+1) > 6000) return; // 安全弁(極端なズームアウト時)
-  // データをマス目に集計
+  const SIZE=0.0025; // 約280m四方・ズームに関わらず固定
+  heatLayer=L.layerGroup();
+  // データのないエリアは緑の下地一枚で表現(どれだけ引いても軽い)
+  const b=map.getBounds().pad(0.5);
+  L.rectangle(b,{renderer:heatRenderer, stroke:false,
+    fillColor:fareTierColor(0), fillOpacity:0.45, interactive:false}).addTo(heatLayer);
+  // データのあるマスだけを個別に色付け
   const cells=new Map();
   list.forEach(r=>{
-    const key=Math.floor(r.lat/SIZE)+"_"+Math.floor(r.lng/SIZE);
-    const c=cells.get(key)||{sum:0,n:0};
+    const i=Math.floor(r.lat/SIZE), j=Math.floor(r.lng/SIZE);
+    const key=i+"_"+j;
+    const c=cells.get(key)||{sum:0,n:0,i,j};
     c.sum+=r.f; c.n++; cells.set(key,c);
   });
-  heatLayer=L.layerGroup();
-  for(let i=iMin;i<=iMax;i++){
-    for(let j=jMin;j<=jMax;j++){
-      const c=cells.get(i+"_"+j);
-      const avg=c ? c.sum/c.n : 0;
-      const rect=L.rectangle([[i*SIZE,j*SIZE],[(i+1)*SIZE,(j+1)*SIZE]],{
-        renderer:heatRenderer,
-        color:"#ffffff", weight:0.5, opacity:0.35,   // マス目の白い境界線
-        fillColor:fareTierColor(avg), fillOpacity:0.45,
-        interactive:!!c
-      });
-      if(c) rect.bindTooltip(`平均 ${yen(Math.round(avg))} / ${c.n}件`,{direction:"top"});
-      rect.addTo(heatLayer);
-    }
-  }
+  cells.forEach(c=>{
+    const avg=c.sum/c.n;
+    L.rectangle([[c.i*SIZE,c.j*SIZE],[(c.i+1)*SIZE,(c.j+1)*SIZE]],{
+      renderer:heatRenderer,
+      color:"#ffffff", weight:0.5, opacity:0.5,
+      fillColor:fareTierColor(avg), fillOpacity:0.6
+    }).bindTooltip(`平均 ${yen(Math.round(avg))} / ${c.n}件`,{direction:"top"})
+      .addTo(heatLayer);
+  });
   heatLayer.addTo(map);
 }
-// 地図を動かしたら表示範囲に合わせてマス目を引き直す
+// 地図を動かしたら緑の下地を表示範囲に合わせて引き直す
 map.on("moveend", ()=>{ if(heatOn) render(); });
 let minFare = 5000, tMin = 5, tMax = 29;
 
