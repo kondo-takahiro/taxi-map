@@ -6,7 +6,6 @@
 <title>営業マップ | 高単価乗車地</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 <style>
   :root{
     --bg:#0d1320; --panel:#151d2e; --panel2:#1c2638; --line:#28344b;
@@ -128,6 +127,13 @@
 </header>
 
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
+
+<div id="heatLegend" style="display:none;position:fixed;top:64px;left:12px;z-index:900;align-items:center;gap:8px;
+  background:rgba(19,26,42,.92);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:11px;color:var(--muted);">
+  <span>単価 低</span>
+  <span style="width:90px;height:10px;border-radius:5px;background:linear-gradient(90deg,rgb(255,224,218),rgb(150,8,20));"></span>
+  <span>高</span>
+</div>
 
 <div id="tileWarn" style="display:none;position:fixed;top:70px;left:12px;right:12px;z-index:1500;
   background:#2a1e12;border:1px solid var(--amber);border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;">
@@ -359,9 +365,32 @@ function render(){
   });
   if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
   if(heatOn && list.length){
-    heatLayer = L.heatLayer(list.map(r=>[r.lat,r.lng, Math.min(r.f/8000,1)]),
-      {radius:38, blur:26, gradient:{0.2:"#3a4a6b",0.5:"#c98a2e",0.85:"#ffb53c",1:"#fff1cf"}}).addTo(map);
+    // 約500m四方のマス目ごとに平均単価を集計し、薄い赤(低)〜濃い赤(高)で塗る
+    const SIZE=0.005;
+    const cells=new Map();
+    list.forEach(r=>{
+      const key=Math.floor(r.lat/SIZE)+"_"+Math.floor(r.lng/SIZE);
+      const c=cells.get(key)||{sum:0,n:0,la:Math.floor(r.lat/SIZE)*SIZE,lo:Math.floor(r.lng/SIZE)*SIZE};
+      c.sum+=r.f; c.n++; cells.set(key,c);
+    });
+    heatLayer=L.layerGroup();
+    cells.forEach(c=>{
+      const avg=c.sum/c.n;
+      const t=Math.sqrt(Math.min(avg,12000)/12000); // ¥12,000以上で最濃
+      const col=[
+        Math.round(255+(150-255)*t),
+        Math.round(224+(8-224)*t),
+        Math.round(218+(20-218)*t)
+      ];
+      L.rectangle([[c.la,c.lo],[c.la+SIZE,c.lo+SIZE]],{
+        stroke:false, fillColor:`rgb(${col[0]},${col[1]},${col[2]})`,
+        fillOpacity:0.25+0.45*t, interactive:true
+      }).bindTooltip(`平均 ${yen(Math.round(avg))} / ${c.n}件`,{direction:"top"})
+        .addTo(heatLayer);
+    });
+    heatLayer.addTo(map);
   }
+  document.getElementById("heatLegend").style.display = (heatOn && list.length) ? "flex" : "none";
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
   document.getElementById("stSum").textContent = yen(sum);
