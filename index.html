@@ -79,11 +79,11 @@
   .btn.warn{color:var(--danger);border-color:var(--danger);}
 
   /* マーカー(行灯ピン) */
-  .lamp{border-radius:50%;border:2px solid #1a1206;
-    box-shadow:0 0 5px 1px rgba(255,181,60,.5);background:var(--amber);}
-  .lamp.low{background:var(--low);box-shadow:none;border-color:#0d1320;}
-  .lamp-label{position:absolute;top:-16px;left:50%;transform:translateX(-50%);
-    font-size:10px;font-weight:700;color:var(--amber);text-shadow:0 1px 3px #000;white-space:nowrap;
+  .lamp{border-radius:50%;border:1px solid rgba(26,18,6,.5);
+    box-shadow:0 0 4px rgba(255,181,60,.35);background:rgba(255,181,60,.55);}
+  .lamp.low{background:rgba(74,90,120,.45);box-shadow:none;border-color:rgba(13,19,32,.4);}
+  .lamp-label{position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    font-size:9px;font-weight:700;color:rgba(255,181,60,.85);text-shadow:0 1px 2px rgba(0,0,0,.8);white-space:nowrap;
     font-variant-numeric:tabular-nums;}
 
   .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border-radius:12px;border:1px solid var(--line);}
@@ -115,10 +115,6 @@
 <div id="map"></div>
 
 <header>
-  <div class="brand">
-    <h1>営業マップ <span>●</span></h1>
-    <small>高単価の乗車地を記録・可視化</small>
-  </div>
   <div class="stats">
     <div class="stat"><b id="stCount">0</b><small>該当件数</small></div>
     <div class="stat"><b id="stSum">¥0</b><small>合計営収</small></div>
@@ -388,7 +384,7 @@ function filtered(){
 }
 
 function lampIcon(f){
-  const size = Math.max(14, Math.min(40, 12 + Math.sqrt(f)/6));
+  const size = Math.max(8, Math.min(22, 6 + Math.sqrt(f)/9));
   const cls = f >= minFare && f >= 5000 ? "lamp" : "lamp low";
   const label = f >= 5000 ? `<div class="lamp-label">${yen(f)}</div>` : "";
   return L.divIcon({className:"", iconSize:[size,size], iconAnchor:[size/2,size/2],
