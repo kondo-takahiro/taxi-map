@@ -183,12 +183,28 @@
   <div class="row">
     <button class="btn" id="btnAdd">＋ 乗車を記録</button>
     <button class="btn" id="btnCsvOut">CSV書き出し</button>
-    <button class="btn" id="btnCsvIn">CSV読み込み</button>
-    <input type="file" id="fileCsv" accept=".csv" style="display:none">
+    <button class="btn" id="btnPaste">貼り付け読み込み</button>
+    <button class="btn" id="btnCsvIn">ファイル読み込み</button>
+    <input type="file" id="fileCsv" accept=".csv,.txt" style="display:none">
     <span style="flex:1"></span>
     <button class="btn warn" id="btnReset">初期化</button>
   </div>
   </div><!-- /panel-body -->
+</div>
+
+<div class="sheet" id="pasteSheet">
+  <form id="pasteForm">
+    <h2>テキストを貼り付けて読み込み</h2>
+    <div class="field">
+      <label>CSV形式(date,time,pickup,lat,lng,fare,dropoff,mode)。タブ区切りも可。ヘッダー行はあってもなくてもOK</label>
+      <textarea id="pasteText" rows="7" placeholder="2026-07-15,21:35,港区六本木7,35.6631,139.7297,6800,世田谷区成城6,app&#10;2026-07-15,23:10,中央区銀座5,35.6704,139.7650,3200,,st"
+        style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px;font-size:14px;font-family:ui-monospace,monospace;"></textarea>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="btnPasteCancel">キャンセル</button>
+      <button type="submit" class="btn on">読み込む</button>
+    </div>
+  </form>
 </div>
 
 <div class="sheet" id="sheet">
@@ -506,24 +522,55 @@ document.getElementById("btnCsvOut").onclick=()=>{
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download="rides.csv"; a.click();
 };
+// ===== 取り込み共通処理(CSV/タブ区切り、重複は自動スキップ) =====
+function importText(text){
+  const lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  let added=0, dup=0, bad=0;
+  lines.forEach(line=>{
+    if(/^date\s*[,\t]/i.test(line)) return; // ヘッダー行はスキップ
+    let c;
+    if(line.includes("\t")){
+      c=line.split("\t").map(x=>x.trim());
+    }else{
+      c=line.match(/("([^"]|"")*"|[^,]*)/g).filter(x=>x!=="").map(x=>x.replace(/^"|"$/g,"").replace(/""/g,'"'));
+    }
+    if(c.length>=6 && !isNaN(+c[3]) && !isNaN(+c[4]) && !isNaN(+c[5].replace(/[,¥\s]/g,""))){
+      const rec={ d:c[0], t:c[1], p:c[2], lat:+c[3], lng:+c[4], f:+c[5].replace(/[,¥\s]/g,""),
+        dst:c[6]||"", m:(c[7]==="st"||c[7]==="流し")?"st":"app" };
+      const exists=rides.some(r=>r.d===rec.d && r.t===rec.t && r.f===rec.f && r.lat===rec.lat && r.lng===rec.lng);
+      if(exists){ dup++; return; }
+      rides.push({id:"i"+Date.now()+Math.random(), ...rec});
+      added++;
+    }else{ bad++; }
+  });
+  save(); render();
+  let msg=added+"件を読み込みました";
+  if(dup) msg+="\n(重複のため"+dup+"件をスキップ)";
+  if(bad) msg+="\n(形式エラーで"+bad+"件をスキップ)";
+  alert(msg);
+  return added;
+}
+
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
 document.getElementById("fileCsv").onchange=e=>{
   const file=e.target.files[0]; if(!file) return;
   const rd=new FileReader();
-  rd.onload=()=>{
-    const lines=rd.result.replace(/^\uFEFF/,"").split(/\r?\n/).filter(Boolean);
-    let added=0;
-    lines.slice(1).forEach(line=>{
-      const c=line.match(/("([^"]|"")*"|[^,]*)/g).filter(x=>x!=="").map(x=>x.replace(/^"|"$/g,"").replace(/""/g,'"'));
-      if(c.length>=6 && !isNaN(+c[3]) && !isNaN(+c[4]) && !isNaN(+c[5])){
-        rides.push({id:"i"+Date.now()+Math.random(), d:c[0],t:c[1],p:c[2],lat:+c[3],lng:+c[4],f:+c[5],dst:c[6]||"",
-          m:(c[7]==="st"||c[7]==="流し")?"st":"app"});
-        added++;
-      }
-    });
-    save(); render(); alert(added+"件を読み込みました");
-  };
+  rd.onload=()=>importText(rd.result);
   rd.readAsText(file); e.target.value="";
+};
+
+// ===== 貼り付け読み込み =====
+const pasteSheet=document.getElementById("pasteSheet");
+document.getElementById("btnPaste").onclick=()=>{
+  document.getElementById("pasteText").value="";
+  pasteSheet.classList.add("open");
+};
+document.getElementById("btnPasteCancel").onclick=()=>pasteSheet.classList.remove("open");
+document.getElementById("pasteForm").onsubmit=e=>{
+  e.preventDefault();
+  const text=document.getElementById("pasteText").value;
+  if(text.trim()) importText(text);
+  pasteSheet.classList.remove("open");
 };
 
 // ===== 初期化 =====
