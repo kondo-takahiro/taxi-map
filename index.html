@@ -131,7 +131,7 @@
 <div id="heatLegend" style="display:none;position:fixed;top:64px;left:12px;z-index:900;align-items:center;gap:8px;
   background:rgba(19,26,42,.92);border:1px solid var(--line);border-radius:10px;padding:7px 12px;font-size:11px;color:var(--muted);">
   <span>単価 低</span>
-  <span style="width:90px;height:10px;border-radius:5px;background:linear-gradient(90deg,rgb(255,224,218),rgb(150,8,20));"></span>
+  <span style="width:110px;height:10px;border-radius:5px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
   <span>高</span>
 </div>
 
@@ -319,6 +319,56 @@ mountTiles();
 
 let markerLayer = L.layerGroup().addTo(map);
 let heatLayer = null, heatOn = false;
+const heatRenderer = L.canvas({padding:0.3}); // マスが多くても軽いCanvas描画
+
+// 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
+function fareTierColor(avg){
+  if(avg>=8000) return "#b71c1c";
+  if(avg>=5000) return "#e53935";
+  if(avg>=3000) return "#fb8c00";
+  if(avg>=2000) return "#fdd835";
+  if(avg>=1000) return "#aed581";
+  return "#81c784"; // ¥1,000未満・データなし
+}
+
+function drawHeat(list){
+  if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
+  document.getElementById("heatLegend").style.display = heatOn ? "flex" : "none";
+  if(!heatOn) return;
+  // ズームに応じてマスの大きさを調整(ズーム14で約500m四方)
+  const z=map.getZoom();
+  const SIZE=Math.max(0.0025, 0.005*Math.pow(2, Math.max(0, 14-z)));
+  // 表示中のエリアの少し外側までを対象にする
+  const b=map.getBounds().pad(0.15);
+  const iMin=Math.floor(b.getSouth()/SIZE), iMax=Math.floor(b.getNorth()/SIZE);
+  const jMin=Math.floor(b.getWest()/SIZE),  jMax=Math.floor(b.getEast()/SIZE);
+  if((iMax-iMin+1)*(jMax-jMin+1) > 6000) return; // 安全弁(極端なズームアウト時)
+  // データをマス目に集計
+  const cells=new Map();
+  list.forEach(r=>{
+    const key=Math.floor(r.lat/SIZE)+"_"+Math.floor(r.lng/SIZE);
+    const c=cells.get(key)||{sum:0,n:0};
+    c.sum+=r.f; c.n++; cells.set(key,c);
+  });
+  heatLayer=L.layerGroup();
+  for(let i=iMin;i<=iMax;i++){
+    for(let j=jMin;j<=jMax;j++){
+      const c=cells.get(i+"_"+j);
+      const avg=c ? c.sum/c.n : 0;
+      const rect=L.rectangle([[i*SIZE,j*SIZE],[(i+1)*SIZE,(j+1)*SIZE]],{
+        renderer:heatRenderer,
+        color:"#ffffff", weight:0.5, opacity:0.35,   // マス目の白い境界線
+        fillColor:fareTierColor(avg), fillOpacity:0.45,
+        interactive:!!c
+      });
+      if(c) rect.bindTooltip(`平均 ${yen(Math.round(avg))} / ${c.n}件`,{direction:"top"});
+      rect.addTo(heatLayer);
+    }
+  }
+  heatLayer.addTo(map);
+}
+// 地図を動かしたら表示範囲に合わせてマス目を引き直す
+map.on("moveend", ()=>{ if(heatOn) render(); });
 let minFare = 5000, tMin = 5, tMax = 29;
 
 const shiftHour = t => { const h = parseInt(t.split(":")[0],10); return h < 5 ? h+24 : h; };
@@ -363,34 +413,7 @@ function render(){
       <br><a class="navi" href="${nav}" target="_blank" rel="noopener">🧭 Googleマップで経路</a>
       <br><span class="del" data-id="${r.id}">この記録を削除</span></div>`);
   });
-  if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
-  if(heatOn && list.length){
-    // 約500m四方のマス目ごとに平均単価を集計し、薄い赤(低)〜濃い赤(高)で塗る
-    const SIZE=0.005;
-    const cells=new Map();
-    list.forEach(r=>{
-      const key=Math.floor(r.lat/SIZE)+"_"+Math.floor(r.lng/SIZE);
-      const c=cells.get(key)||{sum:0,n:0,la:Math.floor(r.lat/SIZE)*SIZE,lo:Math.floor(r.lng/SIZE)*SIZE};
-      c.sum+=r.f; c.n++; cells.set(key,c);
-    });
-    heatLayer=L.layerGroup();
-    cells.forEach(c=>{
-      const avg=c.sum/c.n;
-      const t=Math.sqrt(Math.min(avg,12000)/12000); // ¥12,000以上で最濃
-      const col=[
-        Math.round(255+(150-255)*t),
-        Math.round(224+(8-224)*t),
-        Math.round(218+(20-218)*t)
-      ];
-      L.rectangle([[c.la,c.lo],[c.la+SIZE,c.lo+SIZE]],{
-        stroke:false, fillColor:`rgb(${col[0]},${col[1]},${col[2]})`,
-        fillOpacity:0.25+0.45*t, interactive:true
-      }).bindTooltip(`平均 ${yen(Math.round(avg))} / ${c.n}件`,{direction:"top"})
-        .addTo(heatLayer);
-    });
-    heatLayer.addTo(map);
-  }
-  document.getElementById("heatLegend").style.display = (heatOn && list.length) ? "flex" : "none";
+  drawHeat(list);
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
   document.getElementById("stSum").textContent = yen(sum);
