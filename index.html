@@ -27,13 +27,13 @@
   header{position:fixed;top:0;left:0;right:0;z-index:1000;pointer-events:none;
     padding:10px 12px;display:flex;gap:8px;align-items:flex-start;}
   .brand{pointer-events:auto;background:rgba(13,19,32,.92);border:1px solid var(--line);
-    border-radius:12px;padding:8px 14px;backdrop-filter:blur(6px);}
+    border-radius:12px;padding:8px 14px;}
   .brand h1{margin:0;font-size:15px;letter-spacing:.08em;font-weight:700;}
   .brand h1 span{color:var(--amber);}
   .brand small{color:var(--muted);font-size:11px;}
   .stats{pointer-events:auto;margin-left:auto;display:flex;gap:6px;}
   .stat{background:rgba(13,19,32,.92);border:1px solid var(--line);border-radius:12px;
-    padding:6px 12px;text-align:right;backdrop-filter:blur(6px);}
+    padding:6px 12px;text-align:right;}
   .stat b{display:block;font-size:16px;font-variant-numeric:tabular-nums;color:var(--amber);line-height:1.2;}
   .stat small{color:var(--muted);font-size:10px;}
 
@@ -41,7 +41,7 @@
   .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
     border-radius:16px 16px 0 0;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
-    backdrop-filter:blur(8px);}
+    }
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .row + .row{margin-top:10px;}
   .label{font-size:11px;color:var(--muted);min-width:52px;}
@@ -74,7 +74,7 @@
 
   /* マーカー(行灯ピン) */
   .lamp{border-radius:50%;border:2px solid #1a1206;
-    box-shadow:0 0 10px 2px rgba(255,181,60,.55);background:var(--amber);}
+    box-shadow:0 0 5px 1px rgba(255,181,60,.5);background:var(--amber);}
   .lamp.low{background:var(--low);box-shadow:none;border-color:#0d1320;}
   .lamp-label{position:absolute;top:-16px;left:50%;transform:translateX(-50%);
     font-size:10px;font-weight:700;color:var(--amber);text-shadow:0 1px 3px #000;white-space:nowrap;
@@ -142,6 +142,21 @@
     <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
+    <span class="label">曜日</span>
+    <button class="chip dow on" data-dow="all">全て</button>
+    <button class="chip dow" data-dow="1">月</button>
+    <button class="chip dow" data-dow="2">火</button>
+    <button class="chip dow" data-dow="3">水</button>
+    <button class="chip dow" data-dow="4">木</button>
+    <button class="chip dow" data-dow="5">金</button>
+    <button class="chip dow" data-dow="6">土</button>
+    <button class="chip dow" data-dow="0">日</button>
+    <span style="flex:1"></span>
+    <button class="chip mode on" data-mode="all">全て</button>
+    <button class="chip mode" data-mode="app">アプリ</button>
+    <button class="chip mode" data-mode="st">流し</button>
+  </div>
+  <div class="row">
     <span class="label">時間帯</span>
     <div class="timeline" id="timeline">
       <div class="tl-track"></div>
@@ -170,6 +185,12 @@
     <div class="field"><label>乗車時刻</label><input type="time" id="fTime" required></div>
     <div class="field"><label>乗車地(例:港区六本木5)</label><input type="text" id="fPlace" required placeholder="地名・交差点名など"></div>
     <div class="field"><label>料金(円)</label><input type="number" id="fFare" required min="0" step="10" placeholder="6300"></div>
+    <div class="field"><label>配車区分</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn on" id="mApp" style="flex:1">アプリ配車</button>
+        <button type="button" class="btn" id="mSt" style="flex:1">流し</button>
+      </div>
+    </div>
     <div class="field"><label>降車地(任意)</label><input type="text" id="fDest" placeholder="渋谷区円山町"></div>
     <div class="actions">
       <button type="button" class="btn" id="btnCancel">キャンセル</button>
@@ -179,39 +200,39 @@
 </div>
 
 <script>
-// ===== 初期データ:2026-07-09 乗務記録(座標は町丁目の概算) =====
+// ===== 初期データ:2026-07-09 乗務記録(座標は町丁目の概算 / m: app=アプリ配車, st=流し) =====
 const SEED = [
- {d:"2026-07-09",t:"07:56",p:"墨田区吾妻橋2",lat:35.7108,lng:139.8038,f:1800,dst:"墨田区堤通1"},
- {d:"2026-07-09",t:"08:16",p:"荒川区南千住2",lat:35.7297,lng:139.7995,f:1800,dst:"荒川区荒川2"},
- {d:"2026-07-09",t:"09:02",p:"荒川区荒川2",lat:35.7360,lng:139.7818,f:22370,dst:"狭山市下奥富"},
- {d:"2026-07-09",t:"11:22",p:"練馬区谷原3",lat:35.7457,lng:139.6187,f:1000,dst:"練馬区谷原5"},
- {d:"2026-07-09",t:"11:32",p:"練馬区高松3",lat:35.7435,lng:139.6270,f:1700,dst:"練馬区富士見台2"},
- {d:"2026-07-09",t:"11:52",p:"練馬区中村南2",lat:35.7295,lng:139.6428,f:1500,dst:"練馬区練馬1"},
- {d:"2026-07-09",t:"12:21",p:"豊島区長崎3",lat:35.7283,lng:139.6866,f:2500,dst:"板橋区大谷口上町"},
- {d:"2026-07-09",t:"12:34",p:"板橋区大谷口上町",lat:35.7492,lng:139.6884,f:1000,dst:"板橋区仲町"},
- {d:"2026-07-09",t:"12:49",p:"板橋区仲町",lat:35.7525,lng:139.6953,f:2300,dst:"豊島区東池袋1"},
- {d:"2026-07-09",t:"13:09",p:"豊島区東池袋1",lat:35.7305,lng:139.7166,f:6300,dst:"渋谷区円山町"},
- {d:"2026-07-09",t:"14:00",p:"渋谷区桜丘町",lat:35.6564,lng:139.6996,f:4900,dst:"中央区築地2"},
- {d:"2026-07-09",t:"15:17",p:"中央区築地4",lat:35.6657,lng:139.7707,f:6600,dst:"足立区綾瀬4"},
- {d:"2026-07-09",t:"16:26",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1000,dst:"文京区千駄木3"},
- {d:"2026-07-09",t:"16:27",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1700,dst:"台東区上野7"},
- {d:"2026-07-09",t:"17:07",p:"中央区銀座6",lat:35.6699,lng:139.7628,f:1500,dst:"千代田区丸の内1"},
- {d:"2026-07-09",t:"17:39",p:"港区愛宕2",lat:35.6630,lng:139.7455,f:2000,dst:"港区元麻布2"},
- {d:"2026-07-09",t:"17:59",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:1000,dst:"港区西麻布4"},
- {d:"2026-07-09",t:"18:00",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:500,dst:"港区南麻布5"},
- {d:"2026-07-09",t:"18:15",p:"港区白金台5",lat:35.6383,lng:139.7205,f:1600,dst:"渋谷区恵比寿1"},
- {d:"2026-07-09",t:"19:02",p:"港区白金台5",lat:35.6383,lng:139.7205,f:3800,dst:"渋谷区上原2"},
- {d:"2026-07-09",t:"19:24",p:"渋谷区上原3",lat:35.6685,lng:139.6763,f:6100,dst:"中央区銀座8"},
- {d:"2026-07-09",t:"20:43",p:"中央区銀座7",lat:35.6693,lng:139.7642,f:3300,dst:"港区高輪1"},
- {d:"2026-07-09",t:"21:23",p:"港区芝5",lat:35.6479,lng:139.7476,f:7400,dst:"大田区西蒲田5"},
- {d:"2026-07-09",t:"22:38",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1000,dst:"大田区大森北1"},
- {d:"2026-07-09",t:"22:52",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1200,dst:"大田区大森北6"},
- {d:"2026-07-09",t:"23:29",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:700,dst:"品川区南大井5"},
- {d:"2026-07-10",t:"00:24",p:"港区新橋2",lat:35.6668,lng:139.7576,f:3900,dst:"渋谷区東2"},
- {d:"2026-07-10",t:"00:56",p:"港区六本木5",lat:35.6594,lng:139.7338,f:3400,dst:"品川区北品川3"},
- {d:"2026-07-10",t:"01:32",p:"港区芝浦4",lat:35.6421,lng:139.7501,f:3400,dst:"目黒区目黒3"},
- {d:"2026-07-10",t:"02:01",p:"港区六本木4",lat:35.6629,lng:139.7322,f:2000,dst:"港区南麻布3"},
- {d:"2026-07-10",t:"02:48",p:"台東区下谷2",lat:35.7218,lng:139.7838,f:1000,dst:"台東区下谷2"}
+ {d:"2026-07-09",t:"07:56",p:"墨田区吾妻橋2",lat:35.7108,lng:139.8038,f:1800,dst:"墨田区堤通1",m:"app"},
+ {d:"2026-07-09",t:"08:16",p:"荒川区南千住2",lat:35.7297,lng:139.7995,f:1800,dst:"荒川区荒川2",m:"app"},
+ {d:"2026-07-09",t:"09:02",p:"荒川区荒川2",lat:35.7360,lng:139.7818,f:22370,dst:"狭山市下奥富",m:"app"},
+ {d:"2026-07-09",t:"11:22",p:"練馬区谷原3",lat:35.7457,lng:139.6187,f:1000,dst:"練馬区谷原5",m:"app"},
+ {d:"2026-07-09",t:"11:32",p:"練馬区高松3",lat:35.7435,lng:139.6270,f:1700,dst:"練馬区富士見台2",m:"app"},
+ {d:"2026-07-09",t:"11:52",p:"練馬区中村南2",lat:35.7295,lng:139.6428,f:1500,dst:"練馬区練馬1",m:"app"},
+ {d:"2026-07-09",t:"12:21",p:"豊島区長崎3",lat:35.7283,lng:139.6866,f:2500,dst:"板橋区大谷口上町",m:"app"},
+ {d:"2026-07-09",t:"12:34",p:"板橋区大谷口上町",lat:35.7492,lng:139.6884,f:1000,dst:"板橋区仲町",m:"app"},
+ {d:"2026-07-09",t:"12:49",p:"板橋区仲町",lat:35.7525,lng:139.6953,f:2300,dst:"豊島区東池袋1",m:"app"},
+ {d:"2026-07-09",t:"13:09",p:"豊島区東池袋1",lat:35.7305,lng:139.7166,f:6300,dst:"渋谷区円山町",m:"app"},
+ {d:"2026-07-09",t:"14:00",p:"渋谷区桜丘町",lat:35.6564,lng:139.6996,f:4900,dst:"中央区築地2",m:"app"},
+ {d:"2026-07-09",t:"15:17",p:"中央区築地4",lat:35.6657,lng:139.7707,f:6600,dst:"足立区綾瀬4",m:"app"},
+ {d:"2026-07-09",t:"16:26",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1000,dst:"文京区千駄木3",m:"app"},
+ {d:"2026-07-09",t:"16:27",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1700,dst:"台東区上野7",m:"app"},
+ {d:"2026-07-09",t:"17:07",p:"中央区銀座6",lat:35.6699,lng:139.7628,f:1500,dst:"千代田区丸の内1",m:"app"},
+ {d:"2026-07-09",t:"17:39",p:"港区愛宕2",lat:35.6630,lng:139.7455,f:2000,dst:"港区元麻布2",m:"app"},
+ {d:"2026-07-09",t:"17:59",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:1000,dst:"港区西麻布4",m:"app"},
+ {d:"2026-07-09",t:"18:00",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:500,dst:"港区南麻布5",m:"st"},
+ {d:"2026-07-09",t:"18:15",p:"港区白金台5",lat:35.6383,lng:139.7205,f:1600,dst:"渋谷区恵比寿1",m:"app"},
+ {d:"2026-07-09",t:"19:02",p:"港区白金台5",lat:35.6383,lng:139.7205,f:3800,dst:"渋谷区上原2",m:"app"},
+ {d:"2026-07-09",t:"19:24",p:"渋谷区上原3",lat:35.6685,lng:139.6763,f:6100,dst:"中央区銀座8",m:"app"},
+ {d:"2026-07-09",t:"20:43",p:"中央区銀座7",lat:35.6693,lng:139.7642,f:3300,dst:"港区高輪1",m:"st"},
+ {d:"2026-07-09",t:"21:23",p:"港区芝5",lat:35.6479,lng:139.7476,f:7400,dst:"大田区西蒲田5",m:"app"},
+ {d:"2026-07-09",t:"22:38",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1000,dst:"大田区大森北1",m:"app"},
+ {d:"2026-07-09",t:"22:52",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1200,dst:"大田区大森北6",m:"st"},
+ {d:"2026-07-09",t:"23:29",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:700,dst:"品川区南大井5",m:"st"},
+ {d:"2026-07-10",t:"00:24",p:"港区新橋2",lat:35.6668,lng:139.7576,f:3900,dst:"渋谷区東2",m:"st"},
+ {d:"2026-07-10",t:"00:56",p:"港区六本木5",lat:35.6594,lng:139.7338,f:3400,dst:"品川区北品川3",m:"st"},
+ {d:"2026-07-10",t:"01:32",p:"港区芝浦4",lat:35.6421,lng:139.7501,f:3400,dst:"目黒区目黒3",m:"app"},
+ {d:"2026-07-10",t:"02:01",p:"港区六本木4",lat:35.6629,lng:139.7322,f:2000,dst:"港区南麻布3",m:"app"},
+ {d:"2026-07-10",t:"02:48",p:"台東区下谷2",lat:35.7218,lng:139.7838,f:1000,dst:"台東区下谷2",m:"app"}
 ];
 
 const KEY="taxi-rides-v1";
@@ -247,7 +268,7 @@ function mountTiles(){
   tileErrors = 0;
   document.getElementById("map").classList.toggle("dark-tiles", mapStyle==="dark");
   const src = TILE_SOURCES[tileIdx];
-  currentTiles = L.tileLayer(src.url,{maxZoom:18, attribution:src.attr});
+  currentTiles = L.tileLayer(src.url,{maxZoom:18, attribution:src.attr, updateWhenIdle:true, keepBuffer:3});
   currentTiles.on("tileerror", ()=>{
     tileErrors++;
     if(tileErrors >= 4){
@@ -267,8 +288,24 @@ let minFare = 5000, tMin = 5, tMax = 29;
 const shiftHour = t => { const h = parseInt(t.split(":")[0],10); return h < 5 ? h+24 : h; };
 const yen = n => "¥" + n.toLocaleString("ja-JP");
 
+// 営業日ベースの曜日(朝5時までの乗車は前日のシフト扱い)
+function shiftDow(r){
+  const dt = new Date(r.d + "T" + (r.t||"12:00") + ":00");
+  if(isNaN(dt)) return -1;
+  dt.setHours(dt.getHours() - 5);
+  return dt.getDay();
+}
+
+let dowSet = new Set();      // 空 = 全曜日
+let modeFilter = "all";      // all / app / st
+
 function filtered(){
-  return rides.filter(r => r.f >= minFare && shiftHour(r.t) >= tMin && shiftHour(r.t) <= tMax);
+  return rides.filter(r =>
+    r.f >= minFare &&
+    shiftHour(r.t) >= tMin && shiftHour(r.t) <= tMax &&
+    (dowSet.size === 0 || dowSet.has(shiftDow(r))) &&
+    (modeFilter === "all" || (r.m || "app") === modeFilter)
+  );
 }
 
 function lampIcon(f){
@@ -285,7 +322,8 @@ function render(){
   list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
-    m.bindPopup(`<div class="pop"><b>${yen(r.f)}</b><br>${r.d} ${r.t}<br>乗車:${r.p}${r.dst?`<br>降車:${r.dst}`:""}
+    const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
+    m.bindPopup(`<div class="pop"><b>${yen(r.f)}</b> <small>${mode}</small><br>${r.d} ${r.t}<br>乗車:${r.p}${r.dst?`<br>降車:${r.dst}`:""}
       <br><a class="navi" href="${nav}" target="_blank" rel="noopener">🧭 Googleマップで経路</a>
       <br><span class="del" data-id="${r.id}">この記録を削除</span></div>`);
   });
@@ -328,18 +366,52 @@ function renderTicks(){
     wrap.insertAdjacentHTML("beforeend",`<span style="left:${(h-5)/24*100}%">${h%24}時</span>`);
   });
 })();
+let renderTimer=null;
+function scheduleRender(){ clearTimeout(renderTimer); renderTimer=setTimeout(render,90); }
 function onSlide(){
   let a=+elMin.value, b=+elMax.value;
   if(a>b){ [a,b]=[b,a]; }
-  tMin=a; tMax=b; render();
+  tMin=a; tMax=b;
+  // つまみの表示だけ即時更新し、ピンの再描画は間引く
+  const fill=document.getElementById("tlFill");
+  fill.style.left=((tMin-5)/24*100)+"%";
+  fill.style.width=((tMax-tMin)/24*100)+"%";
+  document.getElementById("tlVal").textContent = `${fmtH(tMin)} – ${fmtH(tMax)}`;
+  scheduleRender();
 }
 elMin.addEventListener("input",onSlide); elMax.addEventListener("input",onSlide);
 
 // ===== 単価チップ =====
-document.querySelectorAll(".chip").forEach(c=>{
+document.querySelectorAll(".chip[data-min]").forEach(c=>{
   c.onclick=()=>{
-    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+    document.querySelectorAll(".chip[data-min]").forEach(x=>x.classList.remove("on"));
     c.classList.add("on"); minFare=+c.dataset.min; render();
+  };
+});
+
+// ===== 曜日チップ(複数選択可、「全て」で解除) =====
+document.querySelectorAll(".chip.dow").forEach(c=>{
+  c.onclick=()=>{
+    const all=document.querySelector('.chip.dow[data-dow="all"]');
+    if(c.dataset.dow==="all"){
+      dowSet.clear();
+      document.querySelectorAll(".chip.dow").forEach(x=>x.classList.remove("on"));
+      all.classList.add("on");
+    }else{
+      const d=+c.dataset.dow;
+      if(dowSet.has(d)){ dowSet.delete(d); c.classList.remove("on"); }
+      else{ dowSet.add(d); c.classList.add("on"); }
+      all.classList.toggle("on", dowSet.size===0);
+    }
+    render();
+  };
+});
+
+// ===== 配車チップ =====
+document.querySelectorAll(".chip.mode").forEach(c=>{
+  c.onclick=()=>{
+    document.querySelectorAll(".chip.mode").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); modeFilter=c.dataset.mode; render();
   };
 });
 
@@ -397,11 +469,16 @@ map.on("click",e=>{
   sheet.classList.add("open");
 });
 document.getElementById("btnCancel").onclick=()=>sheet.classList.remove("open");
+let formMode="app";
+document.getElementById("mApp").onclick=()=>{ formMode="app";
+  document.getElementById("mApp").classList.add("on"); document.getElementById("mSt").classList.remove("on"); };
+document.getElementById("mSt").onclick=()=>{ formMode="st";
+  document.getElementById("mSt").classList.add("on"); document.getElementById("mApp").classList.remove("on"); };
 document.getElementById("rideForm").onsubmit=e=>{
   e.preventDefault();
   rides.push({ id:"u"+Date.now(), d:document.getElementById("fDate").value, t:document.getElementById("fTime").value,
     p:document.getElementById("fPlace").value, lat:+pendingLL.lat.toFixed(5), lng:+pendingLL.lng.toFixed(5),
-    f:+document.getElementById("fFare").value, dst:document.getElementById("fDest").value });
+    f:+document.getElementById("fFare").value, dst:document.getElementById("fDest").value, m:formMode });
   save(); sheet.classList.remove("open");
   addMode=false; document.getElementById("btnAdd").classList.remove("on"); hint.classList.remove("show");
   render();
@@ -409,8 +486,8 @@ document.getElementById("rideForm").onsubmit=e=>{
 
 // ===== CSV =====
 document.getElementById("btnCsvOut").onclick=()=>{
-  const rows=[["date","time","pickup","lat","lng","fare","dropoff"],
-    ...rides.map(r=>[r.d,r.t,r.p,r.lat,r.lng,r.f,r.dst||""])];
+  const rows=[["date","time","pickup","lat","lng","fare","dropoff","mode"],
+    ...rides.map(r=>[r.d,r.t,r.p,r.lat,r.lng,r.f,r.dst||"",r.m||"app"])];
   const csv="\uFEFF"+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
@@ -426,7 +503,8 @@ document.getElementById("fileCsv").onchange=e=>{
     lines.slice(1).forEach(line=>{
       const c=line.match(/("([^"]|"")*"|[^,]*)/g).filter(x=>x!=="").map(x=>x.replace(/^"|"$/g,"").replace(/""/g,'"'));
       if(c.length>=6 && !isNaN(+c[3]) && !isNaN(+c[4]) && !isNaN(+c[5])){
-        rides.push({id:"i"+Date.now()+Math.random(), d:c[0],t:c[1],p:c[2],lat:+c[3],lng:+c[4],f:+c[5],dst:c[6]||""});
+        rides.push({id:"i"+Date.now()+Math.random(), d:c[0],t:c[1],p:c[2],lat:+c[3],lng:+c[4],f:+c[5],dst:c[6]||"",
+          m:(c[7]==="st"||c[7]==="流し")?"st":"app"});
         added++;
       }
     });
