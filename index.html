@@ -523,7 +523,7 @@ document.getElementById("btnCsvOut").onclick=()=>{
   a.download="rides.csv"; a.click();
 };
 // ===== 取り込み共通処理(CSV/タブ区切り、重複は自動スキップ) =====
-function importText(text){
+function importText(text, silent){
   // 改行が失われている場合に備え、日付(YYYY-MM-DD)の直前で強制的に区切る
   const norm = text.replace(/^\uFEFF/,"")
     .replace(/\s+(?=\d{4}-\d{2}-\d{2}[,\t])/g,"\n");
@@ -547,12 +547,27 @@ function importText(text){
     }else{ bad++; }
   });
   save(); render();
-  let msg=added+"件を読み込みました";
-  if(dup) msg+="\n(重複のため"+dup+"件をスキップ)";
-  if(bad) msg+="\n(形式エラーで"+bad+"件をスキップ)";
-  alert(msg);
+  if(silent){
+    if(added>0){ // 共有データ取り込み時は控えめに通知
+      const h=document.getElementById("hint");
+      h.textContent="共有データから"+added+"件を追加しました";
+      h.classList.add("show");
+      setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }, 3500);
+    }
+  }else{
+    let msg=added+"件を読み込みました";
+    if(dup) msg+="\n(重複のため"+dup+"件をスキップ)";
+    if(bad) msg+="\n(形式エラーで"+bad+"件をスキップ)";
+    alert(msg);
+  }
   return added;
 }
+
+// ===== 共有データの自動読み込み(アプリと同じ場所のrides.csvを起動時に取得) =====
+fetch("rides.csv?v="+Date.now(),{cache:"no-store"})
+  .then(r=>r.ok?r.text():null)
+  .then(t=>{ if(t) importText(t,true); })
+  .catch(()=>{}); // ファイルがない場合やオフライン時は何もしない
 
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
 document.getElementById("fileCsv").onchange=e=>{
