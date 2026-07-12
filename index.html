@@ -185,6 +185,7 @@
     <button class="btn" id="btnCsvOut">CSV書き出し</button>
     <button class="btn" id="btnPaste">貼り付け読み込み</button>
     <button class="btn" id="btnCsvIn">ファイル読み込み</button>
+    <button class="btn" id="btnSync">共有データ再読み込み</button>
     <input type="file" id="fileCsv" accept=".csv,.txt" style="display:none">
     <span style="flex:1"></span>
     <button class="btn warn" id="btnReset">初期化</button>
@@ -564,10 +565,19 @@ function importText(text, silent){
 }
 
 // ===== 共有データの自動読み込み(アプリと同じ場所のrides.csvを起動時に取得) =====
-fetch("rides.csv?v="+Date.now(),{cache:"no-store"})
-  .then(r=>r.ok?r.text():null)
-  .then(t=>{ if(t) importText(t,true); })
-  .catch(()=>{}); // ファイルがない場合やオフライン時は何もしない
+function loadShared(silent){
+  return fetch("rides.csv?v="+Date.now(),{cache:"no-store"})
+    .then(r=>{
+      if(!r.ok) throw new Error("rides.csvが見つかりません(HTTP "+r.status+")");
+      return r.text();
+    })
+    .then(t=>importText(t, silent))
+    .catch(err=>{
+      if(!silent) alert("共有データを読み込めませんでした。\n"+err.message+"\n(ネット接続と、rides.csvがindex.htmlと同じ場所にあるかを確認してください)");
+    });
+}
+loadShared(true); // 起動時は静かに実行
+document.getElementById("btnSync").onclick=()=>loadShared(false); // 手動時は結果を表示
 
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
 document.getElementById("fileCsv").onchange=e=>{
