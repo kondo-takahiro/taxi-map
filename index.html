@@ -335,9 +335,9 @@ function drawHeat(list){
   if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
   document.getElementById("heatLegend").style.display = heatOn ? "flex" : "none";
   if(!heatOn) return;
-  // ズームに応じてマスの大きさを調整(ズーム14で約500m四方)
+  // ズームに応じてマスの大きさを調整(ズーム14で約280m四方)
   const z=map.getZoom();
-  const SIZE=Math.max(0.0025, 0.005*Math.pow(2, Math.max(0, 14-z)));
+  const SIZE=Math.max(0.00125, 0.005*Math.pow(2, 13-z));
   // 表示中のエリアの少し外側までを対象にする
   const b=map.getBounds().pad(0.15);
   const iMin=Math.floor(b.getSouth()/SIZE), iMax=Math.floor(b.getNorth()/SIZE);
@@ -405,7 +405,7 @@ function lampIcon(f){
 function render(){
   markerLayer.clearLayers();
   const list = filtered();
-  list.forEach(r=>{
+  if(!heatOn) list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
