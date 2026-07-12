@@ -524,10 +524,13 @@ document.getElementById("btnCsvOut").onclick=()=>{
 };
 // ===== 取り込み共通処理(CSV/タブ区切り、重複は自動スキップ) =====
 function importText(text){
-  const lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  // 改行が失われている場合に備え、日付(YYYY-MM-DD)の直前で強制的に区切る
+  const norm = text.replace(/^\uFEFF/,"")
+    .replace(/\s+(?=\d{4}-\d{2}-\d{2}[,\t])/g,"\n");
+  const lines = norm.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
+    .filter(l=>/^\d{4}-\d{2}-\d{2}[,\t]/.test(l)); // 記録行(日付始まり)のみ対象。タイトルやヘッダーは無視
   let added=0, dup=0, bad=0;
   lines.forEach(line=>{
-    if(/^date\s*[,\t]/i.test(line)) return; // ヘッダー行はスキップ
     let c;
     if(line.includes("\t")){
       c=line.split("\t").map(x=>x.trim());
