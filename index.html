@@ -40,8 +40,15 @@
   /* 下部パネル */
   .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
+    border-radius:16px 16px 0 0;padding:0 14px calc(12px + env(safe-area-inset-bottom));
     }
+  .panel-handle{display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:12px 0 10px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}
+  .panel-handle .grip{width:52px;height:5px;border-radius:3px;background:var(--muted);opacity:.7;}
+  .panel-handle span{font-size:11px;color:var(--muted);}
+  .panel-body{overflow:hidden;max-height:320px;transition:max-height .25s ease;}
+  .panel.collapsed .panel-body{max-height:0;}
+  .panel.collapsed{padding-bottom:calc(4px + env(safe-area-inset-bottom));}
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .row + .row{margin-top:10px;}
   .label{font-size:11px;color:var(--muted);min-width:52px;}
@@ -129,7 +136,12 @@
   ファイルをダウンロードし、<b>SafariやChromeなどのブラウザで直接開いて</b>ください。ネット接続も必要です。
 </div>
 
-<div class="panel">
+<div class="panel" id="panel">
+  <div class="panel-handle" id="panelHandle">
+    <div class="grip"></div>
+    <span id="handleText">フィルターを閉じる ▼</span>
+  </div>
+  <div class="panel-body" id="panelBody">
   <div class="row">
     <span class="label">単価</span>
     <button class="chip" data-min="0">全て</button>
@@ -176,6 +188,7 @@
     <span style="flex:1"></span>
     <button class="btn warn" id="btnReset">初期化</button>
   </div>
+  </div><!-- /panel-body -->
 </div>
 
 <div class="sheet" id="sheet">
@@ -519,6 +532,26 @@ document.getElementById("btnReset").onclick=()=>{
     localStorage.removeItem(KEY); rides=load(); render();
   }
 };
+
+// ===== フィルターパネルの開閉 =====
+const panel=document.getElementById("panel"), handleText=document.getElementById("handleText");
+function setPanel(collapsed){
+  panel.classList.toggle("collapsed", collapsed);
+  handleText.textContent = collapsed ? "フィルターを開く ▲" : "フィルターを閉じる ▼";
+  localStorage.setItem("taxi-map-panel", collapsed ? "1" : "0");
+  setTimeout(()=>map.invalidateSize(), 280); // 地図の表示領域を再計算
+}
+const handle=document.getElementById("panelHandle");
+let tsY=null, flicked=false;
+handle.addEventListener("touchstart", e=>{ tsY=e.touches[0].clientY; flicked=false; },{passive:true});
+handle.addEventListener("touchmove", e=>{
+  if(tsY===null) return;
+  const dy=e.touches[0].clientY - tsY;
+  if(Math.abs(dy)>20){ setPanel(dy>0); flicked=true; tsY=null; } // 下=閉じる / 上=開く
+},{passive:true});
+handle.addEventListener("touchend", ()=>{ tsY=null; },{passive:true});
+handle.onclick=()=>{ if(flicked){ flicked=false; return; } setPanel(!panel.classList.contains("collapsed")); };
+if(localStorage.getItem("taxi-map-panel")==="1") setPanel(true);
 
 render();
 </script>
