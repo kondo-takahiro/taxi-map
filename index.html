@@ -16,7 +16,11 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
     font-family:-apple-system,"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",Meiryo,sans-serif;}
-  #map{position:fixed;inset:0;background:#0d1320;}
+  #map{position:fixed;inset:0;background:#f2efe9;}
+  #map.dark-tiles{background:#0d1320;}
+  #map.dark-tiles .leaflet-tile{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6);}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#1e88e5;border:3px solid #fff;
+    box-shadow:0 0 8px rgba(30,136,229,.8);}
   .leaflet-container{font:inherit;}
 
   /* ヘッダー */
@@ -79,6 +83,8 @@
   .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border-radius:12px;border:1px solid var(--line);}
   .leaflet-popup-tip{background:var(--panel);}
   .pop b{color:var(--amber);font-size:16px;}
+  .pop .navi{margin-top:10px;display:inline-block;background:var(--amber);color:#1a1206;font-weight:700;
+    font-size:13px;text-decoration:none;border-radius:10px;padding:8px 12px;}
   .pop .del{margin-top:8px;display:inline-block;color:var(--danger);font-size:12px;cursor:pointer;border:1px solid var(--danger);border-radius:8px;padding:3px 8px;}
 
   /* 追加フォーム */
@@ -131,6 +137,7 @@
     <button class="chip on" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnGps">現在地</button>
   </div>
@@ -220,16 +227,25 @@ function save(list){ try{ localStorage.setItem(KEY, JSON.stringify(list ?? rides
 const map = L.map("map",{zoomControl:false}).setView([35.675,139.74],12);
 L.control.zoom({position:"topright"}).addTo(map);
 
-// タイルサーバー(読み込み失敗時は順に切り替え)
-const TILE_SOURCES = [
-  {url:"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", attr:"&copy; OpenStreetMap &copy; CARTO"},
-  {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"},
-  {url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", attr:"国土地理院"}
-];
+// タイルサーバー(国土地理院の日本語地図を優先、失敗時はOSMに切り替え)
+const TILE_STYLES = {
+  light: [
+    {url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", attr:"国土地理院"},
+    {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"},
+    {url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", attr:"国土地理院"}
+  ],
+  dark: [
+    {url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", attr:"国土地理院"},
+    {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"}
+  ]
+};
+let mapStyle = localStorage.getItem("taxi-map-style") || "light";
+let TILE_SOURCES = TILE_STYLES[mapStyle];
 let tileIdx = 0, tileErrors = 0, currentTiles = null;
 function mountTiles(){
   if(currentTiles) map.removeLayer(currentTiles);
   tileErrors = 0;
+  document.getElementById("map").classList.toggle("dark-tiles", mapStyle==="dark");
   const src = TILE_SOURCES[tileIdx];
   currentTiles = L.tileLayer(src.url,{maxZoom:18, attribution:src.attr});
   currentTiles.on("tileerror", ()=>{
@@ -268,7 +284,9 @@ function render(){
   const list = filtered();
   list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
+    const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     m.bindPopup(`<div class="pop"><b>${yen(r.f)}</b><br>${r.d} ${r.t}<br>乗車:${r.p}${r.dst?`<br>降車:${r.dst}`:""}
+      <br><a class="navi" href="${nav}" target="_blank" rel="noopener">🧭 Googleマップで経路</a>
       <br><span class="del" data-id="${r.id}">この記録を削除</span></div>`);
   });
   if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
@@ -327,15 +345,40 @@ document.querySelectorAll(".chip").forEach(c=>{
 
 // ===== ヒートマップ / GPS =====
 document.getElementById("btnHeat").onclick=e=>{ heatOn=!heatOn; e.target.classList.toggle("on",heatOn); render(); };
-let meMarker=null;
-document.getElementById("btnGps").onclick=()=>{
+const btnStyle=document.getElementById("btnStyle");
+function styleLabel(){ btnStyle.textContent = mapStyle==="light" ? "🌙 夜間配色" : "☀️ 日中配色"; }
+btnStyle.onclick=()=>{
+  mapStyle = mapStyle==="light" ? "dark" : "light";
+  localStorage.setItem("taxi-map-style", mapStyle);
+  TILE_SOURCES = TILE_STYLES[mapStyle]; tileIdx = 0;
+  mountTiles(); styleLabel();
+};
+styleLabel();
+let watchId=null, meMarker=null, meCircle=null, firstFix=true;
+const btnGps=document.getElementById("btnGps");
+btnGps.onclick=()=>{
   if(!navigator.geolocation) return alert("この端末では位置情報を取得できません");
-  navigator.geolocation.getCurrentPosition(pos=>{
+  if(watchId!==null){ // 追尾を停止
+    navigator.geolocation.clearWatch(watchId); watchId=null;
+    if(meMarker){meMarker.remove();meMarker=null;} if(meCircle){meCircle.remove();meCircle=null;}
+    btnGps.classList.remove("on"); btnGps.textContent="現在地"; return;
+  }
+  firstFix=true; btnGps.classList.add("on"); btnGps.textContent="追尾中";
+  watchId=navigator.geolocation.watchPosition(pos=>{
     const ll=[pos.coords.latitude,pos.coords.longitude];
-    if(meMarker) meMarker.remove();
-    meMarker=L.circleMarker(ll,{radius:9,color:"#4fc3f7",fillColor:"#4fc3f7",fillOpacity:.9}).addTo(map).bindPopup("現在地");
-    map.setView(ll,14);
-  },()=>alert("位置情報を取得できませんでした。ブラウザの位置情報許可を確認してください。"));
+    if(!meMarker){
+      meMarker=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],
+        html:'<div class="me-dot"></div>'}), zIndexOffset:1000}).addTo(map);
+      meCircle=L.circle(ll,{radius:pos.coords.accuracy||30,color:"#1e88e5",weight:1,fillOpacity:.12}).addTo(map);
+    }else{
+      meMarker.setLatLng(ll); meCircle.setLatLng(ll); meCircle.setRadius(pos.coords.accuracy||30);
+    }
+    if(firstFix){ map.setView(ll,15); firstFix=false; }
+  },err=>{
+    alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
+    navigator.geolocation.clearWatch(watchId); watchId=null;
+    btnGps.classList.remove("on"); btnGps.textContent="現在地";
+  },{enableHighAccuracy:true, maximumAge:3000, timeout:15000});
 };
 
 // ===== 追加(地図タップ → フォーム) =====
