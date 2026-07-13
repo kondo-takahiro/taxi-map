@@ -6,6 +6,7 @@
 <title>営業マップ | 高単価乗車地</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.14.1/dist/Leaflet.GoogleMutant.js"></script>
 <style>
   :root{
     --bg:#0d1320; --panel:#151d2e; --panel2:#1c2638; --line:#28344b;
@@ -292,13 +293,40 @@ const TILE_STYLES = {
     {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"}
   ]
 };
+// ▼▼▼ GoogleマップのAPIキーをここの引用符の間に貼り付けてください(空のままなら従来の地図のみ) ▼▼▼
+const GOOGLE_MAPS_API_KEY = "";
+// ▲▲▲ 例: const GOOGLE_MAPS_API_KEY = "AIzaSyC..."; ▲▲▲
+
+if(GOOGLE_MAPS_API_KEY){
+  const gs=document.createElement("script");
+  gs.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(GOOGLE_MAPS_API_KEY)+"&v=weekly";
+  document.head.appendChild(gs);
+}
+
 let mapStyle = localStorage.getItem("taxi-map-style") || "light";
-let TILE_SOURCES = TILE_STYLES[mapStyle];
-let tileIdx = 0, tileErrors = 0, currentTiles = null;
+if(mapStyle==="google" && !GOOGLE_MAPS_API_KEY) mapStyle="light"; // キー未設定なら通常地図に戻す
+let TILE_SOURCES = TILE_STYLES[mapStyle==="google" ? "light" : mapStyle];
+let tileIdx = 0, tileErrors = 0, currentTiles = null, googleLayer = null, gWait = 0;
 function mountTiles(){
-  if(currentTiles) map.removeLayer(currentTiles);
-  tileErrors = 0;
+  if(currentTiles){ map.removeLayer(currentTiles); currentTiles=null; }
+  if(googleLayer){ map.removeLayer(googleLayer); googleLayer=null; }
   document.getElementById("map").classList.toggle("dark-tiles", mapStyle==="dark");
+  if(mapStyle==="google"){
+    if(!(window.google && window.google.maps && L.gridLayer.googleMutant)){
+      // Google Maps APIの読み込み待ち(最大約9秒)
+      if(gWait++ < 30){ setTimeout(mountTiles, 300); return; }
+      gWait=0; alert("Googleマップを読み込めませんでした。APIキーの設定を確認してください。従来の地図で表示します。");
+      mapStyle="light"; localStorage.setItem("taxi-map-style","light"); styleLabel();
+    }else{
+      gWait=0;
+      googleLayer = L.gridLayer.googleMutant({type:"roadmap", maxZoom:20});
+      googleLayer.addTo(map);
+      document.getElementById("tileWarn").style.display = "none";
+      return;
+    }
+  }
+  tileErrors = 0;
+  TILE_SOURCES = TILE_STYLES[mapStyle];
   const src = TILE_SOURCES[tileIdx];
   currentTiles = L.tileLayer(src.url,{maxZoom:18, attribution:src.attr, updateWhenIdle:true, keepBuffer:3});
   currentTiles.on("tileerror", ()=>{
@@ -489,11 +517,14 @@ document.querySelectorAll(".chip.mode").forEach(c=>{
 // ===== ヒートマップ / GPS =====
 document.getElementById("btnHeat").onclick=e=>{ heatOn=!heatOn; e.target.classList.toggle("on",heatOn); render(); };
 const btnStyle=document.getElementById("btnStyle");
-function styleLabel(){ btnStyle.textContent = mapStyle==="light" ? "🌙 夜間配色" : "☀️ 日中配色"; }
+const STYLE_ORDER = GOOGLE_MAPS_API_KEY ? ["light","dark","google"] : ["light","dark"];
+const STYLE_NEXT_LABEL = {light:"🌙 夜間配色", dark: GOOGLE_MAPS_API_KEY ? "🗺 Google地図" : "☀️ 日中配色", google:"☀️ 日中配色"};
+function styleLabel(){ btnStyle.textContent = STYLE_NEXT_LABEL[mapStyle] || "🌙 夜間配色"; }
 btnStyle.onclick=()=>{
-  mapStyle = mapStyle==="light" ? "dark" : "light";
+  const i = STYLE_ORDER.indexOf(mapStyle);
+  mapStyle = STYLE_ORDER[(i+1) % STYLE_ORDER.length];
   localStorage.setItem("taxi-map-style", mapStyle);
-  TILE_SOURCES = TILE_STYLES[mapStyle]; tileIdx = 0;
+  tileIdx = 0;
   mountTiles(); styleLabel();
 };
 styleLabel();
