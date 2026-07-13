@@ -90,8 +90,9 @@
   .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border-radius:12px;border:1px solid var(--line);}
   .leaflet-popup-tip{background:var(--panel);}
   .pop b{color:var(--amber);font-size:16px;}
-  .pop .navi{margin-top:10px;display:inline-block;background:var(--amber);color:#1a1206;font-weight:700;
-    font-size:13px;text-decoration:none;border-radius:10px;padding:8px 12px;}
+  .pop .navi{margin-top:10px;margin-right:6px;display:inline-block;background:var(--amber);color:#1a1206;font-weight:700;
+    font-size:13px;text-decoration:none;border-radius:10px;padding:8px 12px;cursor:pointer;}
+  .pop .navi.sub{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:400;}
   .pop .del{margin-top:8px;display:inline-block;color:var(--danger);font-size:12px;cursor:pointer;border:1px solid var(--danger);border-radius:8px;padding:3px 8px;}
 
   /* 追加フォーム */
@@ -122,6 +123,12 @@
     <div class="stat"><b id="stAvg">¥0</b><small>平均単価</small></div>
   </div>
 </header>
+
+<div id="routeInfo" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1200;
+  align-items:center;gap:10px;background:rgba(19,26,42,.95);border:1px solid #42a5f5;border-radius:20px;padding:8px 14px;font-size:13px;color:var(--text);white-space:nowrap;">
+  <span id="routeText">経路を計算中…</span>
+  <span id="routeClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 2px;">✕</span>
+</div>
 
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
@@ -294,7 +301,7 @@ const TILE_STYLES = {
   ]
 };
 // ▼▼▼ GoogleマップのAPIキーをここの引用符の間に貼り付けてください(空のままなら従来の地図のみ) ▼▼▼
-const GOOGLE_MAPS_API_KEY = "AIzaSyBGt4G2x6Sj1fDNJLIituwY_y6XGIo51Qg";
+const GOOGLE_MAPS_API_KEY = "";
 // ▲▲▲ 例: const GOOGLE_MAPS_API_KEY = "AIzaSyC..."; ▲▲▲
 
 if(GOOGLE_MAPS_API_KEY){
@@ -427,7 +434,8 @@ function render(){
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
     m.bindPopup(`<div class="pop"><b>${yen(r.f)}</b> <small>${mode}</small><br>${r.d} ${r.t}<br>乗車:${r.p}${r.dst?`<br>降車:${r.dst}`:""}
-      <br><a class="navi" href="${nav}" target="_blank" rel="noopener">🧭 Googleマップで経路</a>
+      <br><span class="navi route-here" data-lat="${r.lat}" data-lng="${r.lng}">📍 この地図で経路</span>
+      <a class="navi sub" href="${nav}" target="_blank" rel="noopener">🧭 Googleマップ</a>
       <br><span class="del" data-id="${r.id}">この記録を削除</span></div>`);
   });
   drawHeat(list);
@@ -439,9 +447,54 @@ function render(){
 }
 
 map.on("popupopen", e=>{
-  const el = e.popup.getElement().querySelector(".del");
+  const root = e.popup.getElement();
+  const el = root.querySelector(".del");
   if(el) el.onclick = ()=>{ rides = rides.filter(r=>r.id!==el.dataset.id); save(); map.closePopup(); render(); };
+  const rb = root.querySelector(".route-here");
+  if(rb) rb.onclick = ()=>{ map.closePopup(); showRoute(+rb.dataset.lat, +rb.dataset.lng); };
 });
+
+// ===== アプリ内経路表示(現在地→ピン、OSRM公開サーバー使用) =====
+let routeLayer=null;
+function clearRoute(){
+  if(routeLayer){ map.removeLayer(routeLayer); routeLayer=null; }
+  document.getElementById("routeInfo").style.display="none";
+}
+function showRoute(dlat,dlng){
+  if(!navigator.geolocation) return alert("この端末では位置情報を取得できません");
+  const info=document.getElementById("routeInfo");
+  info.style.display="flex";
+  document.getElementById("routeText").textContent="経路を計算中…";
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      const olat=pos.coords.latitude, olng=pos.coords.longitude;
+      const url=`https://router.project-osrm.org/route/v1/driving/${olng},${olat};${dlng},${dlat}?overview=full&geometries=geojson`;
+      const res=await fetch(url);
+      const j=await res.json();
+      if(j.code!=="Ok" || !j.routes || !j.routes[0]) throw new Error("経路が見つかりませんでした");
+      const rt=j.routes[0];
+      if(routeLayer) map.removeLayer(routeLayer);
+      const line=rt.geometry.coordinates.map(c=>[c[1],c[0]]);
+      routeLayer=L.layerGroup([
+        L.polyline(line,{color:"#1e88e5",weight:7,opacity:.45}),
+        L.polyline(line,{color:"#42a5f5",weight:3,opacity:.95}),
+        L.circleMarker([olat,olng],{radius:6,color:"#fff",weight:2,fillColor:"#1e88e5",fillOpacity:1}),
+        L.circleMarker([dlat,dlng],{radius:7,color:"#fff",weight:2,fillColor:"#ffb53c",fillOpacity:1})
+      ]).addTo(map);
+      map.fitBounds(L.latLngBounds(line),{padding:[50,50]});
+      const km=(rt.distance/1000).toFixed(1);
+      const min=Math.round(rt.duration/60);
+      document.getElementById("routeText").textContent=`約${km}km・約${min}分(渋滞考慮なし)`;
+    }catch(err){
+      clearRoute();
+      alert("経路を取得できませんでした。電波状況を確認してもう一度お試しください。\n("+err.message+")");
+    }
+  },()=>{
+    clearRoute();
+    alert("現在地を取得できませんでした。位置情報の許可を確認してください。");
+  },{enableHighAccuracy:true, timeout:12000, maximumAge:10000});
+}
+document.getElementById("routeClose").onclick=clearRoute;
 
 // ===== 時間帯スライダー =====
 const elMin=document.getElementById("tMin"), elMax=document.getElementById("tMax");
