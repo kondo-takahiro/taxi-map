@@ -6,6 +6,12 @@
 <title>営業マップ | 高単価乗車地</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// 地図回転プラグインはGoogleマップ表示と競合するため、Google表示時は読み込まない
+if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
+  document.write('<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"><\/script>');
+}
+</script>
 <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.14.1/dist/Leaflet.GoogleMutant.js"></script>
 <style>
   :root{
@@ -130,6 +136,11 @@
   <span id="routeClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 2px;">✕</span>
 </div>
 
+<div id="zoomBtns" style="position:fixed;right:10px;top:45%;transform:translateY(-50%);z-index:900;display:flex;flex-direction:column;gap:8px;">
+  <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
+  <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
+</div>
+
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
 <div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
@@ -150,6 +161,7 @@
   <div class="panel-handle" id="panelHandle">
     <div class="grip"></div>
     <span id="handleText">フィルターを閉じる ▼</span>
+    <span style="font-size:8px;opacity:.5;">v2026.07.14</span>
   </div>
   <div class="panel-body" id="panelBody">
   <div class="row">
@@ -159,6 +171,7 @@
     <button class="chip on" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnGps">現在地</button>
@@ -285,8 +298,11 @@ function load(){
 function save(list){ try{ localStorage.setItem(KEY, JSON.stringify(list ?? rides)); }catch(e){} }
 
 // ===== 地図 =====
-const map = L.map("map",{zoomControl:false}).setView([35.675,139.74],12);
-L.control.zoom({position:"topright"}).addTo(map);
+const ROTATE_OK = typeof L.Map.prototype.setBearing === "function"; // 回転プラグインが有効か
+const map = L.map("map", ROTATE_OK
+  ? {zoomControl:false, rotate:true, touchRotate:false, rotateControl:false, bearing:0}
+  : {zoomControl:false}
+).setView([35.675,139.74],12);
 
 // タイルサーバー(国土地理院の日本語地図を優先、失敗時はOSMに切り替え)
 const TILE_STYLES = {
@@ -575,24 +591,39 @@ const STYLE_NEXT_LABEL = {light:"🌙 夜間配色", dark: GOOGLE_MAPS_API_KEY ?
 function styleLabel(){ btnStyle.textContent = STYLE_NEXT_LABEL[mapStyle] || "🌙 夜間配色"; }
 btnStyle.onclick=()=>{
   const i = STYLE_ORDER.indexOf(mapStyle);
-  mapStyle = STYLE_ORDER[(i+1) % STYLE_ORDER.length];
+  const next = STYLE_ORDER[(i+1) % STYLE_ORDER.length];
+  const crossGoogle = (next==="google" || mapStyle==="google");
+  mapStyle = next;
   localStorage.setItem("taxi-map-style", mapStyle);
+  if(crossGoogle){ location.reload(); return; } // 回転プラグインの読み込み構成を切り替えるため再読み込み
   tileIdx = 0;
   mountTiles(); styleLabel();
 };
 styleLabel();
-let watchId=null, meMarker=null, meCircle=null, firstFix=true;
+// Google表示中は回転機能を使えないため、向き切り替えボタンを隠す
+if(mapStyle==="google" || !ROTATE_OK){ document.getElementById("btnHead").style.display="none"; }
+let watchId=null, meMarker=null, meCircle=null, firstFix=true, follow=false;
+let headingUp=false, lastLL=null;
 const btnGps=document.getElementById("btnGps");
+const btnHead=document.getElementById("btnHead");
+
 btnGps.onclick=()=>{
   if(!navigator.geolocation) return alert("この端末では位置情報を取得できません");
+  if(watchId!==null && !follow){ // ドラッグで一時解除中 → センターに戻して追尾再開
+    follow=true; btnGps.textContent="追尾中";
+    if(lastLL) map.setView(lastLL, map.getZoom(), {animate:true});
+    return;
+  }
   if(watchId!==null){ // 追尾を停止
-    navigator.geolocation.clearWatch(watchId); watchId=null;
+    navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
     if(meMarker){meMarker.remove();meMarker=null;} if(meCircle){meCircle.remove();meCircle=null;}
+    if(map.setBearing) map.setBearing(0);
     btnGps.classList.remove("on"); btnGps.textContent="現在地"; return;
   }
-  firstFix=true; btnGps.classList.add("on"); btnGps.textContent="追尾中";
+  firstFix=true; follow=true; btnGps.classList.add("on"); btnGps.textContent="追尾中";
   watchId=navigator.geolocation.watchPosition(pos=>{
     const ll=[pos.coords.latitude,pos.coords.longitude];
+    lastLL=ll;
     if(!meMarker){
       meMarker=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],
         html:'<div class="me-dot"></div>'}), zIndexOffset:1000}).addTo(map);
@@ -600,13 +631,35 @@ btnGps.onclick=()=>{
     }else{
       meMarker.setLatLng(ll); meCircle.setLatLng(ll); meCircle.setRadius(pos.coords.accuracy||30);
     }
+    // 進行方向を上に(移動中のみGPSから方位が取れる)
+    if(headingUp && map.setBearing && pos.coords.heading!=null && !isNaN(pos.coords.heading)){
+      map.setBearing(-pos.coords.heading);
+    }
     if(firstFix){ map.setView(ll,15); firstFix=false; }
+    else if(follow){ map.setView(ll, map.getZoom(), {animate:false}); } // 常に自分が中心
   },err=>{
     alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
-    navigator.geolocation.clearWatch(watchId); watchId=null;
+    navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
     btnGps.classList.remove("on"); btnGps.textContent="現在地";
   },{enableHighAccuracy:true, maximumAge:3000, timeout:15000});
 };
+
+// 地図を手で動かしたらセンター追尾を一時解除(記録は継続)
+map.on("dragstart",()=>{
+  if(watchId!==null && follow){ follow=false; btnGps.textContent="再センター"; }
+});
+
+// 北固定 ⇔ 進行方向の切り替え
+btnHead.onclick=()=>{
+  headingUp=!headingUp;
+  btnHead.classList.toggle("on",headingUp);
+  btnHead.textContent = headingUp ? "🧭 進行方向" : "⬆️ 北固定";
+  if(!headingUp && map.setBearing) map.setBearing(0); // 北固定に戻す
+};
+
+// ズームボタン(中心=自分の位置を保ったまま拡大縮小)
+document.getElementById("zoomIn").onclick=()=>map.zoomIn();
+document.getElementById("zoomOut").onclick=()=>map.zoomOut();
 
 // ===== 追加(地図タップ → フォーム) =====
 let addMode=false, pendingLL=null;
