@@ -6,6 +6,7 @@
 <title>営業マップ | 高単価乗車地</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="key.js"></script>
 <script>
 // 地図回転プラグインはGoogleマップ表示と競合するため、Google表示時は読み込まない
 if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
@@ -46,14 +47,14 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   /* 下部パネル */
   .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;padding:0 14px calc(12px + env(safe-area-inset-bottom));
+    border-radius:16px 16px 0 0;padding:0 14px calc(18px + env(safe-area-inset-bottom));
     }
   .panel-handle{display:flex;flex-direction:column;align-items:center;gap:3px;
     padding:12px 0 10px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}
   .panel-handle .grip{width:52px;height:5px;border-radius:3px;background:var(--muted);opacity:.7;}
   .panel-handle span{font-size:11px;color:var(--muted);}
-  .panel-body{overflow:hidden;max-height:320px;transition:max-height .25s ease;}
-  .panel.collapsed .panel-body{max-height:0;}
+  .panel-body{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:min(55svh,450px);transition:max-height .25s ease;}
+  .panel.collapsed .panel-body{max-height:0;overflow:hidden;}
   .panel.collapsed{padding-bottom:calc(4px + env(safe-area-inset-bottom));}
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .row + .row{margin-top:10px;}
@@ -330,9 +331,8 @@ const TILE_STYLES = {
     {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"}
   ]
 };
-// ▼▼▼ GoogleマップのAPIキーをここの引用符の間に貼り付けてください(空のままなら従来の地図のみ) ▼▼▼
-const GOOGLE_MAPS_API_KEY = "AIzaSyBGt4G2x6Sj1fDNJLIituwY_y6XGIo51Qg";
-// ▲▲▲ 例: const GOOGLE_MAPS_API_KEY = "AIzaSyC..."; ▲▲▲
+// GoogleマップのAPIキーは同じリポジトリの key.js から読み込みます(直接ここに書くことも可能)
+const GOOGLE_MAPS_API_KEY = (typeof window.GOOGLE_MAPS_API_KEY === "string" ? window.GOOGLE_MAPS_API_KEY : "") || "";
 
 if(GOOGLE_MAPS_API_KEY){
   const gs=document.createElement("script");
