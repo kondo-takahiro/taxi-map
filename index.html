@@ -141,6 +141,18 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
 </div>
 
+<div id="rankPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.96);border:1px solid var(--line);border-radius:14px;padding:12px 14px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:14px;">高単価の町丁目</b>
+    <button class="btn" id="rankNow" style="padding:5px 10px;font-size:12px;">今の時間帯に絞る</button>
+    <span style="flex:1"></span>
+    <span id="rankClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="rankList"></div>
+  <div style="font-size:10px;color:var(--muted);margin-top:6px;">タップでその場所へジャンプ・運転中の注視は控えてください</div>
+</div>
+
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
 <div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
@@ -148,6 +160,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <span>低</span>
   <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
   <span>高</span>
+  <span style="font-size:8px;opacity:.6;">境界:国勢調査</span>
 </div>
 
 <div id="tileWarn" style="display:none;position:fixed;top:70px;left:12px;right:12px;z-index:1500;
@@ -161,7 +174,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div class="panel-handle" id="panelHandle">
     <div class="grip"></div>
     <span id="handleText">フィルターを閉じる ▼</span>
-    <span style="font-size:8px;opacity:.5;">v2026.07.14</span>
+    <span style="font-size:8px;opacity:.5;">v2026.07.15</span>
   </div>
   <div class="panel-body" id="panelBody">
   <div class="row">
@@ -171,6 +184,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip on" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
@@ -317,7 +331,7 @@ const TILE_STYLES = {
   ]
 };
 // ▼▼▼ GoogleマップのAPIキーをここの引用符の間に貼り付けてください(空のままなら従来の地図のみ) ▼▼▼
-const GOOGLE_MAPS_API_KEY = "AIzaSyBGt4G2x6Sj1fDNJLIituwY_y6XGIo51Qg";
+const GOOGLE_MAPS_API_KEY = "";
 // ▲▲▲ 例: const GOOGLE_MAPS_API_KEY = "AIzaSyC..."; ▲▲▲
 
 if(GOOGLE_MAPS_API_KEY){
@@ -378,32 +392,54 @@ function fareTierColor(avg){
   return "#81c784"; // ¥1,000未満・データなし
 }
 
+// 町丁目境界(chome.json)はヒートマップ初回オン時に裏で読み込む(起動速度に影響しない)
+let chomeIndex=null, chomeLoading=false;
+function ensureChome(){
+  if(chomeIndex || chomeLoading) return;
+  chomeLoading=true;
+  fetch("chome.json").then(r=>r.ok?r.json():null).then(gj=>{
+    if(gj){
+      chomeIndex=new Map(gj.features.map(f=>[f.properties.n, f]));
+      render(); // 読み込み完了後、マス目表示から町丁目の形に差し替え
+    }
+  }).catch(()=>{}).finally(()=>{ chomeLoading=false; });
+}
+
 function drawHeat(list){
   if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
   document.getElementById("heatLegend").style.display = heatOn ? "flex" : "none";
   if(!heatOn) return;
-  const SIZE=0.0025; // 約280m四方・ズームに関わらず固定
+  ensureChome();
   heatLayer=L.layerGroup();
-  // データのないエリアは緑の下地一枚で表現(どれだけ引いても軽い)
+  // データのないエリアは緑の下地一枚で表現
   const b=map.getBounds().pad(0.5);
   L.rectangle(b,{renderer:heatRenderer, stroke:false,
     fillColor:fareTierColor(0), fillOpacity:0.45, interactive:false}).addTo(heatLayer);
-  // データのあるマスだけを個別に色付け
-  const cells=new Map();
+  // 町丁目(乗車地名)ごとに集計
+  const SIZE=0.0025;
+  const byAddr=new Map();
   list.forEach(r=>{
-    const i=Math.floor(r.lat/SIZE), j=Math.floor(r.lng/SIZE);
-    const key=i+"_"+j;
-    const c=cells.get(key)||{sum:0,n:0,i,j};
-    c.sum+=r.f; c.n++; cells.set(key,c);
+    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0};
+    a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    byAddr.set(r.p,a);
   });
-  cells.forEach(c=>{
-    const avg=c.sum/c.n;
-    L.rectangle([[c.i*SIZE,c.j*SIZE],[(c.i+1)*SIZE,(c.j+1)*SIZE]],{
-      renderer:heatRenderer,
-      color:"#ffffff", weight:0.5, opacity:0.5,
-      fillColor:fareTierColor(avg), fillOpacity:0.6
-    }).bindTooltip(`平均 ${yen(Math.round(avg))} / ${c.n}件`,{direction:"top"})
-      .addTo(heatLayer);
+  byAddr.forEach((a,name)=>{
+    const avg=a.sum/a.n;
+    const col=fareTierColor(avg);
+    const tip=`${name}<br>平均 ${yen(Math.round(avg))} / ${a.n}件`;
+    const f=chomeIndex ? chomeIndex.get(name) : null;
+    if(f){
+      // 町丁目の実際の形で塗る
+      L.geoJSON(f,{renderer:heatRenderer,
+        style:{color:"#ffffff",weight:0.6,opacity:.6,fillColor:col,fillOpacity:.6}})
+        .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
+    }else{
+      // 境界未収録の住所や読み込み前はマス目で表示
+      const la=Math.floor((a.latS/a.n)/SIZE)*SIZE, lo=Math.floor((a.lngS/a.n)/SIZE)*SIZE;
+      L.rectangle([[la,lo],[la+SIZE,lo+SIZE]],{renderer:heatRenderer,
+        color:"#ffffff",weight:0.5,opacity:.5,fillColor:col,fillOpacity:.6})
+        .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
+    }
   });
   heatLayer.addTo(map);
 }
@@ -460,6 +496,7 @@ function render(){
   document.getElementById("stSum").textContent = yen(sum);
   document.getElementById("stAvg").textContent = list.length ? yen(Math.round(sum/list.length)) : "¥0";
   renderTicks();
+  renderRank(list);
 }
 
 map.on("popupopen", e=>{
@@ -511,6 +548,50 @@ function showRoute(dlat,dlng){
   },{enableHighAccuracy:true, timeout:12000, maximumAge:10000});
 }
 document.getElementById("routeClose").onclick=clearRoute;
+
+// ===== 町丁目ランキング(走行中向け・大きな表示) =====
+let rankOn=false;
+document.getElementById("btnRank").onclick=e=>{
+  rankOn=!rankOn; e.target.classList.toggle("on",rankOn);
+  document.getElementById("rankPanel").style.display = rankOn ? "block" : "none";
+  render();
+};
+document.getElementById("rankClose").onclick=()=>{
+  rankOn=false; document.getElementById("btnRank").classList.remove("on");
+  document.getElementById("rankPanel").style.display="none";
+};
+document.getElementById("rankNow").onclick=()=>{
+  const h=new Date().getHours();
+  const sh=h<5?h+24:h;
+  elMin.value=Math.max(5, sh-1); elMax.value=Math.min(29, sh+2);
+  onSlide(); // 現在時刻の前後に時間帯スライダーを合わせる
+};
+function renderRank(list){
+  if(!rankOn) return;
+  const agg=new Map();
+  list.forEach(r=>{
+    const a=agg.get(r.p)||{sum:0,n:0,latS:0,lngS:0};
+    a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    agg.set(r.p,a);
+  });
+  const rows=[...agg.entries()]
+    .map(([p,a])=>({p, avg:a.sum/a.n, n:a.n, lat:a.latS/a.n, lng:a.lngS/a.n}))
+    .sort((x,y)=> (y.n>=2)-(x.n>=2) || y.avg-x.avg) // 2件以上の場所を優先し、平均単価順
+    .slice(0,5);
+  const el=document.getElementById("rankList");
+  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">この条件のデータがありません</div>'; return; }
+  el.innerHTML=rows.map((r,i)=>`
+    <div class="rank-row" data-lat="${r.lat}" data-lng="${r.lng}"
+      style="display:flex;align-items:center;gap:10px;padding:11px 4px;border-top:1px solid var(--line);cursor:pointer;">
+      <span style="font-size:15px;color:var(--muted);width:18px;">${i+1}</span>
+      <span style="font-size:17px;font-weight:700;flex:1;">${r.p}</span>
+      <span style="font-size:17px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${yen(Math.round(r.avg))}</span>
+      <span style="font-size:12px;color:var(--muted);">${r.n}件</span>
+    </div>`).join("");
+  el.querySelectorAll(".rank-row").forEach(row=>{
+    row.onclick=()=>map.setView([+row.dataset.lat,+row.dataset.lng],15);
+  });
+}
 
 // ===== 時間帯スライダー =====
 const elMin=document.getElementById("tMin"), elMax=document.getElementById("tMax");
