@@ -154,6 +154,20 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div style="font-size:10px;color:var(--muted);margin-top:6px;">タップでその場所へジャンプ・運転中の注視は控えてください</div>
 </div>
 
+<div id="advicePanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.96);border:1px solid var(--amber);border-radius:14px;padding:12px 14px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+    <b style="font-size:14px;">💡 いまの立ち回り</b>
+    <span id="adviceTime" style="font-size:12px;color:var(--muted);"></span>
+    <span style="flex:1"></span>
+    <span id="adviceClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="adviceList"></div>
+  <div id="adviceAIText" style="display:none;margin-top:8px;padding:10px;background:var(--panel2);border-radius:10px;font-size:13px;line-height:1.65;"></div>
+  <button class="btn" id="adviceAI" style="margin-top:8px;width:100%;padding:10px;">🤖 AIに立ち回りを相談</button>
+  <div id="adviceNote" style="font-size:10px;color:var(--muted);margin-top:6px;"></div>
+</div>
+
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
 <div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
@@ -185,6 +199,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip on" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnAdvice">💡 立ち回り</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -393,7 +408,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.16-2";
+const APP_VER = "2026.07.16-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -560,6 +575,167 @@ function showRoute(dlat,dlng){
   },{enableHighAccuracy:true, timeout:12000, maximumAge:10000});
 }
 document.getElementById("routeClose").onclick=clearRoute;
+
+// ===== 立ち回りアドバイス(現在地×現在時刻×全期間の実績から算出) =====
+function haversineKm(a,b){
+  const R=6371, d=Math.PI/180;
+  const dLat=(b[0]-a[0])*d, dLng=(b[1]-a[1])*d;
+  const s=Math.sin(dLat/2)**2 + Math.cos(a[0]*d)*Math.cos(b[0]*d)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function bearingText(a,b){
+  const d=Math.PI/180;
+  const y=Math.sin((b[1]-a[1])*d)*Math.cos(b[0]*d);
+  const x=Math.cos(a[0]*d)*Math.sin(b[0]*d)-Math.sin(a[0]*d)*Math.cos(b[0]*d)*Math.cos((b[1]-a[1])*d);
+  const deg=(Math.atan2(y,x)*180/Math.PI+360)%360;
+  return ["北","北東","東","南東","南","南西","西","北西"][Math.round(deg/45)%8];
+}
+function buildAdvice(cur){
+  const now=new Date();
+  const h=now.getHours()+now.getMinutes()/60;
+  const sh=h<5?h+24:h;
+  // 現在時刻の前後の実績を集計(件数が少なければ範囲を広げる)
+  let win=2, pool=[];
+  for(; win<=5; win+=1.5){
+    pool=rides.filter(r=>Math.abs(shiftHour(r.t)+parseInt(r.t.split(":")[1],10)/60-sh)<=win);
+    const uniq=new Set(pool.map(r=>r.p));
+    if(uniq.size>=5) break;
+  }
+  const byAddr=new Map();
+  pool.forEach(r=>{
+    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,dsts:{}};
+    a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    if((r.m||"app")==="st") a.st++;
+    if(r.dst){ const d=r.dst.replace(/\d+$/,""); a.dsts[d]=(a.dsts[d]||0)+1; }
+    byAddr.set(r.p,a);
+  });
+  const cands=[...byAddr.entries()].map(([p,a])=>{
+    const ll=[a.latS/a.n, a.lngS/a.n];
+    const dist=haversineKm(cur,ll);
+    const avg=a.sum/a.n;
+    // 単価が高く、実績が多く、近いほど高スコア
+    const score=avg*Math.log2(1+a.n)/(1+dist/2.5);
+    const topDest=Object.entries(a.dsts).sort((x,y)=>y[1]-x[1])[0];
+    return {p, avg, n:a.n, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
+  }).filter(c=>c.dist<=12)
+    .sort((x,y)=>y.score-x.score)
+    .slice(0,3);
+  return {cands, win, sh};
+}
+function showAdvice(cur){
+  const {cands,win,sh}=buildAdvice(cur);
+  lastAdvice={cands,win,sh,cur};
+  const ai=document.getElementById("adviceAIText"); ai.style.display="none"; ai.textContent="";
+  const panel=document.getElementById("advicePanel");
+  const now=new Date();
+  document.getElementById("adviceTime").textContent=
+    now.getHours()+":"+String(now.getMinutes()).padStart(2,"0")+"・現在地から";
+  const el=document.getElementById("adviceList");
+  if(!cands.length){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">この時間帯・この周辺の実績がまだありません。データが溜まると提案できるようになります。</div>';
+  }else{
+    el.innerHTML=cands.map((c,i)=>`
+      <div style="display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid var(--line);">
+        <span style="font-size:14px;color:var(--muted);width:16px;">${i+1}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:16px;font-weight:700;">${c.p}</div>
+          <div style="font-size:12px;color:var(--muted);">${bearingText(cur,c.ll)}へ ${c.dist.toFixed(1)}km・${c.n}件の実績</div>
+        </div>
+        <span style="font-size:16px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${yen(Math.round(c.avg))}</span>
+        <button class="btn on adv-go" data-lat="${c.ll[0]}" data-lng="${c.ll[1]}" style="padding:8px 10px;font-size:12px;">経路</button>
+      </div>`).join("");
+    el.querySelectorAll(".adv-go").forEach(b=>{
+      b.onclick=()=>{ panel.style.display="none"; showRoute(+b.dataset.lat,+b.dataset.lng); };
+    });
+  }
+  const hlo=Math.round((sh-win+24)%24), hhi=Math.round((sh+win)%24);
+  document.getElementById("adviceNote").textContent=
+    `${hlo}時〜${hhi}時台の全期間実績から、単価・件数・距離を総合して算出`;
+  panel.style.display="block";
+}
+document.getElementById("btnAdvice").onclick=()=>{
+  if(lastLL){ showAdvice(lastLL); return; } // 追尾中は即時
+  if(!navigator.geolocation){ showAdvice([map.getCenter().lat,map.getCenter().lng]); return; }
+  navigator.geolocation.getCurrentPosition(
+    p=>showAdvice([p.coords.latitude,p.coords.longitude]),
+    ()=>showAdvice([map.getCenter().lat,map.getCenter().lng]), // 位置が取れなければ地図の中心を基準に
+    {enableHighAccuracy:true, timeout:8000, maximumAge:30000});
+};
+document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
+
+// ===== AIによる立ち回り解説(OpenAI / Anthropic 両対応・キーは端末内のみに保存) =====
+let lastAdvice=null; // showAdviceで更新
+function getAIKey(){
+  let k=localStorage.getItem("ai-api-key") || localStorage.getItem("claude-api-key");
+  if(!k){
+    alert("AI相談にはAPIキーが必要です。\nOpenAI(platform.openai.com)または Anthropic(console.anthropic.com)のキーに対応しています。\nキーはこのiPhoneの中だけに保存されます(GitHubには置かないでください)。");
+    k=prompt("APIキー(sk-... または sk-ant-...)を貼り付け:");
+    if(k){ k=k.trim(); localStorage.setItem("ai-api-key", k); }
+  }
+  return k;
+}
+function clearAIKey(){ localStorage.removeItem("ai-api-key"); localStorage.removeItem("claude-api-key"); }
+async function callAI(key, prompt_){
+  if(key.startsWith("sk-ant-")){
+    // Anthropic (Claude)
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-api-key":key,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:400,
+        messages:[{role:"user",content:prompt_}]})
+    });
+    if(res.status===401) return {auth:false};
+    const data=await res.json();
+    if(data.error) return {auth:true, text:null, err:data.error.message};
+    return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("").trim()};
+  }else{
+    // OpenAI (ChatGPT)
+    const res=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{"content-type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:"gpt-4o-mini",max_completion_tokens:400,
+        messages:[{role:"user",content:prompt_}]})
+    });
+    if(res.status===401) return {auth:false};
+    const data=await res.json();
+    if(data.error) return {auth:true, text:null, err:data.error.message};
+    return {auth:true, text:(data.choices?.[0]?.message?.content||"").trim()};
+  }
+}
+async function askAI(){
+  if(!lastAdvice) return;
+  const key=getAIKey();
+  if(!key) return;
+  const out=document.getElementById("adviceAIText");
+  out.style.display="block"; out.textContent="AIが分析中…";
+  const now=new Date();
+  const dow=["日","月","火","水","木","金","土"][now.getDay()];
+  const ctx={
+    現在時刻: now.getHours()+":"+String(now.getMinutes()).padStart(2,"0"),
+    曜日: dow+"曜",
+    候補: lastAdvice.cands.map(c=>({
+      場所:c.p, 方角:bearingText(lastAdvice.cur,c.ll), 距離km:+c.dist.toFixed(1),
+      平均単価:Math.round(c.avg), 実績件数:c.n, 流し比率:Math.round(c.st/c.n*100)+"%",
+      多い降車先:c.topDest||"不明"
+    }))
+  };
+  const prompt_=`あなたは東京のタクシー乗務員を支える立ち回りアドバイザーです。以下は乗務員本人の過去実績から算出した現在の狙い目候補です。時刻・曜日・距離・降車先の傾向を踏まえ、次の1時間の立ち回りを日本語3〜4文で簡潔に助言してください。実績件数が少ない候補は断定を避けてください。前置きは不要です。\n${JSON.stringify(ctx,null,1)}`;
+  try{
+    const r=await callAI(key, prompt_);
+    if(!r.auth){
+      clearAIKey();
+      out.textContent="APIキーが無効でした。もう一度ボタンを押して正しいキーを入力してください。";
+      return;
+    }
+    if(r.err){ out.textContent="エラー: "+r.err; return; }
+    out.textContent=r.text||"回答を取得できませんでした。";
+  }catch(err){
+    out.textContent="通信エラーです。電波状況を確認してください。("+err.message+")";
+  }
+}
+document.getElementById("adviceAI").onclick=askAI;
+
 
 // ===== 町丁目ランキング(走行中向け・大きな表示) =====
 let rankOn=false;
