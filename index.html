@@ -168,6 +168,16 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="adviceNote" style="font-size:10px;color:var(--muted);margin-top:6px;"></div>
 </div>
 
+<div id="reviewPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
+  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:14px;">📊 実績の振り返り</b>
+    <span style="flex:1"></span>
+    <span id="reviewClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="reviewBody"></div>
+</div>
+
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
 <div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
@@ -200,6 +210,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
+    <button class="btn" id="btnReview">📊 振り返り</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -220,6 +231,9 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip mode on" data-mode="all">全て</button>
     <button class="chip mode" data-mode="app">アプリ</button>
     <button class="chip mode" data-mode="st">流し</button>
+    <button class="chip wx on" data-wx="all">全天候</button>
+    <button class="chip wx" data-wx="rain">☔雨</button>
+    <button class="chip wx" data-wx="dry">☀晴</button>
   </div>
   <div class="row">
     <span class="label">時間帯</span>
@@ -408,7 +422,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.16-5";
+const APP_VER = "2026.07.16-7";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -487,13 +501,31 @@ function shiftDow(r){
 
 let dowSet = new Set();      // 空 = 全曜日
 let modeFilter = "all";      // all / app / st
+let weatherFilter = "all";   // all / rain / dry
+let rainMap = null;          // 営業日→降水量mm(初回利用時に取得)
+try{ rainMap = JSON.parse(localStorage.getItem("wx-v1")) || null; }catch(e){}
+
+// 営業日の文字列(朝5時までは前日扱い)
+function shiftDateStr(r){
+  const dt = new Date(r.d + "T" + (r.t||"12:00") + ":00");
+  if(isNaN(dt)) return r.d;
+  dt.setHours(dt.getHours() - 5);
+  return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+}
+function wxOf(r){ // rain / dry / null(不明)
+  if(!rainMap) return null;
+  const mm = rainMap[shiftDateStr(r)];
+  if(mm==null) return null;
+  return mm >= 1 ? "rain" : "dry";
+}
 
 function filtered(){
   return rides.filter(r =>
     r.f >= minFare &&
     shiftHour(r.t) >= tMin && shiftHour(r.t) <= tMax &&
     (dowSet.size === 0 || dowSet.has(shiftDow(r))) &&
-    (modeFilter === "all" || (r.m || "app") === modeFilter)
+    (modeFilter === "all" || (r.m || "app") === modeFilter) &&
+    (weatherFilter === "all" || wxOf(r) === weatherFilter)
   );
 }
 
@@ -851,6 +883,164 @@ document.querySelectorAll(".chip.mode").forEach(c=>{
     c.classList.add("on"); modeFilter=c.dataset.mode; render();
   };
 });
+
+// ===== 天気チップ(初回タップ時に過去の降水量を自動取得) =====
+let wxLoading=false;
+async function loadWeather(){
+  if(rainMap || wxLoading || !rides.length) return;
+  wxLoading=true;
+  try{
+    const days=rides.map(r=>shiftDateStr(r)).sort();
+    const url=`https://archive-api.open-meteo.com/v1/archive?latitude=35.6812&longitude=139.7671`
+      +`&start_date=${days[0]}&end_date=${days[days.length-1]}`
+      +`&daily=precipitation_sum&timezone=Asia%2FTokyo`;
+    const res=await fetch(url);
+    const j=await res.json();
+    if(j.daily && j.daily.time){
+      rainMap={};
+      j.daily.time.forEach((d,i)=>{
+        const v=j.daily.precipitation_sum[i];
+        if(v!=null) rainMap[d]=v;
+      });
+      localStorage.setItem("wx-v1", JSON.stringify(rainMap));
+    }
+  }catch(e){
+    alert("天気データを取得できませんでした。電波状況を確認して、もう一度お試しください。");
+  }finally{ wxLoading=false; }
+}
+document.querySelectorAll(".chip.wx").forEach(c=>{
+  c.onclick=async ()=>{
+    document.querySelectorAll(".chip.wx").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); weatherFilter=c.dataset.wx;
+    if(weatherFilter!=="all" && !rainMap){
+      const h=document.getElementById("hint");
+      h.textContent="過去の天気データを取得中…"; h.classList.add("show");
+      await loadWeather();
+      h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+    }
+    render();
+  };
+});
+
+// ===== 実績の振り返り =====
+function barRow(label, value, max, fmt){
+  const w = max>0 ? Math.round(value/max*100) : 0;
+  return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+    <span style="width:72px;font-size:12px;color:var(--muted);flex-shrink:0;">${label}</span>
+    <div style="flex:1;background:var(--panel2);border-radius:5px;height:18px;position:relative;overflow:hidden;">
+      <div style="width:${w}%;height:100%;background:linear-gradient(90deg,var(--amber-dim),var(--amber));border-radius:5px;"></div>
+    </div>
+    <span style="width:78px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;flex-shrink:0;">${fmt}</span>
+  </div>`;
+}
+function sectionTitle(t){ return `<div style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber);">${t}</div>`; }
+
+function renderReview(){
+  const body=document.getElementById("reviewBody");
+  if(!rides.length){ body.innerHTML="データがありません"; return; }
+  let html="";
+
+  // 月別営収
+  const byMonth=new Map();
+  rides.forEach(r=>{
+    const m=shiftDateStr(r).slice(0,7);
+    const a=byMonth.get(m)||{sum:0,days:new Set()};
+    a.sum+=r.f; a.days.add(shiftDateStr(r)); byMonth.set(m,a);
+  });
+  const months=[...byMonth.entries()].sort();
+  const mMax=Math.max(...months.map(([,a])=>a.sum));
+  html+=sectionTitle("月別の営収");
+  months.forEach(([m,a])=>{
+    html+=barRow(m.slice(5)+"月", a.sum, mMax, yen(a.sum)+`<br><span style="color:var(--muted)">${a.days.size}日`+`・日平均`+yen(Math.round(a.sum/a.days.size))+`</span>`);
+  });
+
+  // 曜日別(営業日あたりの平均営収)
+  const byDow=new Map();
+  rides.forEach(r=>{
+    const dw=shiftDow(r);
+    const a=byDow.get(dw)||{sum:0,days:new Set()};
+    a.sum+=r.f; a.days.add(shiftDateStr(r)); byDow.set(dw,a);
+  });
+  const dowNames=["日","月","火","水","木","金","土"];
+  const dowAvg=[1,2,3,4,5,6,0].filter(d=>byDow.has(d))
+    .map(d=>({d, avg:byDow.get(d).sum/byDow.get(d).days.size, days:byDow.get(d).days.size}));
+  const dMax=Math.max(...dowAvg.map(x=>x.avg));
+  html+=sectionTitle("曜日別・1営業日あたりの平均営収");
+  dowAvg.forEach(x=>{
+    html+=barRow(dowNames[x.d]+"曜", x.avg, dMax, yen(Math.round(x.avg))+`<br><span style="color:var(--muted)">${x.days}日分</span>`);
+  });
+
+  // 時間帯別営収(朝・昼・夜・深夜の4区分)
+  const bands=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
+  const bandSum=bands.map(([a,b])=>rides.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0));
+  const bMax=Math.max(...bandSum);
+  html+=sectionTitle("時間帯別の営収(全期間合計)");
+  bands.forEach(([a,b,label],i)=>{
+    html+=barRow(label, bandSum[i], bMax, yen(bandSum[i]));
+  });
+
+  // アプリ/流し
+  const nApp=rides.filter(r=>(r.m||"app")==="app").length, nSt=rides.length-nApp;
+  html+=sectionTitle("配車の内訳");
+  html+=barRow("アプリ", nApp, rides.length, nApp+"回("+Math.round(nApp/rides.length*100)+"%)");
+  html+=barRow("流し", nSt, rides.length, nSt+"回("+Math.round(nSt/rides.length*100)+"%)");
+
+  // 時間効率の良い乗車地(乗車間隔から推定)
+  const sorted=[...rides].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const eff=new Map();
+  for(let i=0;i<sorted.length-1;i++){
+    const cur=sorted[i], nxt=sorted[i+1];
+    if(shiftDateStr(cur)!==shiftDateStr(nxt)) continue;
+    const gap=(new Date(nxt.d+"T"+nxt.t)-new Date(cur.d+"T"+cur.t))/60000; // 分
+    if(gap<=0 || gap>120) continue; // 休憩などを除外
+    const a=eff.get(cur.p)||{fare:0,min:0,n:0};
+    a.fare+=cur.f; a.min+=gap; a.n++; eff.set(cur.p,a);
+  }
+  const effRows=[...eff.entries()].filter(([,a])=>a.n>=3)
+    .map(([p,a])=>({p, perH:a.fare/(a.min/60), avgGap:a.min/a.n, n:a.n}))
+    .sort((x,y)=>y.perH-x.perH).slice(0,5);
+  if(effRows.length){
+    const eMax=effRows[0].perH;
+    html+=sectionTitle("時間効率の良い乗車地(推定¥/時)");
+    effRows.forEach(x=>{
+      html+=barRow(x.p.length>7?x.p.slice(0,7)+"…":x.p, x.perH, eMax,
+        yen(Math.round(x.perH))+`/時<br><span style="color:var(--muted)">間隔${Math.round(x.avgGap)}分・${x.n}回</span>`);
+    });
+    html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;">※次の乗車までの間隔(実車時間込み)からの概算です</div>`;
+  }
+
+  // 雨の日と晴れの日(天気データ取得済みの場合)
+  if(rainMap){
+    const dayStat=new Map();
+    rides.forEach(r=>{
+      const d=shiftDateStr(r);
+      const a=dayStat.get(d)||{sum:0};
+      a.sum+=r.f; dayStat.set(d,a);
+    });
+    let rSum=0,rN=0,dSum=0,dN=0;
+    dayStat.forEach((a,d)=>{
+      const mm=rainMap[d];
+      if(mm==null) return;
+      if(mm>=1){ rSum+=a.sum; rN++; } else { dSum+=a.sum; dN++; }
+    });
+    if(rN&&dN){
+      const wMax=Math.max(rSum/rN,dSum/dN);
+      html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)");
+      html+=barRow("☔ 雨", rSum/rN, wMax, yen(Math.round(rSum/rN))+`<br><span style="color:var(--muted)">${rN}日分</span>`);
+      html+=barRow("☀ 晴", dSum/dN, wMax, yen(Math.round(dSum/dN))+`<br><span style="color:var(--muted)">${dN}日分</span>`);
+    }
+  }else{
+    html+=`<div style="font-size:11px;color:var(--muted);margin-top:12px;">☔ フィルターの「雨/晴」を一度タップすると、天気別の分析もここに表示されます</div>`;
+  }
+
+  body.innerHTML=html;
+}
+document.getElementById("btnReview").onclick=async ()=>{
+  if(!rainMap) loadWeather().then(()=>{ if(document.getElementById("reviewPanel").style.display==="block") renderReview(); });
+  renderReview();
+  document.getElementById("reviewPanel").style.display="block";
+};
+document.getElementById("reviewClose").onclick=()=>document.getElementById("reviewPanel").style.display="none";
 
 // ===== ヒートマップ / GPS =====
 document.getElementById("btnHeat").onclick=e=>{ heatOn=!heatOn; e.target.classList.toggle("on",heatOn); render(); };
