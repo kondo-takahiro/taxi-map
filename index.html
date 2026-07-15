@@ -175,7 +175,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div class="panel-handle" id="panelHandle">
     <div class="grip"></div>
     <span id="handleText">フィルターを閉じる ▼</span>
-    <span style="font-size:8px;opacity:.5;">v2026.07.15</span>
+    <span id="verTag" style="font-size:10px;opacity:.75;color:var(--amber);"></span>
   </div>
   <div class="panel-body" id="panelBody">
   <div class="row">
@@ -392,14 +392,19 @@ function fareTierColor(avg){
   return "#81c784"; // ¥1,000未満・データなし
 }
 
+// アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
+const APP_VER = "2026.07.16-1";
+document.getElementById("verTag").textContent = "v" + APP_VER;
+
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
+// バージョンが変わると新しいファイルを取り直す(同バージョン内はキャッシュで高速)
 let chomeIndex=null, chomeLoading=false, wardsData=null;
 function ensureChome(){
   if(chomeIndex || chomeLoading) return;
   chomeLoading=true;
   Promise.all([
-    fetch("chome.json").then(r=>r.ok?r.json():null).catch(()=>null),
-    fetch("wards.json").then(r=>r.ok?r.json():null).catch(()=>null)
+    fetch("chome.json?v="+APP_VER).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch("wards.json?v="+APP_VER).then(r=>r.ok?r.json():null).catch(()=>null)
   ]).then(([gj,wj])=>{
     if(gj) chomeIndex=new Map(gj.features.map(f=>[f.properties.n, f]));
     if(wj) wardsData=wj;
