@@ -393,7 +393,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.16-1";
+const APP_VER = "2026.07.16-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -418,10 +418,10 @@ function drawHeat(list){
   if(!heatOn) return;
   ensureChome();
   heatLayer=L.layerGroup();
-  // データのないエリアは緑の下地一枚で表現
+  // 背景地図の色味を抑える白いベール(道路や公園の色と混ざるのを防ぐ)
   const b=map.getBounds().pad(0.5);
   L.rectangle(b,{renderer:heatRenderer, stroke:false,
-    fillColor:fareTierColor(0), fillOpacity:0.45, interactive:false}).addTo(heatLayer);
+    fillColor:"#ffffff", fillOpacity:0.5, interactive:false}).addTo(heatLayer);
   // 町丁目(乗車地名)ごとに集計
   const SIZE=0.0025;
   const byAddr=new Map();
@@ -438,20 +438,20 @@ function drawHeat(list){
     if(f){
       // 町丁目の実際の形で塗る
       L.geoJSON(f,{renderer:heatRenderer,
-        style:{color:"#ffffff",weight:0.6,opacity:.6,fillColor:col,fillOpacity:.6}})
+        style:{color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:.78}})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }else{
       // 境界未収録の住所や読み込み前はマス目で表示
       const la=Math.floor((a.latS/a.n)/SIZE)*SIZE, lo=Math.floor((a.lngS/a.n)/SIZE)*SIZE;
       L.rectangle([[la,lo],[la+SIZE,lo+SIZE]],{renderer:heatRenderer,
-        color:"#ffffff",weight:0.5,opacity:.5,fillColor:col,fillOpacity:.6})
+        color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:.78})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }
   });
   // 23区+武蔵野市+三鷹市の境界線を重ねる(薄めの点線)
   if(wardsData){
     L.geoJSON(wardsData,{renderer:heatRenderer, interactive:false,
-      style:{color:"#5a6a85", weight:1.2, opacity:.45, dashArray:"6 6", fill:false}}).addTo(heatLayer);
+      style:{color:"#4a5a75", weight:1.3, opacity:.55, dashArray:"6 6", fill:false}}).addTo(heatLayer);
   }
   heatLayer.addTo(map);
 }
