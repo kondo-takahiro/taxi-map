@@ -443,10 +443,10 @@ function drawHeat(list){
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }
   });
-  // 23区+武蔵野市+三鷹市の境界線を重ねる
+  // 23区+武蔵野市+三鷹市の境界線を重ねる(薄めの点線)
   if(wardsData){
     L.geoJSON(wardsData,{renderer:heatRenderer, interactive:false,
-      style:{color:"#2f3d57", weight:1.8, opacity:.85, fill:false}}).addTo(heatLayer);
+      style:{color:"#5a6a85", weight:1.2, opacity:.45, dashArray:"6 6", fill:false}}).addTo(heatLayer);
   }
   heatLayer.addTo(map);
 }
