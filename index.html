@@ -204,9 +204,9 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div class="panel-body" id="panelBody">
   <div class="row">
     <span class="label">単価</span>
-    <button class="chip" data-min="0">全て</button>
+    <button class="chip on" data-min="0">全て</button>
     <button class="chip" data-min="3000">¥3,000+</button>
-    <button class="chip on" data-min="5000">¥5,000+</button>
+    <button class="chip" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
@@ -408,7 +408,7 @@ function mountTiles(){
 mountTiles();
 
 let markerLayer = L.layerGroup().addTo(map);
-let heatLayer = null, heatOn = false;
+let heatLayer = null, heatOn = true;
 const heatRenderer = L.canvas({padding:0.3}); // マスが多くても軽いCanvas描画
 
 // 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
@@ -422,7 +422,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.16-9";
+const APP_VER = "2026.07.16-10";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -486,7 +486,7 @@ function drawHeat(list){
 }
 // 地図を動かしたら緑の下地を表示範囲に合わせて引き直す
 map.on("moveend", ()=>{ if(heatOn) render(); });
-let minFare = 5000, tMin = 5, tMax = 29;
+let minFare = 0, tMin = 5, tMax = 29;
 
 const shiftHour = t => { const h = parseInt(t.split(":")[0],10); return h < 5 ? h+24 : h; };
 const yen = n => "¥" + n.toLocaleString("ja-JP");
@@ -1067,7 +1067,7 @@ btnStyle.onclick=()=>{
 styleLabel();
 // Google表示中は回転機能を使えないため、向き切り替えボタンを隠す
 if(mapStyle==="google" || !ROTATE_OK){ document.getElementById("btnHead").style.display="none"; }
-let watchId=null, meMarker=null, meCircle=null, firstFix=true, follow=false;
+let watchId=null, meMarker=null, meCircle=null, firstFix=true, follow=false, gpsSilent=false;
 let headingUp=false, lastLL=null;
 const btnGps=document.getElementById("btnGps");
 const btnHead=document.getElementById("btnHead");
@@ -1103,7 +1103,8 @@ btnGps.onclick=()=>{
     if(firstFix){ map.setView(ll,15); firstFix=false; }
     else if(follow){ map.setView(ll, map.getZoom(), {animate:false}); } // 常に自分が中心
   },err=>{
-    alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
+    if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
+    gpsSilent=false;
     navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
     btnGps.classList.remove("on"); btnGps.textContent="現在地";
   },{enableHighAccuracy:true, maximumAge:3000, timeout:15000});
@@ -1271,6 +1272,19 @@ handle.addEventListener("touchend", ()=>{ tsY=null; },{passive:true});
 handle.onclick=()=>{ if(flicked){ flicked=false; return; } setPanel(!panel.classList.contains("collapsed")); };
 if(localStorage.getItem("taxi-map-panel")==="1") setPanel(true);
 
+// ===== 起動時の初期状態(現在地ON・ヒートON・時間帯=今) =====
+(function initDefaults(){
+  document.getElementById("btnHeat").classList.add("on");
+  const h=new Date().getHours();
+  const sh=h<5?h+24:h;
+  elMin.value=Math.max(5, sh-1); elMax.value=Math.min(29, sh+2);
+  tMin=+elMin.value; tMax=+elMax.value;
+  const fill=document.getElementById("tlFill");
+  fill.style.left=((tMin-5)/24*100)+"%";
+  fill.style.width=((tMax-tMin)/24*100)+"%";
+  document.getElementById("tlVal").textContent=fmtH(tMin)+" – "+fmtH(tMax);
+  gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
+})();
 render();
 </script>
 </body>
