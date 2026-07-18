@@ -154,6 +154,19 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div style="font-size:10px;color:var(--muted);margin-top:6px;">タップでその場所へジャンプ・運転中の注視は控えてください</div>
 </div>
 
+<div id="briefPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;max-height:62svh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+    <b style="font-size:14px;">📋 今日の営業ブリーフィング</b>
+    <span style="flex:1"></span>
+    <span id="briefReload" style="cursor:pointer;font-size:12px;color:var(--muted);padding:0 6px;">再取得</span>
+    <span id="briefClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
+  <div id="briefBody" style="font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>
+  <div style="font-size:10px;color:var(--muted);margin-top:8px;">天気: Open-Meteo / イベント: AI検索(内容は必ず公式情報で確認を)</div>
+</div>
+
 <div id="advicePanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
   background:rgba(19,26,42,.96);border:1px solid var(--amber);border-radius:14px;padding:12px 14px;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
@@ -209,6 +222,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnBrief">📋 今日の情報</button>
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
     <button class="btn" id="btnReview">📊 振り返り</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
@@ -424,7 +438,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.17-2";
+const APP_VER = "2026.07.18-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -702,6 +716,114 @@ document.getElementById("btnAdvice").onclick=()=>{
     {enableHighAccuracy:true, timeout:8000, maximumAge:30000});
 };
 document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
+
+// ===== 今日の営業ブリーフィング(天気予報+主要会場イベント+自分の実績) =====
+const VENUES=["東京ドーム(水道橋)","日本武道館(九段下)","有明アリーナ","東京ガーデンシアター(有明)","国立競技場(千駄ヶ谷)","代々木第一体育館","明治神宮球場","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
+async function fetchForecastToday(){
+  const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
+    +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=2";
+  const j=await fetch(url).then(r=>r.ok?r.json():null);
+  if(!j||!j.hourly) return null;
+  const h=j.hourly, i0=new Date().getHours();
+  const rain=[], temps=[];
+  for(let i=i0;i<i0+12 && i<h.time.length;i++){
+    temps.push(h.temperature_2m[i]);
+    if((h.precipitation[i]||0)>=0.5 || (h.precipitation_probability?.[i]||0)>=60)
+      rain.push(new Date(h.time[i]).getHours()+"時");
+  }
+  return (rain.length? "☔ 雨の見込み: "+rain.join("、") : "☀ 向こう12時間は雨の心配なし")
+    + " / 気温 "+Math.round(Math.min(...temps))+"〜"+Math.round(Math.max(...temps))+"℃";
+}
+function myTopAreas(band){ // 今夜の自分の実績上位(時間帯指定)
+  const m=new Map();
+  rides.forEach(r=>{
+    const sh=shiftHour(r.t);
+    if(sh<band[0]||sh>=band[1]) return;
+    m.set(r.p,(m.get(r.p)||0)+r.f);
+  });
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
+}
+async function callSearchAI(key, promptText){
+  if(key.startsWith("sk-ant-")){
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-api-key":key,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1500,
+        tools:[{type:"web_search_20250305",name:"web_search"}],
+        messages:[{role:"user",content:promptText}]})
+    });
+    const data=await res.json();
+    if(res.status===401) return {auth:false};
+    if(data.error) return {auth:true, err:data.error.message};
+    return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("").trim()};
+  }
+  // OpenAI: 検索対応モデルを試し、非対応なら通常モデル(天気+実績のみ)に切り替え
+  let res=await fetch("https://api.openai.com/v1/chat/completions",{
+    method:"POST",
+    headers:{"content-type":"application/json","Authorization":"Bearer "+key},
+    body:JSON.stringify({model:"gpt-4o-mini-search-preview",
+      web_search_options:{},
+      messages:[{role:"user",content:promptText}]})
+  });
+  if(res.status===401) return {auth:false};
+  let data=await res.json();
+  if(data.error){
+    res=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{"content-type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:"gpt-4o-mini",max_completion_tokens:1000,
+        messages:[{role:"user",content:promptText
+          +"\n(注意: あなたはWeb検索ができません。イベント情報は「検索不可のため確認できず」と明記し、天気と実績データのみで助言してください)"}]})
+    });
+    if(res.status===401) return {auth:false};
+    data=await res.json();
+    if(data.error) return {auth:true, err:data.error.message};
+  }
+  return {auth:true, text:(data.choices?.[0]?.message?.content||"").trim()};
+}
+async function buildBrief(force){
+  const key=getAIKey();
+  if(!key) return;
+  const today=new Date().toISOString().slice(0,10);
+  const cacheKey="brief-"+today;
+  const panel=document.getElementById("briefPanel");
+  panel.style.display="block";
+  if(!force){
+    const c=localStorage.getItem(cacheKey);
+    if(c){ const o=JSON.parse(c);
+      document.getElementById("briefWx").textContent=o.wx||"";
+      document.getElementById("briefBody").textContent=o.text||"";
+      return; }
+  }
+  document.getElementById("briefWx").textContent="";
+  document.getElementById("briefBody").textContent="天気とイベントを調査中…(20〜40秒)";
+  try{
+    const wx=await fetchForecastToday().catch(()=>null);
+    document.getElementById("briefWx").textContent=wx||"(天気予報を取得できませんでした)";
+    const now=new Date();
+    const dow=["日","月","火","水","木","金","土"][now.getDay()];
+    const evening=myTopAreas([18,22]), night=myTopAreas([22,29]);
+    const promptText=
+`あなたは東京のタクシー乗務員の営業参謀です。今日は${today}(${dow}曜)、現在${now.getHours()}時です。
+まず、次の会場で今日開催されるコンサート・スポーツ・イベントをWeb検索で調べてください: ${VENUES.join("、")}
+そのうえで、以下を踏まえて今日これからの営業ブリーフィングを日本語で書いてください。
+- 今日の天気: ${wx||"不明"}
+- 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
+- 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
+形式: 前置きなし。「イベント」(開催があるものだけ会場名・内容・開演/終演目安を1行ずつ。なければ「主要会場の大きな公演は確認できず」)→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。全体で10行以内。`;
+    const r=await callSearchAI(key, promptText);
+    if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
+    if(r.err) throw new Error(r.err);
+    document.getElementById("briefBody").textContent=r.text||"生成できませんでした。";
+    localStorage.setItem(cacheKey, JSON.stringify({wx, text:r.text}));
+  }catch(err){
+    document.getElementById("briefBody").textContent="取得に失敗しました: "+err.message;
+  }
+}
+document.getElementById("btnBrief").onclick=()=>buildBrief(false);
+document.getElementById("briefReload").onclick=()=>buildBrief(true);
+document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
 
 // ===== AIによる立ち回り解説(OpenAI / Anthropic 両対応・キーは端末内のみに保存) =====
 let lastAdvice=null; // showAdviceで更新
