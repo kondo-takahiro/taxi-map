@@ -438,7 +438,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-1";
+const APP_VER = "2026.07.18-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -668,7 +668,7 @@ function buildAdvice(cur){
     const dist=haversineKm(cur,ll);
     const avg=a.sum/a.n;
     // 単価が高く、実績が多く、近いほど高スコア
-    const score=avg*Math.log2(1+a.n)/(1+dist/2.5);
+    const score=avg*Math.log2(1+a.n)/(1+dist/1.2); // 距離の減点を約2倍に強化
     const topDest=Object.entries(a.dsts).sort((x,y)=>y[1]-x[1])[0];
     return {p, avg, n:a.n, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
   }).filter(c=>c.dist<=12)
