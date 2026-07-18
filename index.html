@@ -441,7 +441,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-9";
+const APP_VER = "2026.07.18-10";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -764,6 +764,25 @@ document.getElementById("btnAdvice").onclick=()=>{
 document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
 
 // ===== 今日の営業ブリーフィング(天気予報+主要会場イベント+自分の実績) =====
+const VENUE_LL={"東京ドーム":[35.7056,139.7519],"明治神宮球場":[35.6745,139.7169],"有明アリーナ":[35.6445,139.7920],"東京ガーデンシアター":[35.6420,139.7913],"日本武道館":[35.6934,139.7497],"国立競技場":[35.6779,139.7145],"代々木第一体育館":[35.6668,139.6994],"両国国技館":[35.6970,139.7936],"東京国際フォーラム":[35.6767,139.7639],"東京ビッグサイト":[35.6298,139.7947],"豊洲PIT":[35.6455,139.7842],"Zepp DiverCity":[35.6251,139.7756],"LINE CUBE SHIBUYA":[35.6620,139.7005],"NHKホール":[35.6633,139.6994],"サントリーホール":[35.6663,139.7407],"歌舞伎座":[35.6697,139.7679]};
+let eventLayer=null;
+window._evRoute=(lat,lng)=>{ map.closePopup(); showRoute(lat,lng); };
+function showEventMarkers(events){
+  if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
+  if(!events || !events.length) return;
+  const ms=[];
+  events.forEach(ev=>{
+    let ll=null;
+    for(const k in VENUE_LL){ if((ev.n||"").includes(k)){ ll=VENUE_LL[k]; break; } }
+    if(!ll && isFinite(ev.lat) && isFinite(ev.lng) && ev.lat>35.4 && ev.lat<36.0) ll=[+ev.lat,+ev.lng];
+    if(!ll) return;
+    const m=L.marker(ll,{icon:L.divIcon({html:"🎪",className:"",iconSize:[26,26],iconAnchor:[13,13]})});
+    m.bindPopup(`<b>${ev.n||""}</b><br>${ev.e||""}<br>${ev.s||"?"}〜${ev.f||"?"}<br>`
+      +`<button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この地図で経路</button>`);
+    ms.push(m);
+  });
+  if(ms.length){ eventLayer=L.layerGroup(ms).addTo(map); }
+}
 const VENUES=["東京ドーム(水道橋)","明治神宮球場","有明アリーナ","東京ガーデンシアター(有明)","日本武道館(九段下)","国立競技場(千駄ヶ谷)","代々木第一体育館","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
 async function fetchForecastToday(){
   const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
@@ -840,6 +859,7 @@ async function buildBrief(force){
     if(c){ const o=JSON.parse(c);
       document.getElementById("briefWx").textContent=o.wx||"";
       document.getElementById("briefBody").textContent=o.text||"";
+      showEventMarkers(o.events||[]);
       return; }
   }
   document.getElementById("briefWx").textContent="";
@@ -859,12 +879,20 @@ async function buildBrief(force){
 - 今日の天気: ${wx||"不明"}
 - 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
 - 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
-形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。`;
+形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
+最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","s":"18:00","f":"21:20","lat":35.7056,"lng":139.7519}]`;
     const r=await callSearchAI(key, promptText);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
     if(r.err) throw new Error(r.err);
-    document.getElementById("briefBody").textContent=r.text||"生成できませんでした。";
-    localStorage.setItem(cacheKey, JSON.stringify({wx, text:r.text}));
+    let text=r.text||"生成できませんでした。", events=[];
+    const em=text.match(/EVENTS:(\[[\s\S]*?\])/);
+    if(em){
+      try{ events=JSON.parse(em[1]); }catch(e){}
+      text=text.replace(em[0],"").trim();
+    }
+    document.getElementById("briefBody").textContent=text;
+    showEventMarkers(events);
+    localStorage.setItem(cacheKey, JSON.stringify({wx, text, events}));
   }catch(err){
     document.getElementById("briefBody").textContent="取得に失敗しました: "+err.message;
   }
