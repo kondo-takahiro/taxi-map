@@ -6,7 +6,14 @@
 <title>営業マップ | 高単価乗車地</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="key.js"></script>
+<script>
+// 地図回転プラグインはGoogleマップ表示と競合するため、Google表示時は読み込まない
+if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
+  document.write('<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate.js"><\/script>');
+}
+</script>
+<script src="https://unpkg.com/leaflet.gridlayer.googlemutant@0.14.1/dist/Leaflet.GoogleMutant.js"></script>
 <style>
   :root{
     --bg:#0d1320; --panel:#151d2e; --panel2:#1c2638; --line:#28344b;
@@ -16,28 +23,39 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
     font-family:-apple-system,"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP",Meiryo,sans-serif;}
-  #map{position:fixed;inset:0;background:#0d1320;}
+  #map{position:fixed;inset:0;background:#f2efe9;}
+  #map.dark-tiles{background:#0d1320;}
+  #map.dark-tiles .leaflet-tile{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6);}
+  .me-dot{width:16px;height:16px;border-radius:50%;background:#1e88e5;border:3px solid #fff;
+    box-shadow:0 0 8px rgba(30,136,229,.8);}
   .leaflet-container{font:inherit;}
 
   /* ヘッダー */
   header{position:fixed;top:0;left:0;right:0;z-index:1000;pointer-events:none;
     padding:10px 12px;display:flex;gap:8px;align-items:flex-start;}
   .brand{pointer-events:auto;background:rgba(13,19,32,.92);border:1px solid var(--line);
-    border-radius:12px;padding:8px 14px;backdrop-filter:blur(6px);}
+    border-radius:12px;padding:8px 14px;}
   .brand h1{margin:0;font-size:15px;letter-spacing:.08em;font-weight:700;}
   .brand h1 span{color:var(--amber);}
   .brand small{color:var(--muted);font-size:11px;}
   .stats{pointer-events:auto;margin-left:auto;display:flex;gap:6px;}
   .stat{background:rgba(13,19,32,.92);border:1px solid var(--line);border-radius:12px;
-    padding:6px 12px;text-align:right;backdrop-filter:blur(6px);}
+    padding:6px 12px;text-align:right;}
   .stat b{display:block;font-size:16px;font-variant-numeric:tabular-nums;color:var(--amber);line-height:1.2;}
   .stat small{color:var(--muted);font-size:10px;}
 
   /* 下部パネル */
   .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;padding:10px 14px calc(12px + env(safe-area-inset-bottom));
-    backdrop-filter:blur(8px);}
+    border-radius:16px 16px 0 0;padding:0 14px calc(18px + env(safe-area-inset-bottom));
+    }
+  .panel-handle{display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:12px 0 10px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}
+  .panel-handle .grip{width:52px;height:5px;border-radius:3px;background:var(--muted);opacity:.7;}
+  .panel-handle span{font-size:11px;color:var(--muted);}
+  .panel-body{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:min(55svh,450px);transition:max-height .25s ease;}
+  .panel.collapsed .panel-body{max-height:0;overflow:hidden;}
+  .panel.collapsed{padding-bottom:calc(4px + env(safe-area-inset-bottom));}
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .row + .row{margin-top:10px;}
   .label{font-size:11px;color:var(--muted);min-width:52px;}
@@ -69,16 +87,19 @@
   .btn.warn{color:var(--danger);border-color:var(--danger);}
 
   /* マーカー(行灯ピン) */
-  .lamp{border-radius:50%;border:2px solid #1a1206;
-    box-shadow:0 0 10px 2px rgba(255,181,60,.55);background:var(--amber);}
-  .lamp.low{background:var(--low);box-shadow:none;border-color:#0d1320;}
-  .lamp-label{position:absolute;top:-16px;left:50%;transform:translateX(-50%);
-    font-size:10px;font-weight:700;color:var(--amber);text-shadow:0 1px 3px #000;white-space:nowrap;
+  .lamp{border-radius:50%;border:1px solid rgba(26,18,6,.5);
+    box-shadow:0 0 4px rgba(255,181,60,.35);background:rgba(255,181,60,.55);}
+  .lamp.low{background:rgba(74,90,120,.45);box-shadow:none;border-color:rgba(13,19,32,.4);}
+  .lamp-label{position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    font-size:9px;font-weight:700;color:rgba(255,181,60,.85);text-shadow:0 1px 2px rgba(0,0,0,.8);white-space:nowrap;
     font-variant-numeric:tabular-nums;}
 
   .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border-radius:12px;border:1px solid var(--line);}
   .leaflet-popup-tip{background:var(--panel);}
   .pop b{color:var(--amber);font-size:16px;}
+  .pop .navi{margin-top:10px;margin-right:6px;display:inline-block;background:var(--amber);color:#1a1206;font-weight:700;
+    font-size:13px;text-decoration:none;border-radius:10px;padding:8px 12px;cursor:pointer;}
+  .pop .navi.sub{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:400;}
   .pop .del{margin-top:8px;display:inline-block;color:var(--danger);font-size:12px;cursor:pointer;border:1px solid var(--danger);border-radius:8px;padding:3px 8px;}
 
   /* 追加フォーム */
@@ -103,10 +124,6 @@
 <div id="map"></div>
 
 <header>
-  <div class="brand">
-    <h1>営業マップ <span>●</span></h1>
-    <small>高単価の乗車地を記録・可視化</small>
-  </div>
   <div class="stats">
     <div class="stat"><b id="stCount">0</b><small>該当件数</small></div>
     <div class="stat"><b id="stSum">¥0</b><small>合計営収</small></div>
@@ -114,7 +131,62 @@
   </div>
 </header>
 
+<div id="routeInfo" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1200;
+  align-items:center;gap:10px;background:rgba(19,26,42,.95);border:1px solid #42a5f5;border-radius:20px;padding:8px 14px;font-size:13px;color:var(--text);white-space:nowrap;">
+  <span id="routeText">経路を計算中…</span>
+  <span id="routeClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 2px;">✕</span>
+</div>
+
+<div id="zoomBtns" style="position:fixed;right:10px;top:45%;transform:translateY(-50%);z-index:900;display:flex;flex-direction:column;gap:8px;">
+  <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
+  <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
+</div>
+
+<div id="rankPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.96);border:1px solid var(--line);border-radius:14px;padding:12px 14px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:14px;">高単価の町丁目</b>
+    <button class="btn" id="rankNow" style="padding:5px 10px;font-size:12px;">今の時間帯に絞る</button>
+    <span style="flex:1"></span>
+    <span id="rankClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="rankList"></div>
+  <div style="font-size:10px;color:var(--muted);margin-top:6px;">タップでその場所へジャンプ・運転中の注視は控えてください</div>
+</div>
+
+<div id="advicePanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.96);border:1px solid var(--amber);border-radius:14px;padding:12px 14px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+    <b style="font-size:14px;">💡 いまの立ち回り</b>
+    <span id="adviceTime" style="font-size:12px;color:var(--muted);"></span>
+    <span style="flex:1"></span>
+    <span id="adviceClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="adviceList"></div>
+  <div id="adviceAIText" style="display:none;margin-top:8px;padding:10px;background:var(--panel2);border-radius:10px;font-size:13px;line-height:1.65;"></div>
+  <button class="btn" id="adviceAI" style="margin-top:8px;width:100%;padding:10px;">🤖 AIに立ち回りを相談</button>
+  <div id="adviceNote" style="font-size:10px;color:var(--muted);margin-top:6px;"></div>
+</div>
+
+<div id="reviewPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
+  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:14px;">📊 実績の振り返り</b>
+    <span style="flex:1"></span>
+    <span id="reviewClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="reviewBody"></div>
+</div>
+
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
+
+<div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
+  background:rgba(19,26,42,.85);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:9px;color:var(--muted);">
+  <span>低</span>
+  <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
+  <span>高</span>
+  <span style="font-size:8px;opacity:.6;">境界:国勢調査</span>
+</div>
 
 <div id="tileWarn" style="display:none;position:fixed;top:70px;left:12px;right:12px;z-index:1500;
   background:#2a1e12;border:1px solid var(--amber);border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;">
@@ -123,16 +195,45 @@
   ファイルをダウンロードし、<b>SafariやChromeなどのブラウザで直接開いて</b>ください。ネット接続も必要です。
 </div>
 
-<div class="panel">
+<div class="panel" id="panel">
+  <div class="panel-handle" id="panelHandle">
+    <div class="grip"></div>
+    <span id="handleText">フィルターを閉じる ▼</span>
+    <span id="verTag" style="font-size:10px;opacity:.75;color:var(--amber);"></span>
+  </div>
+  <div class="panel-body" id="panelBody">
   <div class="row">
     <span class="label">単価</span>
-    <button class="chip" data-min="0">全て</button>
+    <button class="chip on" data-min="0">全て</button>
     <button class="chip" data-min="3000">¥3,000+</button>
-    <button class="chip on" data-min="5000">¥5,000+</button>
+    <button class="chip" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
     <span style="flex:1"></span>
+    <button class="btn" id="btnAdvice">💡 立ち回り</button>
+    <button class="btn" id="btnReview">📊 振り返り</button>
+    <button class="btn" id="btnRank">🏆 ランキング</button>
+    <button class="btn" id="btnHead">⬆️ 北固定</button>
+    <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnGps">現在地</button>
+  </div>
+  <div class="row">
+    <span class="label">曜日</span>
+    <button class="chip dow on" data-dow="all">全て</button>
+    <button class="chip dow" data-dow="1">月</button>
+    <button class="chip dow" data-dow="2">火</button>
+    <button class="chip dow" data-dow="3">水</button>
+    <button class="chip dow" data-dow="4">木</button>
+    <button class="chip dow" data-dow="5">金</button>
+    <button class="chip dow" data-dow="6">土</button>
+    <button class="chip dow" data-dow="0">日</button>
+    <span style="flex:1"></span>
+    <button class="chip mode on" data-mode="all">全て</button>
+    <button class="chip mode" data-mode="app">アプリ</button>
+    <button class="chip mode" data-mode="st">流し</button>
+    <button class="chip wx on" data-wx="all">全天候</button>
+    <button class="chip wx" data-wx="rain">☔雨</button>
+    <button class="chip wx" data-wx="dry">☀晴</button>
   </div>
   <div class="row">
     <span class="label">時間帯</span>
@@ -148,12 +249,32 @@
   </div>
   <div class="row">
     <button class="btn" id="btnAdd">＋ 乗車を記録</button>
+    <button class="btn" id="btnScan">📷 日報を読み取り</button>
+    <input type="file" id="fileScan" accept="image/*,application/pdf" style="display:none">
     <button class="btn" id="btnCsvOut">CSV書き出し</button>
-    <button class="btn" id="btnCsvIn">CSV読み込み</button>
-    <input type="file" id="fileCsv" accept=".csv" style="display:none">
+    <button class="btn" id="btnPaste">貼り付け読み込み</button>
+    <button class="btn" id="btnCsvIn">ファイル読み込み</button>
+    <button class="btn" id="btnSync">共有データ再読み込み</button>
+    <input type="file" id="fileCsv" accept=".csv,.txt" style="display:none">
     <span style="flex:1"></span>
     <button class="btn warn" id="btnReset">初期化</button>
   </div>
+  </div><!-- /panel-body -->
+</div>
+
+<div class="sheet" id="pasteSheet">
+  <form id="pasteForm">
+    <h2>テキストを貼り付けて読み込み</h2>
+    <div class="field">
+      <label>CSV形式(date,time,pickup,lat,lng,fare,dropoff,mode)。タブ区切りも可。ヘッダー行はあってもなくてもOK</label>
+      <textarea id="pasteText" rows="7" placeholder="2026-07-15,21:35,港区六本木7,35.6631,139.7297,6800,世田谷区成城6,app&#10;2026-07-15,23:10,中央区銀座5,35.6704,139.7650,3200,,st"
+        style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px;font-size:14px;font-family:ui-monospace,monospace;"></textarea>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="btnPasteCancel">キャンセル</button>
+      <button type="submit" class="btn on">読み込む</button>
+    </div>
+  </form>
 </div>
 
 <div class="sheet" id="sheet">
@@ -163,6 +284,12 @@
     <div class="field"><label>乗車時刻</label><input type="time" id="fTime" required></div>
     <div class="field"><label>乗車地(例:港区六本木5)</label><input type="text" id="fPlace" required placeholder="地名・交差点名など"></div>
     <div class="field"><label>料金(円)</label><input type="number" id="fFare" required min="0" step="10" placeholder="6300"></div>
+    <div class="field"><label>配車区分</label>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn on" id="mApp" style="flex:1">アプリ配車</button>
+        <button type="button" class="btn" id="mSt" style="flex:1">流し</button>
+      </div>
+    </div>
     <div class="field"><label>降車地(任意)</label><input type="text" id="fDest" placeholder="渋谷区円山町"></div>
     <div class="actions">
       <button type="button" class="btn" id="btnCancel">キャンセル</button>
@@ -172,39 +299,39 @@
 </div>
 
 <script>
-// ===== 初期データ:2026-07-09 乗務記録(座標は町丁目の概算) =====
+// ===== 初期データ:2026-07-09 乗務記録(座標は町丁目の概算 / m: app=アプリ配車, st=流し) =====
 const SEED = [
- {d:"2026-07-09",t:"07:56",p:"墨田区吾妻橋2",lat:35.7108,lng:139.8038,f:1800,dst:"墨田区堤通1"},
- {d:"2026-07-09",t:"08:16",p:"荒川区南千住2",lat:35.7297,lng:139.7995,f:1800,dst:"荒川区荒川2"},
- {d:"2026-07-09",t:"09:02",p:"荒川区荒川2",lat:35.7360,lng:139.7818,f:22370,dst:"狭山市下奥富"},
- {d:"2026-07-09",t:"11:22",p:"練馬区谷原3",lat:35.7457,lng:139.6187,f:1000,dst:"練馬区谷原5"},
- {d:"2026-07-09",t:"11:32",p:"練馬区高松3",lat:35.7435,lng:139.6270,f:1700,dst:"練馬区富士見台2"},
- {d:"2026-07-09",t:"11:52",p:"練馬区中村南2",lat:35.7295,lng:139.6428,f:1500,dst:"練馬区練馬1"},
- {d:"2026-07-09",t:"12:21",p:"豊島区長崎3",lat:35.7283,lng:139.6866,f:2500,dst:"板橋区大谷口上町"},
- {d:"2026-07-09",t:"12:34",p:"板橋区大谷口上町",lat:35.7492,lng:139.6884,f:1000,dst:"板橋区仲町"},
- {d:"2026-07-09",t:"12:49",p:"板橋区仲町",lat:35.7525,lng:139.6953,f:2300,dst:"豊島区東池袋1"},
- {d:"2026-07-09",t:"13:09",p:"豊島区東池袋1",lat:35.7305,lng:139.7166,f:6300,dst:"渋谷区円山町"},
- {d:"2026-07-09",t:"14:00",p:"渋谷区桜丘町",lat:35.6564,lng:139.6996,f:4900,dst:"中央区築地2"},
- {d:"2026-07-09",t:"15:17",p:"中央区築地4",lat:35.6657,lng:139.7707,f:6600,dst:"足立区綾瀬4"},
- {d:"2026-07-09",t:"16:26",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1000,dst:"文京区千駄木3"},
- {d:"2026-07-09",t:"16:27",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1700,dst:"台東区上野7"},
- {d:"2026-07-09",t:"17:07",p:"中央区銀座6",lat:35.6699,lng:139.7628,f:1500,dst:"千代田区丸の内1"},
- {d:"2026-07-09",t:"17:39",p:"港区愛宕2",lat:35.6630,lng:139.7455,f:2000,dst:"港区元麻布2"},
- {d:"2026-07-09",t:"17:59",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:1000,dst:"港区西麻布4"},
- {d:"2026-07-09",t:"18:00",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:500,dst:"港区南麻布5"},
- {d:"2026-07-09",t:"18:15",p:"港区白金台5",lat:35.6383,lng:139.7205,f:1600,dst:"渋谷区恵比寿1"},
- {d:"2026-07-09",t:"19:02",p:"港区白金台5",lat:35.6383,lng:139.7205,f:3800,dst:"渋谷区上原2"},
- {d:"2026-07-09",t:"19:24",p:"渋谷区上原3",lat:35.6685,lng:139.6763,f:6100,dst:"中央区銀座8"},
- {d:"2026-07-09",t:"20:43",p:"中央区銀座7",lat:35.6693,lng:139.7642,f:3300,dst:"港区高輪1"},
- {d:"2026-07-09",t:"21:23",p:"港区芝5",lat:35.6479,lng:139.7476,f:7400,dst:"大田区西蒲田5"},
- {d:"2026-07-09",t:"22:38",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1000,dst:"大田区大森北1"},
- {d:"2026-07-09",t:"22:52",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1200,dst:"大田区大森北6"},
- {d:"2026-07-09",t:"23:29",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:700,dst:"品川区南大井5"},
- {d:"2026-07-10",t:"00:24",p:"港区新橋2",lat:35.6668,lng:139.7576,f:3900,dst:"渋谷区東2"},
- {d:"2026-07-10",t:"00:56",p:"港区六本木5",lat:35.6594,lng:139.7338,f:3400,dst:"品川区北品川3"},
- {d:"2026-07-10",t:"01:32",p:"港区芝浦4",lat:35.6421,lng:139.7501,f:3400,dst:"目黒区目黒3"},
- {d:"2026-07-10",t:"02:01",p:"港区六本木4",lat:35.6629,lng:139.7322,f:2000,dst:"港区南麻布3"},
- {d:"2026-07-10",t:"02:48",p:"台東区下谷2",lat:35.7218,lng:139.7838,f:1000,dst:"台東区下谷2"}
+ {d:"2026-07-09",t:"07:56",p:"墨田区吾妻橋2",lat:35.7108,lng:139.8038,f:1800,dst:"墨田区堤通1",m:"app"},
+ {d:"2026-07-09",t:"08:16",p:"荒川区南千住2",lat:35.7297,lng:139.7995,f:1800,dst:"荒川区荒川2",m:"app"},
+ {d:"2026-07-09",t:"09:02",p:"荒川区荒川2",lat:35.7360,lng:139.7818,f:22370,dst:"狭山市下奥富",m:"app"},
+ {d:"2026-07-09",t:"11:22",p:"練馬区谷原3",lat:35.7457,lng:139.6187,f:1000,dst:"練馬区谷原5",m:"app"},
+ {d:"2026-07-09",t:"11:32",p:"練馬区高松3",lat:35.7435,lng:139.6270,f:1700,dst:"練馬区富士見台2",m:"app"},
+ {d:"2026-07-09",t:"11:52",p:"練馬区中村南2",lat:35.7295,lng:139.6428,f:1500,dst:"練馬区練馬1",m:"app"},
+ {d:"2026-07-09",t:"12:21",p:"豊島区長崎3",lat:35.7283,lng:139.6866,f:2500,dst:"板橋区大谷口上町",m:"app"},
+ {d:"2026-07-09",t:"12:34",p:"板橋区大谷口上町",lat:35.7492,lng:139.6884,f:1000,dst:"板橋区仲町",m:"app"},
+ {d:"2026-07-09",t:"12:49",p:"板橋区仲町",lat:35.7525,lng:139.6953,f:2300,dst:"豊島区東池袋1",m:"app"},
+ {d:"2026-07-09",t:"13:09",p:"豊島区東池袋1",lat:35.7305,lng:139.7166,f:6300,dst:"渋谷区円山町",m:"app"},
+ {d:"2026-07-09",t:"14:00",p:"渋谷区桜丘町",lat:35.6564,lng:139.6996,f:4900,dst:"中央区築地2",m:"app"},
+ {d:"2026-07-09",t:"15:17",p:"中央区築地4",lat:35.6657,lng:139.7707,f:6600,dst:"足立区綾瀬4",m:"app"},
+ {d:"2026-07-09",t:"16:26",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1000,dst:"文京区千駄木3",m:"app"},
+ {d:"2026-07-09",t:"16:27",p:"文京区千駄木3",lat:35.7278,lng:139.7607,f:1700,dst:"台東区上野7",m:"app"},
+ {d:"2026-07-09",t:"17:07",p:"中央区銀座6",lat:35.6699,lng:139.7628,f:1500,dst:"千代田区丸の内1",m:"app"},
+ {d:"2026-07-09",t:"17:39",p:"港区愛宕2",lat:35.6630,lng:139.7455,f:2000,dst:"港区元麻布2",m:"app"},
+ {d:"2026-07-09",t:"17:59",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:1000,dst:"港区西麻布4",m:"app"},
+ {d:"2026-07-09",t:"18:00",p:"港区西麻布4",lat:35.6577,lng:139.7218,f:500,dst:"港区南麻布5",m:"st"},
+ {d:"2026-07-09",t:"18:15",p:"港区白金台5",lat:35.6383,lng:139.7205,f:1600,dst:"渋谷区恵比寿1",m:"app"},
+ {d:"2026-07-09",t:"19:02",p:"港区白金台5",lat:35.6383,lng:139.7205,f:3800,dst:"渋谷区上原2",m:"app"},
+ {d:"2026-07-09",t:"19:24",p:"渋谷区上原3",lat:35.6685,lng:139.6763,f:6100,dst:"中央区銀座8",m:"app"},
+ {d:"2026-07-09",t:"20:43",p:"中央区銀座7",lat:35.6693,lng:139.7642,f:3300,dst:"港区高輪1",m:"st"},
+ {d:"2026-07-09",t:"21:23",p:"港区芝5",lat:35.6479,lng:139.7476,f:7400,dst:"大田区西蒲田5",m:"app"},
+ {d:"2026-07-09",t:"22:38",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1000,dst:"大田区大森北1",m:"app"},
+ {d:"2026-07-09",t:"22:52",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:1200,dst:"大田区大森北6",m:"st"},
+ {d:"2026-07-09",t:"23:29",p:"大田区大森北1",lat:35.5885,lng:139.7285,f:700,dst:"品川区南大井5",m:"st"},
+ {d:"2026-07-10",t:"00:24",p:"港区新橋2",lat:35.6668,lng:139.7576,f:3900,dst:"渋谷区東2",m:"st"},
+ {d:"2026-07-10",t:"00:56",p:"港区六本木5",lat:35.6594,lng:139.7338,f:3400,dst:"品川区北品川3",m:"st"},
+ {d:"2026-07-10",t:"01:32",p:"港区芝浦4",lat:35.6421,lng:139.7501,f:3400,dst:"目黒区目黒3",m:"app"},
+ {d:"2026-07-10",t:"02:01",p:"港区六本木4",lat:35.6629,lng:139.7322,f:2000,dst:"港区南麻布3",m:"app"},
+ {d:"2026-07-10",t:"02:48",p:"台東区下谷2",lat:35.7218,lng:139.7838,f:1000,dst:"台東区下谷2",m:"app"}
 ];
 
 const KEY="taxi-rides-v1";
@@ -217,21 +344,59 @@ function load(){
 function save(list){ try{ localStorage.setItem(KEY, JSON.stringify(list ?? rides)); }catch(e){} }
 
 // ===== 地図 =====
-const map = L.map("map",{zoomControl:false}).setView([35.675,139.74],12);
-L.control.zoom({position:"topright"}).addTo(map);
+const ROTATE_OK = typeof L.Map.prototype.setBearing === "function"; // 回転プラグインが有効か
+const map = L.map("map", ROTATE_OK
+  ? {zoomControl:false, rotate:true, touchRotate:false, rotateControl:false, bearing:0}
+  : {zoomControl:false}
+).setView([35.675,139.74],12);
 
-// タイルサーバー(読み込み失敗時は順に切り替え)
-const TILE_SOURCES = [
-  {url:"https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", attr:"&copy; OpenStreetMap &copy; CARTO"},
-  {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"},
-  {url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", attr:"国土地理院"}
-];
-let tileIdx = 0, tileErrors = 0, currentTiles = null;
+// タイルサーバー(国土地理院の日本語地図を優先、失敗時はOSMに切り替え)
+const TILE_STYLES = {
+  light: [
+    {url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", attr:"国土地理院"},
+    {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"},
+    {url:"https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", attr:"国土地理院"}
+  ],
+  dark: [
+    {url:"https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png", attr:"国土地理院"},
+    {url:"https://tile.openstreetmap.org/{z}/{x}/{y}.png", attr:"&copy; OpenStreetMap contributors"}
+  ]
+};
+// GoogleマップのAPIキーは同じリポジトリの key.js から読み込みます(直接ここに書くことも可能)
+const GOOGLE_MAPS_API_KEY = (typeof window.GOOGLE_MAPS_API_KEY === "string" ? window.GOOGLE_MAPS_API_KEY : "") || "";
+
+if(GOOGLE_MAPS_API_KEY){
+  const gs=document.createElement("script");
+  gs.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(GOOGLE_MAPS_API_KEY)+"&v=weekly";
+  document.head.appendChild(gs);
+}
+
+let mapStyle = localStorage.getItem("taxi-map-style") || "light";
+if(mapStyle==="google" && !GOOGLE_MAPS_API_KEY) mapStyle="light"; // キー未設定なら通常地図に戻す
+let TILE_SOURCES = TILE_STYLES[mapStyle==="google" ? "light" : mapStyle];
+let tileIdx = 0, tileErrors = 0, currentTiles = null, googleLayer = null, gWait = 0;
 function mountTiles(){
-  if(currentTiles) map.removeLayer(currentTiles);
+  if(currentTiles){ map.removeLayer(currentTiles); currentTiles=null; }
+  if(googleLayer){ map.removeLayer(googleLayer); googleLayer=null; }
+  document.getElementById("map").classList.toggle("dark-tiles", mapStyle==="dark");
+  if(mapStyle==="google"){
+    if(!(window.google && window.google.maps && L.gridLayer.googleMutant)){
+      // Google Maps APIの読み込み待ち(最大約9秒)
+      if(gWait++ < 30){ setTimeout(mountTiles, 300); return; }
+      gWait=0; alert("Googleマップを読み込めませんでした。APIキーの設定を確認してください。従来の地図で表示します。");
+      mapStyle="light"; localStorage.setItem("taxi-map-style","light"); styleLabel();
+    }else{
+      gWait=0;
+      googleLayer = L.gridLayer.googleMutant({type:"roadmap", maxZoom:20});
+      googleLayer.addTo(map);
+      document.getElementById("tileWarn").style.display = "none";
+      return;
+    }
+  }
   tileErrors = 0;
+  TILE_SOURCES = TILE_STYLES[mapStyle];
   const src = TILE_SOURCES[tileIdx];
-  currentTiles = L.tileLayer(src.url,{maxZoom:18, attribution:src.attr});
+  currentTiles = L.tileLayer(src.url,{maxZoom:18, attribution:src.attr, updateWhenIdle:true, keepBuffer:3});
   currentTiles.on("tileerror", ()=>{
     tileErrors++;
     if(tileErrors >= 4){
@@ -245,18 +410,135 @@ function mountTiles(){
 mountTiles();
 
 let markerLayer = L.layerGroup().addTo(map);
-let heatLayer = null, heatOn = false;
-let minFare = 5000, tMin = 5, tMax = 29;
+let heatLayer = null, heatOn = true;
+const heatRenderer = L.canvas({padding:0.3}); // マスが多くても軽いCanvas描画
+
+// 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
+function fareTierColor(avg){
+  if(avg>=8000) return "#b71c1c";
+  if(avg>=5000) return "#e53935";
+  if(avg>=3000) return "#fb8c00";
+  if(avg>=2000) return "#fdd835";
+  if(avg>=1000) return "#aed581";
+  return "#81c784"; // ¥1,000未満・データなし
+}
+
+// アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
+const APP_VER = "2026.07.17-2";
+document.getElementById("verTag").textContent = "v" + APP_VER;
+
+// 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
+// バージョンが変わると新しいファイルを取り直す(同バージョン内はキャッシュで高速)
+let chomeIndex=null, chomeLoading=false, wardsData=null;
+function ensureChome(){
+  if(chomeIndex || chomeLoading) return;
+  chomeLoading=true;
+  Promise.all([
+    fetch("chome.json?v="+APP_VER).then(r=>r.ok?r.json():null).catch(()=>null),
+    fetch("wards.json?v="+APP_VER).then(r=>r.ok?r.json():null).catch(()=>null)
+  ]).then(([gj,wj])=>{
+    if(gj) chomeIndex=new Map(gj.features.map(f=>[f.properties.n, f]));
+    if(wj) wardsData=wj;
+    if(gj||wj) render(); // 読み込み完了後に表示を差し替え
+  }).finally(()=>{ chomeLoading=false; });
+}
+
+function drawHeat(list){
+  if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
+  document.getElementById("heatLegend").style.display = heatOn ? "flex" : "none";
+  if(!heatOn) return;
+  ensureChome();
+  heatLayer=L.layerGroup();
+  // 背景地図の色味を抑える白いベール(道路や公園の色と混ざるのを防ぐ)
+  const b=map.getBounds().pad(0.5);
+  L.rectangle(b,{renderer:heatRenderer, stroke:false,
+    fillColor:"#ffffff", fillOpacity:0.5, interactive:false}).addTo(heatLayer);
+  // 町丁目(乗車地名)ごとに集計
+  const SIZE=0.0025;
+  const byAddr=new Map();
+  list.forEach(r=>{
+    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0};
+    a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    byAddr.set(r.p,a);
+  });
+  byAddr.forEach((a,name)=>{
+    const avg=a.sum/a.n;
+    const col=fareTierColor(avg);
+    const tip=`${name}<br>平均 ${yen(Math.round(avg))} / ${a.n}件`;
+    const f=chomeIndex ? chomeIndex.get(name) : null;
+    if(f){
+      // 町丁目の実際の形で塗る
+      L.geoJSON(f,{renderer:heatRenderer,
+        style:{color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:.78}})
+        .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
+    }else{
+      // 境界未収録の住所や読み込み前はマス目で表示
+      const la=Math.floor((a.latS/a.n)/SIZE)*SIZE, lo=Math.floor((a.lngS/a.n)/SIZE)*SIZE;
+      L.rectangle([[la,lo],[la+SIZE,lo+SIZE]],{renderer:heatRenderer,
+        color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:.78})
+        .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
+    }
+  });
+  // 23区+武蔵野市+三鷹市の境界線を重ねる(薄めの点線)
+  if(wardsData){
+    L.geoJSON(wardsData,{renderer:heatRenderer, interactive:false,
+      style:{color:"#4a5a75", weight:1.3, opacity:.55, dashArray:"6 6", fill:false}}).addTo(heatLayer);
+  }
+  heatLayer.addTo(map);
+}
+// 地図を動かしたら緑の下地を表示範囲に合わせて引き直す
+map.on("moveend", ()=>{ if(heatOn) render(); });
+let minFare = 0, tMin = 5, tMax = 29;
 
 const shiftHour = t => { const h = parseInt(t.split(":")[0],10); return h < 5 ? h+24 : h; };
 const yen = n => "¥" + n.toLocaleString("ja-JP");
 
+// 営業日ベースの曜日(朝5時までの乗車は前日のシフト扱い)
+function shiftDow(r){
+  const dt = new Date(r.d + "T" + (r.t||"12:00") + ":00");
+  if(isNaN(dt)) return -1;
+  dt.setHours(dt.getHours() - 5);
+  return dt.getDay();
+}
+
+let dowSet = new Set();      // 空 = 全曜日
+let modeFilter = "all";      // all / app / st
+let weatherFilter = "all";   // all / rain / dry
+let rainMap = null;          // 営業日→降水量mm(初回利用時に取得)
+try{ rainMap = JSON.parse(localStorage.getItem("wx-v1")) || null; }catch(e){}
+
+// 営業日の文字列(朝5時までは前日扱い)
+function shiftDateStr(r){
+  const dt = new Date(r.d + "T" + (r.t||"12:00") + ":00");
+  if(isNaN(dt)) return r.d;
+  dt.setHours(dt.getHours() - 5);
+  return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+}
+function wxOf(r){ // rain / dry / null(不明)
+  if(!rainMap) return null;
+  const mm = rainMap[shiftDateStr(r)];
+  if(mm==null) return null;
+  return mm >= 1 ? "rain" : "dry";
+}
+
+const MY_NAME = localStorage.getItem("my-name") || "近藤貴大";
+// 名前照合はスペース(全角・半角)の有無を無視する
+function normName(s){ return (s||"").replace(/[\s\u3000]+/g,""); }
+// 名前が空欄または自分の名前の記録=自分の記録(他人の名前が付いた記録だけを除外)
+function myRides(){ return rides.filter(r => !r.drv || normName(r.drv) === normName(MY_NAME)); }
+
 function filtered(){
-  return rides.filter(r => r.f >= minFare && shiftHour(r.t) >= tMin && shiftHour(r.t) <= tMax);
+  return rides.filter(r =>
+    r.f >= minFare &&
+    shiftHour(r.t) >= tMin && shiftHour(r.t) <= tMax &&
+    (dowSet.size === 0 || dowSet.has(shiftDow(r))) &&
+    (modeFilter === "all" || (r.m || "app") === modeFilter) &&
+    (weatherFilter === "all" || wxOf(r) === weatherFilter)
+  );
 }
 
 function lampIcon(f){
-  const size = Math.max(14, Math.min(40, 12 + Math.sqrt(f)/6));
+  const size = Math.max(8, Math.min(22, 6 + Math.sqrt(f)/9));
   const cls = f >= minFare && f >= 5000 ? "lamp" : "lamp low";
   const label = f >= 5000 ? `<div class="lamp-label">${yen(f)}</div>` : "";
   return L.divIcon({className:"", iconSize:[size,size], iconAnchor:[size/2,size/2],
@@ -266,27 +548,408 @@ function lampIcon(f){
 function render(){
   markerLayer.clearLayers();
   const list = filtered();
-  list.forEach(r=>{
+  if(!heatOn) list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
-    m.bindPopup(`<div class="pop"><b>${yen(r.f)}</b><br>${r.d} ${r.t}<br>乗車:${r.p}${r.dst?`<br>降車:${r.dst}`:""}
+    const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
+    const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
+    m.bindPopup(`<div class="pop"><b>${yen(r.f)}</b> <small>${mode}</small><br>${r.d} ${r.t}<br>乗車:${r.p}${r.dst?`<br>降車:${r.dst}`:""}
+      <br><span class="navi route-here" data-lat="${r.lat}" data-lng="${r.lng}">📍 この地図で経路</span>
+      <a class="navi sub" href="${nav}" target="_blank" rel="noopener">🧭 Googleマップ</a>
       <br><span class="del" data-id="${r.id}">この記録を削除</span></div>`);
   });
-  if(heatLayer){ map.removeLayer(heatLayer); heatLayer=null; }
-  if(heatOn && list.length){
-    heatLayer = L.heatLayer(list.map(r=>[r.lat,r.lng, Math.min(r.f/8000,1)]),
-      {radius:38, blur:26, gradient:{0.2:"#3a4a6b",0.5:"#c98a2e",0.85:"#ffb53c",1:"#fff1cf"}}).addTo(map);
-  }
+  drawHeat(list);
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
   document.getElementById("stSum").textContent = yen(sum);
   document.getElementById("stAvg").textContent = list.length ? yen(Math.round(sum/list.length)) : "¥0";
   renderTicks();
+  renderRank(list);
 }
 
 map.on("popupopen", e=>{
-  const el = e.popup.getElement().querySelector(".del");
+  const root = e.popup.getElement();
+  const el = root.querySelector(".del");
   if(el) el.onclick = ()=>{ rides = rides.filter(r=>r.id!==el.dataset.id); save(); map.closePopup(); render(); };
+  const rb = root.querySelector(".route-here");
+  if(rb) rb.onclick = ()=>{ map.closePopup(); showRoute(+rb.dataset.lat, +rb.dataset.lng); };
 });
+
+// ===== アプリ内経路表示(現在地→ピン、OSRM公開サーバー使用) =====
+let routeLayer=null;
+function clearRoute(){
+  if(routeLayer){ map.removeLayer(routeLayer); routeLayer=null; }
+  document.getElementById("routeInfo").style.display="none";
+}
+function showRoute(dlat,dlng){
+  if(!navigator.geolocation) return alert("この端末では位置情報を取得できません");
+  const info=document.getElementById("routeInfo");
+  info.style.display="flex";
+  document.getElementById("routeText").textContent="経路を計算中…";
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    try{
+      const olat=pos.coords.latitude, olng=pos.coords.longitude;
+      const url=`https://router.project-osrm.org/route/v1/driving/${olng},${olat};${dlng},${dlat}?overview=full&geometries=geojson`;
+      const res=await fetch(url);
+      const j=await res.json();
+      if(j.code!=="Ok" || !j.routes || !j.routes[0]) throw new Error("経路が見つかりませんでした");
+      const rt=j.routes[0];
+      if(routeLayer) map.removeLayer(routeLayer);
+      const line=rt.geometry.coordinates.map(c=>[c[1],c[0]]);
+      routeLayer=L.layerGroup([
+        L.polyline(line,{color:"#1e88e5",weight:7,opacity:.45}),
+        L.polyline(line,{color:"#42a5f5",weight:3,opacity:.95}),
+        L.circleMarker([olat,olng],{radius:6,color:"#fff",weight:2,fillColor:"#1e88e5",fillOpacity:1}),
+        L.circleMarker([dlat,dlng],{radius:7,color:"#fff",weight:2,fillColor:"#ffb53c",fillOpacity:1})
+      ]).addTo(map);
+      map.fitBounds(L.latLngBounds(line),{padding:[50,50]});
+      const km=(rt.distance/1000).toFixed(1);
+      const min=Math.round(rt.duration/60);
+      document.getElementById("routeText").textContent=`約${km}km・約${min}分(渋滞考慮なし)`;
+    }catch(err){
+      clearRoute();
+      alert("経路を取得できませんでした。電波状況を確認してもう一度お試しください。\n("+err.message+")");
+    }
+  },()=>{
+    clearRoute();
+    alert("現在地を取得できませんでした。位置情報の許可を確認してください。");
+  },{enableHighAccuracy:true, timeout:12000, maximumAge:10000});
+}
+document.getElementById("routeClose").onclick=clearRoute;
+
+// ===== 立ち回りアドバイス(現在地×現在時刻×全期間の実績から算出) =====
+function haversineKm(a,b){
+  const R=6371, d=Math.PI/180;
+  const dLat=(b[0]-a[0])*d, dLng=(b[1]-a[1])*d;
+  const s=Math.sin(dLat/2)**2 + Math.cos(a[0]*d)*Math.cos(b[0]*d)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function bearingText(a,b){
+  const d=Math.PI/180;
+  const y=Math.sin((b[1]-a[1])*d)*Math.cos(b[0]*d);
+  const x=Math.cos(a[0]*d)*Math.sin(b[0]*d)-Math.sin(a[0]*d)*Math.cos(b[0]*d)*Math.cos((b[1]-a[1])*d);
+  const deg=(Math.atan2(y,x)*180/Math.PI+360)%360;
+  return ["北","北東","東","南東","南","南西","西","北西"][Math.round(deg/45)%8];
+}
+function buildAdvice(cur){
+  const now=new Date();
+  const h=now.getHours()+now.getMinutes()/60;
+  const sh=h<5?h+24:h;
+  // 現在時刻の前後の実績を集計(件数が少なければ範囲を広げる)
+  let win=2, pool=[];
+  for(; win<=5; win+=1.5){
+    pool=rides.filter(r=>Math.abs(shiftHour(r.t)+parseInt(r.t.split(":")[1],10)/60-sh)<=win);
+    const uniq=new Set(pool.map(r=>r.p));
+    if(uniq.size>=5) break;
+  }
+  const byAddr=new Map();
+  pool.forEach(r=>{
+    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,dsts:{}};
+    a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    if((r.m||"app")==="st") a.st++;
+    if(r.dst){ const d=r.dst.replace(/\d+$/,""); a.dsts[d]=(a.dsts[d]||0)+1; }
+    byAddr.set(r.p,a);
+  });
+  const cands=[...byAddr.entries()].map(([p,a])=>{
+    const ll=[a.latS/a.n, a.lngS/a.n];
+    const dist=haversineKm(cur,ll);
+    const avg=a.sum/a.n;
+    // 単価が高く、実績が多く、近いほど高スコア
+    const score=avg*Math.log2(1+a.n)/(1+dist/2.5);
+    const topDest=Object.entries(a.dsts).sort((x,y)=>y[1]-x[1])[0];
+    return {p, avg, n:a.n, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
+  }).filter(c=>c.dist<=12)
+    .sort((x,y)=>y.score-x.score)
+    .slice(0,3);
+  return {cands, win, sh};
+}
+function showAdvice(cur){
+  const {cands,win,sh}=buildAdvice(cur);
+  lastAdvice={cands,win,sh,cur};
+  const ai=document.getElementById("adviceAIText"); ai.style.display="none"; ai.textContent="";
+  const panel=document.getElementById("advicePanel");
+  const now=new Date();
+  document.getElementById("adviceTime").textContent=
+    now.getHours()+":"+String(now.getMinutes()).padStart(2,"0")+"・現在地から";
+  const el=document.getElementById("adviceList");
+  if(!cands.length){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">この時間帯・この周辺の実績がまだありません。データが溜まると提案できるようになります。</div>';
+  }else{
+    el.innerHTML=cands.map((c,i)=>`
+      <div style="display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid var(--line);">
+        <span style="font-size:14px;color:var(--muted);width:16px;">${i+1}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:16px;font-weight:700;">${c.p}</div>
+          <div style="font-size:12px;color:var(--muted);">${bearingText(cur,c.ll)}へ ${c.dist.toFixed(1)}km・${c.n}件の実績</div>
+        </div>
+        <span style="font-size:16px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${yen(Math.round(c.avg))}</span>
+        <button class="btn on adv-go" data-lat="${c.ll[0]}" data-lng="${c.ll[1]}" style="padding:8px 10px;font-size:12px;">経路</button>
+      </div>`).join("");
+    el.querySelectorAll(".adv-go").forEach(b=>{
+      b.onclick=()=>{ panel.style.display="none"; showRoute(+b.dataset.lat,+b.dataset.lng); };
+    });
+  }
+  const hlo=Math.round((sh-win+24)%24), hhi=Math.round((sh+win)%24);
+  document.getElementById("adviceNote").textContent=
+    `${hlo}時〜${hhi}時台の全期間実績から、単価・件数・距離を総合して算出`;
+  panel.style.display="block";
+}
+document.getElementById("btnAdvice").onclick=()=>{
+  if(lastLL){ showAdvice(lastLL); return; } // 追尾中は即時
+  if(!navigator.geolocation){ showAdvice([map.getCenter().lat,map.getCenter().lng]); return; }
+  navigator.geolocation.getCurrentPosition(
+    p=>showAdvice([p.coords.latitude,p.coords.longitude]),
+    ()=>showAdvice([map.getCenter().lat,map.getCenter().lng]), // 位置が取れなければ地図の中心を基準に
+    {enableHighAccuracy:true, timeout:8000, maximumAge:30000});
+};
+document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
+
+// ===== AIによる立ち回り解説(OpenAI / Anthropic 両対応・キーは端末内のみに保存) =====
+let lastAdvice=null; // showAdviceで更新
+function getAIKey(){
+  let k=localStorage.getItem("ai-api-key") || localStorage.getItem("claude-api-key");
+  if(!k){
+    alert("AI相談にはAPIキーが必要です。\nOpenAI(platform.openai.com)または Anthropic(console.anthropic.com)のキーに対応しています。\nキーはこのiPhoneの中だけに保存されます(GitHubには置かないでください)。");
+    k=prompt("APIキー(sk-... または sk-ant-...)を貼り付け:");
+    if(k){ k=k.trim(); localStorage.setItem("ai-api-key", k); }
+  }
+  return k;
+}
+function clearAIKey(){ localStorage.removeItem("ai-api-key"); localStorage.removeItem("claude-api-key"); }
+async function callAI(key, prompt_){
+  if(key.startsWith("sk-ant-")){
+    // Anthropic (Claude)
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-api-key":key,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:400,
+        messages:[{role:"user",content:prompt_}]})
+    });
+    if(res.status===401) return {auth:false};
+    const data=await res.json();
+    if(data.error) return {auth:true, text:null, err:data.error.message};
+    return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("").trim()};
+  }else{
+    // OpenAI (ChatGPT)
+    const res=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{"content-type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:"gpt-4o-mini",max_completion_tokens:400,
+        messages:[{role:"user",content:prompt_}]})
+    });
+    if(res.status===401) return {auth:false};
+    const data=await res.json();
+    if(data.error) return {auth:true, text:null, err:data.error.message};
+    return {auth:true, text:(data.choices?.[0]?.message?.content||"").trim()};
+  }
+}
+async function askAI(){
+  if(!lastAdvice) return;
+  const key=getAIKey();
+  if(!key) return;
+  const out=document.getElementById("adviceAIText");
+  out.style.display="block"; out.textContent="AIが分析中…";
+  const now=new Date();
+  const dow=["日","月","火","水","木","金","土"][now.getDay()];
+  const ctx={
+    現在時刻: now.getHours()+":"+String(now.getMinutes()).padStart(2,"0"),
+    曜日: dow+"曜",
+    候補: lastAdvice.cands.map(c=>({
+      場所:c.p, 方角:bearingText(lastAdvice.cur,c.ll), 距離km:+c.dist.toFixed(1),
+      平均単価:Math.round(c.avg), 実績件数:c.n, 流し比率:Math.round(c.st/c.n*100)+"%",
+      多い降車先:c.topDest||"不明"
+    }))
+  };
+  const prompt_=`あなたは東京のタクシー乗務員を支える立ち回りアドバイザーです。以下は乗務員本人の過去実績から算出した現在の狙い目候補です。時刻・曜日・距離・降車先の傾向を踏まえ、次の1時間の立ち回りを日本語3〜4文で簡潔に助言してください。実績件数が少ない候補は断定を避けてください。前置きは不要です。\n${JSON.stringify(ctx,null,1)}`;
+  try{
+    const r=await callAI(key, prompt_);
+    if(!r.auth){
+      clearAIKey();
+      out.textContent="APIキーが無効でした。もう一度ボタンを押して正しいキーを入力してください。";
+      return;
+    }
+    if(r.err){ out.textContent="エラー: "+r.err; return; }
+    out.textContent=r.text||"回答を取得できませんでした。";
+  }catch(err){
+    out.textContent="通信エラーです。電波状況を確認してください。("+err.message+")";
+  }
+}
+document.getElementById("adviceAI").onclick=askAI;
+
+// ===== 日報(PDF/写真)のAI読み取り =====
+async function loadPdfJs(){
+  if(window.pdfjsLib) return;
+  await new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload=res; s.onerror=rej; document.head.appendChild(s);
+  });
+  pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+async function fileToImages(file){ // PDFはページごとに画像化、写真はそのまま
+  if(file.type==="application/pdf"){
+    await loadPdfJs();
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    const out=[];
+    for(let p=1;p<=Math.min(pdf.numPages,3);p++){
+      const page=await pdf.getPage(p);
+      const vp=page.getViewport({scale:2});
+      const cv=document.createElement("canvas");
+      cv.width=vp.width; cv.height=vp.height;
+      await page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise;
+      out.push(cv.toDataURL("image/jpeg",0.85));
+    }
+    return out;
+  }
+  return [await new Promise((res,rej)=>{
+    const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file);
+  })];
+}
+async function callVisionAI(key, promptText, dataURLs){
+  if(key.startsWith("sk-ant-")){
+    const content=[...dataURLs.map(u=>({type:"image",
+      source:{type:"base64", media_type:u.slice(5,u.indexOf(";")), data:u.split(",")[1]}})),
+      {type:"text", text:promptText}];
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-api-key":key,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:4000,
+        messages:[{role:"user",content}]})
+    });
+    if(res.status===401) return {auth:false};
+    const data=await res.json();
+    if(data.error) return {auth:true, err:data.error.message};
+    return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("")};
+  }else{
+    const content=[{type:"text",text:promptText},
+      ...dataURLs.map(u=>({type:"image_url", image_url:{url:u}}))];
+    const res=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{"content-type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:"gpt-4o-mini",max_completion_tokens:4000,
+        messages:[{role:"user",content}]})
+    });
+    if(res.status===401) return {auth:false};
+    const data=await res.json();
+    if(data.error) return {auth:true, err:data.error.message};
+    return {auth:true, text:(data.choices?.[0]?.message?.content||"")};
+  }
+}
+// 町丁目境界データから座標を求める(未収録なら既存データの同名乗車地から流用)
+async function loadChomeNow(){
+  if(chomeIndex) return;
+  try{
+    const gj=await fetch("chome.json?v="+APP_VER).then(r=>r.ok?r.json():null);
+    if(gj) chomeIndex=new Map(gj.features.map(f=>[f.properties.n, f]));
+  }catch(e){}
+}
+function centroidOf(feature){
+  const g=feature.geometry;
+  const ring = g.type==="Polygon" ? g.coordinates[0] : g.coordinates[0][0];
+  let la=0, lo=0;
+  ring.forEach(c=>{ lo+=c[0]; la+=c[1]; });
+  return [ +(la/ring.length).toFixed(5), +(lo/ring.length).toFixed(5) ];
+}
+function locateAddress(name){
+  if(chomeIndex && chomeIndex.has(name)) return centroidOf(chomeIndex.get(name));
+  const hit=rides.find(r=>r.p===name);
+  if(hit) return [hit.lat, hit.lng];
+  return null;
+}
+document.getElementById("btnScan").onclick=()=>{
+  if(!getAIKey()) return;
+  document.getElementById("fileScan").click();
+};
+document.getElementById("fileScan").onchange=async e=>{
+  const file=e.target.files[0]; e.target.value="";
+  if(!file) return;
+  const key=localStorage.getItem("ai-api-key")||localStorage.getItem("claude-api-key");
+  if(!key) return;
+  const h=document.getElementById("hint");
+  h.textContent="AIが日報を読み取り中…(10〜30秒)"; h.classList.add("show");
+  try{
+    const imgs=await fileToImages(file);
+    const promptText=
+`これは東京のタクシーの乗務記録(日報)です。乗車記録の表からすべての乗車を読み取り、次の形式のCSV行のみを出力してください。ヘッダー・説明・コードブロックは不要です。
+date,time,pickup,fare,dropoff,mode
+ルール:
+- dateは日報の日付をYYYY-MM-DD形式で。ただし時刻が00:00〜04:59の行は翌日の日付にする
+- timeは乗車時刻(HH:MM)
+- pickupは乗車地、dropoffは降車地を表のままの表記で(例: 港区六本木5)
+- fareは料金を数字のみで(カンマなし)
+- modeは迎車欄に「4」がある行はapp、空欄の行はst
+- 判読できない行はスキップする`;
+    const r=await callVisionAI(key, promptText, imgs);
+    if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
+    if(r.err) throw new Error(r.err);
+    const lines=(r.text||"").split(/\r?\n/).map(l=>l.trim())
+      .filter(l=>/^\d{4}-\d{2}-\d{2},\d{1,2}:\d{2},/.test(l));
+    if(!lines.length) throw new Error("乗車記録を読み取れませんでした。表がはっきり写った画像でお試しください。");
+    await loadChomeNow();
+    const ok=[], miss=[];
+    lines.forEach(l=>{
+      const c=l.split(",").map(x=>x.trim());
+      if(c.length<6) return;
+      const ll=locateAddress(c[2]);
+      if(!ll){ miss.push(c[2]); return; }
+      ok.push([c[0],c[1],c[2],ll[0],ll[1],c[3].replace(/[^0-9]/g,""),c[4]||"",(c[5]==="app"?"app":"st"),MY_NAME].join(","));
+    });
+    h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+    if(ok.length) importText(ok.join("\n"));
+    if(miss.length) alert("位置を特定できずスキップした乗車地:\n"+[...new Set(miss)].join("、")+"\n(貼り付け読み込みで座標付きなら追加できます)");
+    if(!ok.length && !miss.length) alert("取り込める行がありませんでした。");
+  }catch(err){
+    h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+    alert("読み取りに失敗しました。\n"+err.message);
+  }
+};
+
+
+// ===== 町丁目ランキング(走行中向け・大きな表示) =====
+let rankOn=false;
+document.getElementById("btnRank").onclick=e=>{
+  rankOn=!rankOn; e.target.classList.toggle("on",rankOn);
+  document.getElementById("rankPanel").style.display = rankOn ? "block" : "none";
+  render();
+};
+document.getElementById("rankClose").onclick=()=>{
+  rankOn=false; document.getElementById("btnRank").classList.remove("on");
+  document.getElementById("rankPanel").style.display="none";
+};
+document.getElementById("rankNow").onclick=()=>{
+  const h=new Date().getHours();
+  const sh=h<5?h+24:h;
+  elMin.value=Math.max(5, sh-1); elMax.value=Math.min(29, sh+2);
+  onSlide(); // 現在時刻の前後に時間帯スライダーを合わせる
+};
+function renderRank(list){
+  if(!rankOn) return;
+  const agg=new Map();
+  list.forEach(r=>{
+    const a=agg.get(r.p)||{sum:0,n:0,latS:0,lngS:0};
+    a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    agg.set(r.p,a);
+  });
+  const rows=[...agg.entries()]
+    .map(([p,a])=>({p, avg:a.sum/a.n, n:a.n, lat:a.latS/a.n, lng:a.lngS/a.n}))
+    .sort((x,y)=> (y.n>=2)-(x.n>=2) || y.avg-x.avg) // 2件以上の場所を優先し、平均単価順
+    .slice(0,5);
+  const el=document.getElementById("rankList");
+  if(!rows.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">この条件のデータがありません</div>'; return; }
+  el.innerHTML=rows.map((r,i)=>`
+    <div class="rank-row" data-lat="${r.lat}" data-lng="${r.lng}"
+      style="display:flex;align-items:center;gap:10px;padding:11px 4px;border-top:1px solid var(--line);cursor:pointer;">
+      <span style="font-size:15px;color:var(--muted);width:18px;">${i+1}</span>
+      <span style="font-size:17px;font-weight:700;flex:1;">${r.p}</span>
+      <span style="font-size:17px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${yen(Math.round(r.avg))}</span>
+      <span style="font-size:12px;color:var(--muted);">${r.n}件</span>
+    </div>`).join("");
+  el.querySelectorAll(".rank-row").forEach(row=>{
+    row.onclick=()=>map.setView([+row.dataset.lat,+row.dataset.lng],15);
+  });
+}
 
 // ===== 時間帯スライダー =====
 const elMin=document.getElementById("tMin"), elMax=document.getElementById("tMax");
@@ -310,33 +973,293 @@ function renderTicks(){
     wrap.insertAdjacentHTML("beforeend",`<span style="left:${(h-5)/24*100}%">${h%24}時</span>`);
   });
 })();
+let renderTimer=null;
+function scheduleRender(){ clearTimeout(renderTimer); renderTimer=setTimeout(render,90); }
 function onSlide(){
   let a=+elMin.value, b=+elMax.value;
   if(a>b){ [a,b]=[b,a]; }
-  tMin=a; tMax=b; render();
+  tMin=a; tMax=b;
+  // つまみの表示だけ即時更新し、ピンの再描画は間引く
+  const fill=document.getElementById("tlFill");
+  fill.style.left=((tMin-5)/24*100)+"%";
+  fill.style.width=((tMax-tMin)/24*100)+"%";
+  document.getElementById("tlVal").textContent = `${fmtH(tMin)} – ${fmtH(tMax)}`;
+  scheduleRender();
 }
 elMin.addEventListener("input",onSlide); elMax.addEventListener("input",onSlide);
 
 // ===== 単価チップ =====
-document.querySelectorAll(".chip").forEach(c=>{
+document.querySelectorAll(".chip[data-min]").forEach(c=>{
   c.onclick=()=>{
-    document.querySelectorAll(".chip").forEach(x=>x.classList.remove("on"));
+    document.querySelectorAll(".chip[data-min]").forEach(x=>x.classList.remove("on"));
     c.classList.add("on"); minFare=+c.dataset.min; render();
   };
 });
 
+// ===== 曜日チップ(複数選択可、「全て」で解除) =====
+document.querySelectorAll(".chip.dow").forEach(c=>{
+  c.onclick=()=>{
+    const all=document.querySelector('.chip.dow[data-dow="all"]');
+    if(c.dataset.dow==="all"){
+      dowSet.clear();
+      document.querySelectorAll(".chip.dow").forEach(x=>x.classList.remove("on"));
+      all.classList.add("on");
+    }else{
+      const d=+c.dataset.dow;
+      if(dowSet.has(d)){ dowSet.delete(d); c.classList.remove("on"); }
+      else{ dowSet.add(d); c.classList.add("on"); }
+      all.classList.toggle("on", dowSet.size===0);
+    }
+    render();
+  };
+});
+
+// ===== 配車チップ =====
+document.querySelectorAll(".chip.mode").forEach(c=>{
+  c.onclick=()=>{
+    document.querySelectorAll(".chip.mode").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); modeFilter=c.dataset.mode; render();
+  };
+});
+
+// ===== 天気チップ(初回タップ時に過去の降水量を自動取得) =====
+let wxLoading=false;
+async function loadWeather(){
+  if(rainMap || wxLoading || !rides.length) return;
+  wxLoading=true;
+  try{
+    const days=rides.map(r=>shiftDateStr(r)).sort();
+    const url=`https://archive-api.open-meteo.com/v1/archive?latitude=35.6812&longitude=139.7671`
+      +`&start_date=${days[0]}&end_date=${days[days.length-1]}`
+      +`&daily=precipitation_sum&timezone=Asia%2FTokyo`;
+    const res=await fetch(url);
+    const j=await res.json();
+    if(j.daily && j.daily.time){
+      rainMap={};
+      j.daily.time.forEach((d,i)=>{
+        const v=j.daily.precipitation_sum[i];
+        if(v!=null) rainMap[d]=v;
+      });
+      localStorage.setItem("wx-v1", JSON.stringify(rainMap));
+    }
+  }catch(e){
+    alert("天気データを取得できませんでした。電波状況を確認して、もう一度お試しください。");
+  }finally{ wxLoading=false; }
+}
+document.querySelectorAll(".chip.wx").forEach(c=>{
+  c.onclick=async ()=>{
+    document.querySelectorAll(".chip.wx").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); weatherFilter=c.dataset.wx;
+    if(weatherFilter!=="all" && !rainMap){
+      const h=document.getElementById("hint");
+      h.textContent="過去の天気データを取得中…"; h.classList.add("show");
+      await loadWeather();
+      h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+    }
+    render();
+  };
+});
+
+// ===== 実績の振り返り =====
+function barRow(label, value, max, fmt){
+  const w = max>0 ? Math.round(value/max*100) : 0;
+  return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+    <span style="width:72px;font-size:12px;color:var(--muted);flex-shrink:0;">${label}</span>
+    <div style="flex:1;background:var(--panel2);border-radius:5px;height:18px;position:relative;overflow:hidden;">
+      <div style="width:${w}%;height:100%;background:linear-gradient(90deg,var(--amber-dim),var(--amber));border-radius:5px;"></div>
+    </div>
+    <span style="width:78px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;flex-shrink:0;">${fmt}</span>
+  </div>`;
+}
+function sectionTitle(t){ return `<div style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber);">${t}</div>`; }
+
+function renderReview(){
+  const body=document.getElementById("reviewBody");
+  const mine=myRides();
+  if(!mine.length){ body.innerHTML="データがありません"; return; }
+  let html=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">${MY_NAME}さんの記録のみ(${mine.length}件/全${rides.length}件)</div>`;
+
+  // 月別営収
+  const byMonth=new Map();
+  mine.forEach(r=>{
+    const m=shiftDateStr(r).slice(0,7);
+    const a=byMonth.get(m)||{sum:0,days:new Set()};
+    a.sum+=r.f; a.days.add(shiftDateStr(r)); byMonth.set(m,a);
+  });
+  const months=[...byMonth.entries()].sort();
+  const mMax=Math.max(...months.map(([,a])=>a.sum));
+  html+=sectionTitle("月別の営収");
+  months.forEach(([m,a])=>{
+    html+=barRow(m.slice(5)+"月", a.sum, mMax, yen(a.sum)+`<br><span style="color:var(--muted)">${a.days.size}日`+`・日平均`+yen(Math.round(a.sum/a.days.size))+`</span>`);
+  });
+
+  // 曜日別(営業日あたりの平均営収)
+  const byDow=new Map();
+  mine.forEach(r=>{
+    const dw=shiftDow(r);
+    const a=byDow.get(dw)||{sum:0,days:new Set()};
+    a.sum+=r.f; a.days.add(shiftDateStr(r)); byDow.set(dw,a);
+  });
+  const dowNames=["日","月","火","水","木","金","土"];
+  const dowAvg=[1,2,3,4,5,6,0].filter(d=>byDow.has(d))
+    .map(d=>({d, avg:byDow.get(d).sum/byDow.get(d).days.size, days:byDow.get(d).days.size}));
+  const dMax=Math.max(...dowAvg.map(x=>x.avg));
+  html+=sectionTitle("曜日別・1営業日あたりの平均営収");
+  dowAvg.forEach(x=>{
+    html+=barRow(dowNames[x.d]+"曜", x.avg, dMax, yen(Math.round(x.avg))+`<br><span style="color:var(--muted)">${x.days}日分</span>`);
+  });
+
+  // 時間帯別営収(朝・昼・夜・深夜の4区分・1営業日あたりの平均)
+  const totalDays=new Set(mine.map(r=>shiftDateStr(r))).size;
+  const bands=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
+  const bandAvg=bands.map(([a,b])=>mine.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(totalDays||1));
+  const bMax=Math.max(...bandAvg);
+  html+=sectionTitle("時間帯別・1営業日あたりの平均営収");
+  bands.forEach(([a,b,label],i)=>{
+    html+=barRow(label, bandAvg[i], bMax, yen(Math.round(bandAvg[i])));
+  });
+
+  // アプリ/流し
+  const nApp=mine.filter(r=>(r.m||"app")==="app").length, nSt=mine.length-nApp;
+  html+=sectionTitle("配車の内訳");
+  html+=barRow("アプリ", nApp, mine.length, nApp+"回("+Math.round(nApp/mine.length*100)+"%)");
+  html+=barRow("流し", nSt, mine.length, nSt+"回("+Math.round(nSt/mine.length*100)+"%)");
+
+  // 時間効率の良い乗車地(乗車間隔から推定)
+  const sorted=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const eff=new Map();
+  for(let i=0;i<sorted.length-1;i++){
+    const cur=sorted[i], nxt=sorted[i+1];
+    if(shiftDateStr(cur)!==shiftDateStr(nxt)) continue;
+    const gap=(new Date(nxt.d+"T"+nxt.t)-new Date(cur.d+"T"+cur.t))/60000; // 分
+    if(gap<=0 || gap>120) continue; // 休憩などを除外
+    const a=eff.get(cur.p)||{fare:0,min:0,n:0};
+    a.fare+=cur.f; a.min+=gap; a.n++; eff.set(cur.p,a);
+  }
+  const effRows=[...eff.entries()].filter(([,a])=>a.n>=3)
+    .map(([p,a])=>({p, perH:a.fare/(a.min/60), avgGap:a.min/a.n, n:a.n}))
+    .sort((x,y)=>y.perH-x.perH).slice(0,5);
+  if(effRows.length){
+    const eMax=effRows[0].perH;
+    html+=sectionTitle("時間効率の良い乗車地(推定¥/時)");
+    effRows.forEach(x=>{
+      html+=barRow(x.p.length>7?x.p.slice(0,7)+"…":x.p, x.perH, eMax,
+        yen(Math.round(x.perH))+`/時<br><span style="color:var(--muted)">間隔${Math.round(x.avgGap)}分・${x.n}回</span>`);
+    });
+    html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;">※次の乗車までの間隔(実車時間込み)からの概算です</div>`;
+  }
+
+  // 雨の日と晴れの日(天気データ取得済みの場合)
+  if(rainMap){
+    const dayStat=new Map();
+    mine.forEach(r=>{
+      const d=shiftDateStr(r);
+      const a=dayStat.get(d)||{sum:0};
+      a.sum+=r.f; dayStat.set(d,a);
+    });
+    let rSum=0,rN=0,dSum=0,dN=0;
+    dayStat.forEach((a,d)=>{
+      const mm=rainMap[d];
+      if(mm==null) return;
+      if(mm>=1){ rSum+=a.sum; rN++; } else { dSum+=a.sum; dN++; }
+    });
+    if(rN&&dN){
+      const wMax=Math.max(rSum/rN,dSum/dN);
+      html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)");
+      html+=barRow("☔ 雨", rSum/rN, wMax, yen(Math.round(rSum/rN))+`<br><span style="color:var(--muted)">${rN}日分</span>`);
+      html+=barRow("☀ 晴", dSum/dN, wMax, yen(Math.round(dSum/dN))+`<br><span style="color:var(--muted)">${dN}日分</span>`);
+    }
+  }else{
+    html+=`<div style="font-size:11px;color:var(--muted);margin-top:12px;">☔ フィルターの「雨/晴」を一度タップすると、天気別の分析もここに表示されます</div>`;
+  }
+
+  body.innerHTML=html;
+}
+document.getElementById("btnReview").onclick=async ()=>{
+  if(!rainMap) loadWeather().then(()=>{ if(document.getElementById("reviewPanel").style.display==="block") renderReview(); });
+  renderReview();
+  document.getElementById("reviewPanel").style.display="block";
+};
+document.getElementById("reviewClose").onclick=()=>document.getElementById("reviewPanel").style.display="none";
+
 // ===== ヒートマップ / GPS =====
 document.getElementById("btnHeat").onclick=e=>{ heatOn=!heatOn; e.target.classList.toggle("on",heatOn); render(); };
-let meMarker=null;
-document.getElementById("btnGps").onclick=()=>{
-  if(!navigator.geolocation) return alert("この端末では位置情報を取得できません");
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const ll=[pos.coords.latitude,pos.coords.longitude];
-    if(meMarker) meMarker.remove();
-    meMarker=L.circleMarker(ll,{radius:9,color:"#4fc3f7",fillColor:"#4fc3f7",fillOpacity:.9}).addTo(map).bindPopup("現在地");
-    map.setView(ll,14);
-  },()=>alert("位置情報を取得できませんでした。ブラウザの位置情報許可を確認してください。"));
+const btnStyle=document.getElementById("btnStyle");
+const STYLE_ORDER = GOOGLE_MAPS_API_KEY ? ["light","dark","google"] : ["light","dark"];
+const STYLE_NEXT_LABEL = {light:"🌙 夜間配色", dark: GOOGLE_MAPS_API_KEY ? "🗺 Google地図" : "☀️ 日中配色", google:"☀️ 日中配色"};
+function styleLabel(){ btnStyle.textContent = STYLE_NEXT_LABEL[mapStyle] || "🌙 夜間配色"; }
+btnStyle.onclick=()=>{
+  const i = STYLE_ORDER.indexOf(mapStyle);
+  const next = STYLE_ORDER[(i+1) % STYLE_ORDER.length];
+  const crossGoogle = (next==="google" || mapStyle==="google");
+  mapStyle = next;
+  localStorage.setItem("taxi-map-style", mapStyle);
+  if(crossGoogle){ location.reload(); return; } // 回転プラグインの読み込み構成を切り替えるため再読み込み
+  tileIdx = 0;
+  mountTiles(); styleLabel();
 };
+styleLabel();
+// Google表示中は回転機能を使えないため、向き切り替えボタンを隠す
+if(mapStyle==="google" || !ROTATE_OK){ document.getElementById("btnHead").style.display="none"; }
+let watchId=null, meMarker=null, meCircle=null, firstFix=true, follow=false, gpsSilent=false;
+let headingUp=false, lastLL=null;
+const btnGps=document.getElementById("btnGps");
+const btnHead=document.getElementById("btnHead");
+
+btnGps.onclick=()=>{
+  if(!navigator.geolocation) return alert("この端末では位置情報を取得できません");
+  if(watchId!==null && !follow){ // ドラッグで一時解除中 → センターに戻して追尾再開
+    follow=true; btnGps.textContent="追尾中";
+    if(lastLL) map.setView(lastLL, map.getZoom(), {animate:true});
+    return;
+  }
+  if(watchId!==null){ // 追尾を停止
+    navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
+    if(meMarker){meMarker.remove();meMarker=null;} if(meCircle){meCircle.remove();meCircle=null;}
+    if(map.setBearing) map.setBearing(0);
+    btnGps.classList.remove("on"); btnGps.textContent="現在地"; return;
+  }
+  firstFix=true; follow=true; btnGps.classList.add("on"); btnGps.textContent="追尾中";
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    const ll=[pos.coords.latitude,pos.coords.longitude];
+    lastLL=ll;
+    if(!meMarker){
+      meMarker=L.marker(ll,{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],
+        html:'<div class="me-dot"></div>'}), zIndexOffset:1000}).addTo(map);
+      meCircle=L.circle(ll,{radius:pos.coords.accuracy||30,color:"#1e88e5",weight:1,fillOpacity:.12}).addTo(map);
+    }else{
+      meMarker.setLatLng(ll); meCircle.setLatLng(ll); meCircle.setRadius(pos.coords.accuracy||30);
+    }
+    // 進行方向を上に(移動中のみGPSから方位が取れる)
+    if(headingUp && map.setBearing && pos.coords.heading!=null && !isNaN(pos.coords.heading)){
+      map.setBearing(-pos.coords.heading);
+    }
+    if(firstFix){ map.setView(ll,15); firstFix=false; }
+    else if(follow){ map.setView(ll, map.getZoom(), {animate:false}); } // 常に自分が中心
+  },err=>{
+    if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
+    gpsSilent=false;
+    navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
+    btnGps.classList.remove("on"); btnGps.textContent="現在地";
+  },{enableHighAccuracy:true, maximumAge:3000, timeout:15000});
+};
+
+// 地図を手で動かしたらセンター追尾を一時解除(記録は継続)
+map.on("dragstart",()=>{
+  if(watchId!==null && follow){ follow=false; btnGps.textContent="再センター"; }
+});
+
+// 北固定 ⇔ 進行方向の切り替え
+btnHead.onclick=()=>{
+  headingUp=!headingUp;
+  btnHead.classList.toggle("on",headingUp);
+  btnHead.textContent = headingUp ? "🧭 進行方向" : "⬆️ 北固定";
+  if(!headingUp && map.setBearing) map.setBearing(0); // 北固定に戻す
+};
+
+// ズームボタン(中心=自分の位置を保ったまま拡大縮小)
+document.getElementById("zoomIn").onclick=()=>map.zoomIn();
+document.getElementById("zoomOut").onclick=()=>map.zoomOut();
 
 // ===== 追加(地図タップ → フォーム) =====
 let addMode=false, pendingLL=null;
@@ -354,11 +1277,16 @@ map.on("click",e=>{
   sheet.classList.add("open");
 });
 document.getElementById("btnCancel").onclick=()=>sheet.classList.remove("open");
+let formMode="app";
+document.getElementById("mApp").onclick=()=>{ formMode="app";
+  document.getElementById("mApp").classList.add("on"); document.getElementById("mSt").classList.remove("on"); };
+document.getElementById("mSt").onclick=()=>{ formMode="st";
+  document.getElementById("mSt").classList.add("on"); document.getElementById("mApp").classList.remove("on"); };
 document.getElementById("rideForm").onsubmit=e=>{
   e.preventDefault();
   rides.push({ id:"u"+Date.now(), d:document.getElementById("fDate").value, t:document.getElementById("fTime").value,
     p:document.getElementById("fPlace").value, lat:+pendingLL.lat.toFixed(5), lng:+pendingLL.lng.toFixed(5),
-    f:+document.getElementById("fFare").value, dst:document.getElementById("fDest").value });
+    f:+document.getElementById("fFare").value, dst:document.getElementById("fDest").value, m:formMode, drv:MY_NAME });
   save(); sheet.classList.remove("open");
   addMode=false; document.getElementById("btnAdd").classList.remove("on"); hint.classList.remove("show");
   render();
@@ -366,30 +1294,89 @@ document.getElementById("rideForm").onsubmit=e=>{
 
 // ===== CSV =====
 document.getElementById("btnCsvOut").onclick=()=>{
-  const rows=[["date","time","pickup","lat","lng","fare","dropoff"],
-    ...rides.map(r=>[r.d,r.t,r.p,r.lat,r.lng,r.f,r.dst||""])];
+  const rows=[["date","time","pickup","lat","lng","fare","dropoff","mode","driver"],
+    ...rides.map(r=>[r.d,r.t,r.p,r.lat,r.lng,r.f,r.dst||"",r.m||"app",r.drv||""])];
   const csv="\uFEFF"+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download="rides.csv"; a.click();
 };
+// ===== 取り込み共通処理(CSV/タブ区切り、重複は自動スキップ) =====
+function importText(text, silent){
+  // 改行が失われている場合に備え、日付(YYYY-MM-DD)の直前で強制的に区切る
+  const norm = text.replace(/^\uFEFF/,"")
+    .replace(/\s+(?="?\d{4}-\d{2}-\d{2}"?[,\t])/g,"\n");
+  const lines = norm.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
+    .filter(l=>/^"?\d{4}-\d{2}-\d{2}"?[,\t]/.test(l)); // 記録行(日付始まり、引用符付きも可)のみ対象
+  let added=0, dup=0, bad=0;
+  lines.forEach(line=>{
+    let c;
+    if(line.includes("\t")){
+      c=line.split("\t").map(x=>x.trim());
+    }else{
+      c=line.match(/("([^"]|"")*"|[^,]*)/g).filter(x=>x!=="").map(x=>x.replace(/^"|"$/g,"").replace(/""/g,'"'));
+    }
+    if(c.length>=6 && !isNaN(+c[3]) && !isNaN(+c[4]) && !isNaN(+c[5].replace(/[,¥\s]/g,""))){
+      const rec={ d:c[0], t:c[1], p:c[2], lat:+c[3], lng:+c[4], f:+c[5].replace(/[,¥\s]/g,""),
+        dst:c[6]||"", m:(c[7]==="st"||c[7]==="流し")?"st":"app", drv:(c[8]||"").trim() };
+      const exists=rides.some(r=>r.d===rec.d && r.t===rec.t && r.f===rec.f && r.lat===rec.lat && r.lng===rec.lng);
+      if(exists){ dup++; return; }
+      rides.push({id:"i"+Date.now()+Math.random(), ...rec});
+      added++;
+    }else{ bad++; }
+  });
+  save(); render();
+  if(silent){
+    if(added>0){ // 共有データ取り込み時は控えめに通知
+      const h=document.getElementById("hint");
+      h.textContent="共有データから"+added+"件を追加しました";
+      h.classList.add("show");
+      setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }, 3500);
+    }
+  }else{
+    let msg=added+"件を読み込みました";
+    if(dup) msg+="\n(重複のため"+dup+"件をスキップ)";
+    if(bad) msg+="\n(形式エラーで"+bad+"件をスキップ)";
+    alert(msg);
+  }
+  return added;
+}
+
+// ===== 共有データの自動読み込み(アプリと同じ場所のrides.csvを起動時に取得) =====
+function loadShared(silent){
+  return fetch("rides.csv?v="+Date.now(),{cache:"no-store"})
+    .then(r=>{
+      if(!r.ok) throw new Error("rides.csvが見つかりません(HTTP "+r.status+")");
+      return r.text();
+    })
+    .then(t=>importText(t, silent))
+    .catch(err=>{
+      if(!silent) alert("共有データを読み込めませんでした。\n"+err.message+"\n(ネット接続と、rides.csvがindex.htmlと同じ場所にあるかを確認してください)");
+    });
+}
+loadShared(true); // 起動時は静かに実行
+document.getElementById("btnSync").onclick=()=>loadShared(false); // 手動時は結果を表示
+
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
 document.getElementById("fileCsv").onchange=e=>{
   const file=e.target.files[0]; if(!file) return;
   const rd=new FileReader();
-  rd.onload=()=>{
-    const lines=rd.result.replace(/^\uFEFF/,"").split(/\r?\n/).filter(Boolean);
-    let added=0;
-    lines.slice(1).forEach(line=>{
-      const c=line.match(/("([^"]|"")*"|[^,]*)/g).filter(x=>x!=="").map(x=>x.replace(/^"|"$/g,"").replace(/""/g,'"'));
-      if(c.length>=6 && !isNaN(+c[3]) && !isNaN(+c[4]) && !isNaN(+c[5])){
-        rides.push({id:"i"+Date.now()+Math.random(), d:c[0],t:c[1],p:c[2],lat:+c[3],lng:+c[4],f:+c[5],dst:c[6]||""});
-        added++;
-      }
-    });
-    save(); render(); alert(added+"件を読み込みました");
-  };
+  rd.onload=()=>importText(rd.result);
   rd.readAsText(file); e.target.value="";
+};
+
+// ===== 貼り付け読み込み =====
+const pasteSheet=document.getElementById("pasteSheet");
+document.getElementById("btnPaste").onclick=()=>{
+  document.getElementById("pasteText").value="";
+  pasteSheet.classList.add("open");
+};
+document.getElementById("btnPasteCancel").onclick=()=>pasteSheet.classList.remove("open");
+document.getElementById("pasteForm").onsubmit=e=>{
+  e.preventDefault();
+  const text=document.getElementById("pasteText").value;
+  if(text.trim()) importText(text);
+  pasteSheet.classList.remove("open");
 };
 
 // ===== 初期化 =====
@@ -399,6 +1386,39 @@ document.getElementById("btnReset").onclick=()=>{
   }
 };
 
+// ===== フィルターパネルの開閉 =====
+const panel=document.getElementById("panel"), handleText=document.getElementById("handleText");
+function setPanel(collapsed){
+  panel.classList.toggle("collapsed", collapsed);
+  handleText.textContent = collapsed ? "フィルターを開く ▲" : "フィルターを閉じる ▼";
+  localStorage.setItem("taxi-map-panel", collapsed ? "1" : "0");
+  setTimeout(()=>map.invalidateSize(), 280); // 地図の表示領域を再計算
+}
+const handle=document.getElementById("panelHandle");
+let tsY=null, flicked=false;
+handle.addEventListener("touchstart", e=>{ tsY=e.touches[0].clientY; flicked=false; },{passive:true});
+handle.addEventListener("touchmove", e=>{
+  if(tsY===null) return;
+  const dy=e.touches[0].clientY - tsY;
+  if(Math.abs(dy)>20){ setPanel(dy>0); flicked=true; tsY=null; } // 下=閉じる / 上=開く
+},{passive:true});
+handle.addEventListener("touchend", ()=>{ tsY=null; },{passive:true});
+handle.onclick=()=>{ if(flicked){ flicked=false; return; } setPanel(!panel.classList.contains("collapsed")); };
+if(localStorage.getItem("taxi-map-panel")==="1") setPanel(true);
+
+// ===== 起動時の初期状態(現在地ON・ヒートON・時間帯=今) =====
+(function initDefaults(){
+  document.getElementById("btnHeat").classList.add("on");
+  const h=new Date().getHours();
+  const sh=h<5?h+24:h;
+  elMin.value=Math.max(5, sh-1); elMax.value=Math.min(29, sh+2);
+  tMin=+elMin.value; tMax=+elMax.value;
+  const fill=document.getElementById("tlFill");
+  fill.style.left=((tMin-5)/24*100)+"%";
+  fill.style.width=((tMax-tMin)/24*100)+"%";
+  document.getElementById("tlVal").textContent=fmtH(tMin)+" – "+fmtH(tMax);
+  gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
+})();
 render();
 </script>
 </body>
