@@ -441,7 +441,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-8";
+const APP_VER = "2026.07.18-9";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -764,7 +764,7 @@ document.getElementById("btnAdvice").onclick=()=>{
 document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
 
 // ===== 今日の営業ブリーフィング(天気予報+主要会場イベント+自分の実績) =====
-const VENUES=["東京ドーム(水道橋)","日本武道館(九段下)","有明アリーナ","東京ガーデンシアター(有明)","国立競技場(千駄ヶ谷)","代々木第一体育館","明治神宮球場","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
+const VENUES=["東京ドーム(水道橋)","明治神宮球場","有明アリーナ","東京ガーデンシアター(有明)","日本武道館(九段下)","国立競技場(千駄ヶ谷)","代々木第一体育館","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
 async function fetchForecastToday(){
   const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
     +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=2";
@@ -852,13 +852,14 @@ async function buildBrief(force){
     const evening=myTopAreas([18,22]), night=myTopAreas([22,29]);
     const promptText=
 `あなたは東京のタクシー乗務員の営業参謀です。今日は${today}(${dow}曜)、現在${now.getHours()}時です。
-まず、次の会場で今日開催されるコンサート・スポーツ・イベントをWeb検索で調べてください: ${VENUES.join("、")}
-あわせて、今日東京都内で開催される花火大会・大規模な祭り(神輿・盆踊り含む)・大型展示会・マラソン等の交通規制を伴う行事も調べてください。
+まず、次の主要会場について今日の開催情報をWeb検索で必ず1つずつ確認してください: 東京ドーム、明治神宮球場、有明アリーナ、東京ガーデンシアター、日本武道館、国立競技場、代々木第一体育館。
+東京ドームと明治神宮球場はプロ野球の試合の有無を必ず確認してください(試合終了は開始の約3時間20分後が目安)。
+さらに、次の会場のイベントと、都内の花火大会・大規模な祭り・大型展示会・マラソン等の交通規制を伴う行事も調べてください: ${VENUES.slice(7).join("、")}
 そのうえで、以下を踏まえて今日これからの営業ブリーフィングを日本語で書いてください。
 - 今日の天気: ${wx||"不明"}
 - 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
 - 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
-形式: 前置きなし。「イベント」(開催がある会場・花火・祭りだけを1行ずつ、場所・内容・開始/終了目安つきで。なければ「大きな催しは確認できず」)→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。全体で10行以内。`;
+形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。`;
     const r=await callSearchAI(key, promptText);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
     if(r.err) throw new Error(r.err);
