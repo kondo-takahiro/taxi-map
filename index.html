@@ -227,6 +227,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
     <button class="btn" id="btnReview">📊 振り返り</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
+    <button class="btn" id="btnStands">🚕 乗り場</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
@@ -439,7 +440,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-5";
+const APP_VER = "2026.07.18-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -832,11 +833,12 @@ async function buildBrief(force){
     const promptText=
 `あなたは東京のタクシー乗務員の営業参謀です。今日は${today}(${dow}曜)、現在${now.getHours()}時です。
 まず、次の会場で今日開催されるコンサート・スポーツ・イベントをWeb検索で調べてください: ${VENUES.join("、")}
+あわせて、今日東京都内で開催される花火大会・大規模な祭り(神輿・盆踊り含む)・大型展示会・マラソン等の交通規制を伴う行事も調べてください。
 そのうえで、以下を踏まえて今日これからの営業ブリーフィングを日本語で書いてください。
 - 今日の天気: ${wx||"不明"}
 - 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
 - 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
-形式: 前置きなし。「イベント」(開催があるものだけ会場名・内容・開演/終演目安を1行ずつ。なければ「主要会場の大きな公演は確認できず」)→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。全体で10行以内。`;
+形式: 前置きなし。「イベント」(開催がある会場・花火・祭りだけを1行ずつ、場所・内容・開始/終了目安つきで。なければ「大きな催しは確認できず」)→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。全体で10行以内。`;
     const r=await callSearchAI(key, promptText);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
     if(r.err) throw new Error(r.err);
@@ -849,6 +851,60 @@ async function buildBrief(force){
 document.getElementById("btnBrief").onclick=()=>buildBrief(false);
 document.getElementById("briefReload").onclick=()=>buildBrief(true);
 document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
+
+// ===== タクシー乗り場(OpenStreetMapのデータ・初回のみ取得して端末に保存) =====
+let standsLayer=null, standsOn=false, standsLoading=false;
+async function loadStands(){
+  try{
+    const c=JSON.parse(localStorage.getItem("taxistands-v1"));
+    if(c && c.pts && c.pts.length) return c.pts;
+  }catch(e){}
+  const q='[out:json][timeout:25];node["amenity"="taxi"](35.50,139.53,35.85,139.95);out body;';
+  const res=await fetch("https://overpass-api.de/api/interpreter",{
+    method:"POST",
+    headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:"data="+encodeURIComponent(q)
+  });
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  const j=await res.json();
+  const pts=(j.elements||[]).map(e=>[+e.lat.toFixed(5),+e.lon.toFixed(5),(e.tags&&e.tags.name)||""]);
+  if(pts.length) localStorage.setItem("taxistands-v1", JSON.stringify({pts, at:Date.now()}));
+  return pts;
+}
+document.getElementById("btnStands").onclick=async ()=>{
+  const b=document.getElementById("btnStands");
+  if(standsOn){ // オフにする
+    if(standsLayer) map.removeLayer(standsLayer);
+    standsOn=false; b.classList.remove("on"); return;
+  }
+  if(standsLoading) return;
+  if(!standsLayer){
+    standsLoading=true;
+    const h=document.getElementById("hint");
+    h.textContent="乗り場データを取得中…"; h.classList.add("show");
+    try{
+      const pts=await loadStands();
+      if(!pts.length) throw new Error("データが空でした");
+      const cv=L.canvas({padding:0.3});
+      standsLayer=L.layerGroup(pts.map(p=>{
+        const m=L.circleMarker([p[0],p[1]],{renderer:cv, radius:5,
+          color:"#ffffff", weight:1.5, fillColor:"#00c2a8", fillOpacity:.95});
+        if(p[2]) m.bindTooltip("🚕 "+p[2]);
+        else m.bindTooltip("🚕 タクシー乗り場");
+        return m;
+      }));
+    }catch(err){
+      h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+      standsLoading=false;
+      alert("乗り場データを取得できませんでした。電波状況を確認して、もう一度お試しください。\n("+err.message+")");
+      return;
+    }
+    h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+    standsLoading=false;
+  }
+  standsLayer.addTo(map);
+  standsOn=true; b.classList.add("on");
+};
 
 // ===== AIによる立ち回り解説(OpenAI / Anthropic 両対応・キーは端末内のみに保存) =====
 let lastAdvice=null; // showAdviceで更新
