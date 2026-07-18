@@ -175,6 +175,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="flex:1"></span>
     <span id="adviceClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
+  <div id="adviceMode" style="font-size:12px;padding:7px 9px;background:var(--panel2);border-radius:9px;margin-bottom:2px;line-height:1.55;"></div>
   <div id="adviceList"></div>
   <div id="adviceAIText" style="display:none;margin-top:8px;padding:10px;background:var(--panel2);border-radius:10px;font-size:13px;line-height:1.65;"></div>
   <button class="btn" id="adviceAI" style="margin-top:8px;width:100%;padding:10px;">🤖 AIに立ち回りを相談</button>
@@ -438,7 +439,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-3";
+const APP_VER = "2026.07.18-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -655,6 +656,10 @@ function buildAdvice(cur){
     const uniq=new Set(pool.map(r=>r.p));
     if(uniq.size>=5) break;
   }
+  // この時間帯のアプリ/流しの傾向
+  let mA=0,mAf=0,mS=0,mSf=0;
+  pool.forEach(r=>{ if((r.m||"app")==="st"){mS++;mSf+=r.f;} else {mA++;mAf+=r.f;} });
+  const modeStat={nApp:mA, nSt:mS, avgApp:mA?mAf/mA:0, avgSt:mS?mSf/mS:0};
   const byAddr=new Map();
   pool.forEach(r=>{
     const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,dsts:{}};
@@ -674,11 +679,31 @@ function buildAdvice(cur){
   }).filter(c=>c.dist<=10)
     .sort((x,y)=>y.score-x.score)
     .slice(0,3);
-  return {cands, win, sh};
+  return {cands, win, sh, modeStat};
+}
+function modeVerdict(ms){
+  const total=ms.nApp+ms.nSt;
+  if(!total) return "";
+  const shSt=ms.nSt/total;
+  const pct=`件数: 流し${Math.round(shSt*100)}%・アプリ${Math.round((1-shSt)*100)}%`;
+  const av=`平均: 流し${ms.nSt?yen(Math.round(ms.avgSt)):"—"}・アプリ${ms.nApp?yen(Math.round(ms.avgApp)):"—"}`;
+  let v;
+  const stWin=ms.avgSt>ms.avgApp*1.15, appWin=ms.avgApp>ms.avgSt*1.15;
+  if(shSt>=0.55 && (stWin||!appWin)) v="→ 流しが有利な時間帯";
+  else if(shSt<=0.45 && (appWin||!stWin)) v="→ アプリが有利な時間帯";
+  else if(shSt>=0.5 && appWin) v="→ 本数は流し、単価はアプリ";
+  else if(shSt<0.5 && stWin) v="→ 本数はアプリ、単価は流し";
+  else v="→ どちらも拮抗";
+  const note = total<8 ? "(実績少なめ・参考程度)" : "";
+  return `${pct} / ${av}\n<b style="color:var(--amber)">${v}</b>${note}`;
 }
 function showAdvice(cur){
-  const {cands,win,sh}=buildAdvice(cur);
-  lastAdvice={cands,win,sh,cur};
+  const {cands,win,sh,modeStat}=buildAdvice(cur);
+  lastAdvice={cands,win,sh,cur,modeStat};
+  const md=document.getElementById("adviceMode");
+  const mv=modeVerdict(modeStat);
+  if(mv){ md.style.display="block"; md.innerHTML=mv.replace("\n","<br>"); }
+  else md.style.display="none";
   const ai=document.getElementById("adviceAIText"); ai.style.display="none"; ai.textContent="";
   const panel=document.getElementById("advicePanel");
   const now=new Date();
@@ -873,9 +898,11 @@ async function askAI(){
   out.style.display="block"; out.textContent="AIが分析中…";
   const now=new Date();
   const dow=["日","月","火","水","木","金","土"][now.getDay()];
+  const ms=lastAdvice.modeStat||{};
   const ctx={
     現在時刻: now.getHours()+":"+String(now.getMinutes()).padStart(2,"0"),
     曜日: dow+"曜",
+    この時間帯の配車傾向: ms.nApp+ms.nSt ? `流し${ms.nSt}件(平均${Math.round(ms.avgSt)}円)・アプリ${ms.nApp}件(平均${Math.round(ms.avgApp)}円)` : "不明",
     候補: lastAdvice.cands.map(c=>({
       場所:c.p, 方角:bearingText(lastAdvice.cur,c.ll), 距離km:+c.dist.toFixed(1),
       平均単価:Math.round(c.avg), 実績件数:c.n, 流し比率:Math.round(c.st/c.n*100)+"%",
