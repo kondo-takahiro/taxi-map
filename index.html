@@ -439,7 +439,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-4";
+const APP_VER = "2026.07.18-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1554,6 +1554,20 @@ handle.addEventListener("touchmove", e=>{
 handle.addEventListener("touchend", ()=>{ tsY=null; },{passive:true});
 handle.onclick=()=>{ if(flicked){ flicked=false; return; } setPanel(!panel.classList.contains("collapsed")); };
 if(localStorage.getItem("taxi-map-panel")==="1") setPanel(true);
+
+// ===== 画面を消灯させない(ナビアプリと同様の挙動) =====
+let wakeLock=null;
+async function keepAwake(){
+  try{
+    if(!("wakeLock" in navigator)) return;
+    wakeLock=await navigator.wakeLock.request("screen");
+  }catch(e){} // 低電力モード時などは取得できないことがある(そのまま続行)
+}
+// バックグラウンドから戻ったときに取り直す(ロックは自動解除されるため)
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible") keepAwake();
+});
+keepAwake();
 
 // ===== 起動時の初期状態(現在地ON・ヒートON・時間帯=今) =====
 (function initDefaults(){
