@@ -228,6 +228,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnReview">📊 振り返り</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
+    <button class="btn" id="btnAppMode">📲 アプリ営業</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
@@ -440,7 +441,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-6";
+const APP_VER = "2026.07.18-8";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -520,6 +521,7 @@ function shiftDow(r){
 let dowSet = new Set();      // 空 = 全曜日
 let modeFilter = "all";      // all / app / st
 let weatherFilter = "all";   // all / rain / dry
+let appMode = localStorage.getItem("app-mode")==="1"; // アプリ営業モード
 let rainMap = null;          // 営業日→降水量mm(初回利用時に取得)
 try{ rainMap = JSON.parse(localStorage.getItem("wx-v1")) || null; }catch(e){}
 
@@ -653,7 +655,7 @@ function buildAdvice(cur){
   // 現在時刻の前後の実績を集計(件数が少なければ範囲を広げる)
   let win=2, pool=[];
   for(; win<=5; win+=1.5){
-    pool=rides.filter(r=>Math.abs(shiftHour(r.t)+parseInt(r.t.split(":")[1],10)/60-sh)<=win);
+    pool=rides.filter(r=>(!appMode || (r.m||"app")==="app") && Math.abs(shiftHour(r.t)+parseInt(r.t.split(":")[1],10)/60-sh)<=win);
     const uniq=new Set(pool.map(r=>r.p));
     if(uniq.size>=5) break;
   }
@@ -674,7 +676,10 @@ function buildAdvice(cur){
     const dist=haversineKm(cur,ll);
     const avg=a.sum/a.n;
     // 単価が高く、実績が多く、近いほど高スコア
-    const score=avg*Math.log2(1+a.n)/(1+dist/1.2); // 距離の減点を約2倍に強化
+    // 通常: 単価重視 / アプリ営業モード: 鳴る回数(件数)重視
+    const score = appMode
+      ? a.n*Math.sqrt(avg)/(1+dist/1.2)
+      : avg*Math.log2(1+a.n)/(1+dist/1.2);
     const topDest=Object.entries(a.dsts).sort((x,y)=>y[1]-x[1])[0];
     return {p, avg, n:a.n, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
   }).filter(c=>c.dist<=10)
@@ -698,6 +703,20 @@ function modeVerdict(ms){
   const note = total<8 ? "(実績少なめ・参考程度)" : "";
   return `${pct} / ${av}\n<b style="color:var(--amber)">${v}</b>${note}`;
 }
+function appGapMap(){
+  const sorted=[...rides].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const m=new Map();
+  for(let i=1;i<sorted.length;i++){
+    const prev=sorted[i-1], cur=sorted[i];
+    if((cur.m||"app")!=="app") continue;
+    if(shiftDateStr(prev)!==shiftDateStr(cur)) continue;
+    const gap=(new Date(cur.d+"T"+cur.t)-new Date(prev.d+"T"+prev.t))/60000;
+    if(gap<=0 || gap>90) continue;
+    const a=m.get(cur.p)||{sum:0,n:0};
+    a.sum+=gap; a.n++; m.set(cur.p,a);
+  }
+  return m;
+}
 function showAdvice(cur){
   const {cands,win,sh,modeStat}=buildAdvice(cur);
   lastAdvice={cands,win,sh,cur,modeStat};
@@ -708,8 +727,9 @@ function showAdvice(cur){
   const ai=document.getElementById("adviceAIText"); ai.style.display="none"; ai.textContent="";
   const panel=document.getElementById("advicePanel");
   const now=new Date();
+  const gapMap = appMode ? appGapMap() : new Map();
   document.getElementById("adviceTime").textContent=
-    now.getHours()+":"+String(now.getMinutes()).padStart(2,"0")+"・現在地から";
+    now.getHours()+":"+String(now.getMinutes()).padStart(2,"0")+(appMode?"・アプリ営業モード":"・現在地から");
   const el=document.getElementById("adviceList");
   if(!cands.length){
     el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">この時間帯・この周辺の実績がまだありません。データが溜まると提案できるようになります。</div>';
@@ -719,7 +739,7 @@ function showAdvice(cur){
         <span style="font-size:14px;color:var(--muted);width:16px;">${i+1}</span>
         <div style="flex:1;min-width:0;">
           <div style="font-size:16px;font-weight:700;">${c.p}</div>
-          <div style="font-size:12px;color:var(--muted);">${bearingText(cur,c.ll)}へ ${c.dist.toFixed(1)}km・${c.n}件の実績</div>
+          <div style="font-size:12px;color:var(--muted);">${bearingText(cur,c.ll)}へ ${c.dist.toFixed(1)}km・${c.n}件の実績${(appMode&&gapMap.has(c.p)&&gapMap.get(c.p).n>=3)?"・目安"+Math.round(gapMap.get(c.p).sum/gapMap.get(c.p).n)+"分で鳴る":""}</div>
         </div>
         <span style="font-size:16px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${yen(Math.round(c.avg))}</span>
         <button class="btn on adv-go" data-lat="${c.ll[0]}" data-lng="${c.ll[1]}" style="padding:8px 10px;font-size:12px;">経路</button>
@@ -859,17 +879,30 @@ async function loadStands(){
     const c=JSON.parse(localStorage.getItem("taxistands-v1"));
     if(c && c.pts && c.pts.length) return c.pts;
   }catch(e){}
-  const q='[out:json][timeout:25];node["amenity"="taxi"](35.50,139.53,35.85,139.95);out body;';
-  const res=await fetch("https://overpass-api.de/api/interpreter",{
-    method:"POST",
-    headers:{"content-type":"application/x-www-form-urlencoded"},
-    body:"data="+encodeURIComponent(q)
-  });
-  if(!res.ok) throw new Error("HTTP "+res.status);
-  const j=await res.json();
-  const pts=(j.elements||[]).map(e=>[+e.lat.toFixed(5),+e.lon.toFixed(5),(e.tags&&e.tags.name)||""]);
-  if(pts.length) localStorage.setItem("taxistands-v1", JSON.stringify({pts, at:Date.now()}));
-  return pts;
+  const q='[out:json][timeout:20];node["amenity"="taxi"](35.50,139.53,35.85,139.95);out body;';
+  // 提供サーバーは混雑することがあるため、複数を順に試す
+  const servers=[
+    "https://overpass.osm.jp/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter"
+  ];
+  let lastErr=null;
+  for(const url of servers){
+    try{
+      const res=await fetch(url,{
+        method:"POST",
+        headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(q)
+      });
+      if(!res.ok){ lastErr=new Error("HTTP "+res.status); continue; }
+      const j=await res.json();
+      const pts=(j.elements||[]).map(e=>[+e.lat.toFixed(5),+e.lon.toFixed(5),(e.tags&&e.tags.name)||""]);
+      if(!pts.length){ lastErr=new Error("データが空でした"); continue; }
+      localStorage.setItem("taxistands-v1", JSON.stringify({pts, at:Date.now()}));
+      return pts;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr||new Error("全サーバーに接続できませんでした");
 }
 document.getElementById("btnStands").onclick=async ()=>{
   const b=document.getElementById("btnStands");
@@ -1223,7 +1256,12 @@ document.querySelectorAll(".chip.dow").forEach(c=>{
 document.querySelectorAll(".chip.mode").forEach(c=>{
   c.onclick=()=>{
     document.querySelectorAll(".chip.mode").forEach(x=>x.classList.remove("on"));
-    c.classList.add("on"); modeFilter=c.dataset.mode; render();
+    c.classList.add("on"); modeFilter=c.dataset.mode;
+    if(modeFilter!=="app" && appMode){
+      appMode=false; localStorage.setItem("app-mode","0");
+      document.getElementById("btnAppMode").classList.remove("on");
+    }
+    render();
   };
 });
 
@@ -1329,6 +1367,22 @@ function renderReview(){
   html+=sectionTitle("配車の内訳");
   html+=barRow("アプリ", nApp, mine.length, nApp+"回("+Math.round(nApp/mine.length*100)+"%)");
   html+=barRow("流し", nSt, mine.length, nSt+"回("+Math.round(nSt/mine.length*100)+"%)");
+
+  // アプリの大物実績
+  const big=mine.filter(r=>(r.m||"app")==="app" && r.f>=6000);
+  if(big.length){
+    const bm=new Map();
+    big.forEach(r=>{
+      const a=bm.get(r.p)||{n:0,max:0,hs:0};
+      a.n++; a.max=Math.max(a.max,r.f); a.hs+=shiftHour(r.t); bm.set(r.p,a);
+    });
+    const brows=[...bm.entries()].sort((x,y)=>y[1].n-x[1].n || y[1].max-x[1].max).slice(0,5);
+    html+=sectionTitle("アプリの大物(¥6,000以上が出た乗車地)");
+    brows.forEach(([p,a])=>{
+      html+=barRow(p.length>7?p.slice(0,7)+"…":p, a.max, brows[0][1].max,
+        yen(a.max)+`<br><span style="color:var(--muted)">${a.n}件・${Math.round(a.hs/a.n)%24}時台中心</span>`);
+    });
+  }
 
   // 時間効率の良い乗車地(乗車間隔から推定)
   const sorted=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
@@ -1625,8 +1679,23 @@ document.addEventListener("visibilitychange",()=>{
 });
 keepAwake();
 
+// ===== アプリ営業モード切替 =====
+function applyAppMode(){
+  const b=document.getElementById("btnAppMode");
+  if(appMode){ b.classList.add("on"); modeFilter="app"; }
+  else{ b.classList.remove("on"); modeFilter="all"; }
+  document.querySelectorAll(".chip.mode").forEach(x=>
+    x.classList.toggle("on", x.dataset.mode===modeFilter));
+}
+document.getElementById("btnAppMode").onclick=()=>{
+  appMode=!appMode;
+  localStorage.setItem("app-mode", appMode?"1":"0");
+  applyAppMode(); render();
+};
+
 // ===== 起動時の初期状態(現在地ON・ヒートON・時間帯=今) =====
 (function initDefaults(){
+  applyAppMode();
   document.getElementById("btnHeat").classList.add("on");
   const h=new Date().getHours();
   const sh=h<5?h+24:h;
