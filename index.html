@@ -441,7 +441,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-10";
+const APP_VER = "2026.07.18-13";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -653,9 +653,12 @@ function buildAdvice(cur){
   const h=now.getHours()+now.getMinutes()/60;
   const sh=h<5?h+24:h;
   // 現在時刻の前後の実績を集計(件数が少なければ範囲を広げる)
+  // 曜日チップで選択があればその曜日群、「全て」なら今日の営業曜日のみ(朝5時までは前日扱い)
+  const nd=new Date(); if(nd.getHours()<5) nd.setDate(nd.getDate()-1);
+  const dows = dowSet.size ? new Set(dowSet) : new Set([nd.getDay()]);
   let win=2, pool=[];
   for(; win<=5; win+=1.5){
-    pool=rides.filter(r=>(!appMode || (r.m||"app")==="app") && Math.abs(shiftHour(r.t)+parseInt(r.t.split(":")[1],10)/60-sh)<=win);
+    pool=rides.filter(r=>dows.has(shiftDow(r)) && (!appMode || (r.m||"app")==="app") && Math.abs(shiftHour(r.t)+parseInt(r.t.split(":")[1],10)/60-sh)<=win);
     const uniq=new Set(pool.map(r=>r.p));
     if(uniq.size>=5) break;
   }
@@ -665,8 +668,9 @@ function buildAdvice(cur){
   const modeStat={nApp:mA, nSt:mS, avgApp:mA?mAf/mA:0, avgSt:mS?mSf/mS:0};
   const byAddr=new Map();
   pool.forEach(r=>{
-    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,dsts:{}};
+    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,sd:0,dsts:{}};
     a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    if(shiftDow(r)===todow) a.sd++; // 今日と同じ曜日の実績
     if((r.m||"app")==="st") a.st++;
     if(r.dst){ const d=r.dst.replace(/\d+$/,""); a.dsts[d]=(a.dsts[d]||0)+1; }
     byAddr.set(r.p,a);
@@ -681,11 +685,11 @@ function buildAdvice(cur){
       ? a.n*Math.sqrt(avg)/(1+dist/1.2)
       : avg*Math.log2(1+a.n)/(1+dist/1.2);
     const topDest=Object.entries(a.dsts).sort((x,y)=>y[1]-x[1])[0];
-    return {p, avg, n:a.n, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
+    return {p, avg, n:a.n, sd:a.sd, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
   }).filter(c=>c.dist<=10)
     .sort((x,y)=>y.score-x.score)
     .slice(0,3);
-  return {cands, win, sh, modeStat};
+  return {cands, win, sh, modeStat, dows};
 }
 function modeVerdict(ms){
   const total=ms.nApp+ms.nSt;
@@ -718,8 +722,10 @@ function appGapMap(){
   return m;
 }
 function showAdvice(cur){
-  const {cands,win,sh,modeStat}=buildAdvice(cur);
+  const {cands,win,sh,modeStat,dows}=buildAdvice(cur);
   lastAdvice={cands,win,sh,cur,modeStat};
+  const DN=["日","月","火","水","木","金","土"];
+  const dowName=[1,2,3,4,5,6,0].filter(d=>dows.has(d)).map(d=>DN[d]).join("・");
   const md=document.getElementById("adviceMode");
   const mv=modeVerdict(modeStat);
   if(mv){ md.style.display="block"; md.innerHTML=mv.replace("\n","<br>"); }
@@ -732,7 +738,7 @@ function showAdvice(cur){
     now.getHours()+":"+String(now.getMinutes()).padStart(2,"0")+(appMode?"・アプリ営業モード":"・現在地から");
   const el=document.getElementById("adviceList");
   if(!cands.length){
-    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">この時間帯・この周辺の実績がまだありません。データが溜まると提案できるようになります。</div>';
+    el.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:8px 0;">${dowName}曜のこの時間帯・この周辺の実績がまだありません。データが溜まると提案できるようになります。</div>`;
   }else{
     el.innerHTML=cands.map((c,i)=>`
       <div style="display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid var(--line);">
@@ -750,7 +756,7 @@ function showAdvice(cur){
   }
   const hlo=Math.round((sh-win+24)%24), hhi=Math.round((sh+win)%24);
   document.getElementById("adviceNote").textContent=
-    `${hlo}時〜${hhi}時台の全期間実績から、単価・件数・距離を総合して算出`;
+    `${dowName}曜の${hlo}時〜${hhi}時台の実績のみから、単価・件数・距離を総合して算出`;
   panel.style.display="block";
 }
 document.getElementById("btnAdvice").onclick=()=>{
