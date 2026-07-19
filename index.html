@@ -441,7 +441,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-13";
+const APP_VER = "2026.07.18-14";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -668,9 +668,8 @@ function buildAdvice(cur){
   const modeStat={nApp:mA, nSt:mS, avgApp:mA?mAf/mA:0, avgSt:mS?mSf/mS:0};
   const byAddr=new Map();
   pool.forEach(r=>{
-    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,sd:0,dsts:{}};
+    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0,st:0,dsts:{}};
     a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
-    if(shiftDow(r)===todow) a.sd++; // 今日と同じ曜日の実績
     if((r.m||"app")==="st") a.st++;
     if(r.dst){ const d=r.dst.replace(/\d+$/,""); a.dsts[d]=(a.dsts[d]||0)+1; }
     byAddr.set(r.p,a);
@@ -685,7 +684,7 @@ function buildAdvice(cur){
       ? a.n*Math.sqrt(avg)/(1+dist/1.2)
       : avg*Math.log2(1+a.n)/(1+dist/1.2);
     const topDest=Object.entries(a.dsts).sort((x,y)=>y[1]-x[1])[0];
-    return {p, avg, n:a.n, sd:a.sd, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
+    return {p, avg, n:a.n, ll, dist, score, st:a.st, topDest: topDest?topDest[0]:null};
   }).filter(c=>c.dist<=10)
     .sort((x,y)=>y.score-x.score)
     .slice(0,3);
