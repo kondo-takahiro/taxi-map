@@ -201,8 +201,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span id="diaryClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:10px;">
-    <button class="chip on diary-tab" data-t="y">昨日</button>
-    <button class="chip diary-tab" data-t="t">明日</button>
+    <button class="chip on diary-tab" data-t="y">前回</button>
+    <button class="chip diary-tab" data-t="t">次の出番</button>
     <button class="chip diary-tab" data-t="b">ベスト</button>
   </div>
   <div id="diaryBody"></div>
@@ -467,7 +467,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.19-6";
+const APP_VER = "2026.07.19-7";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1612,12 +1612,32 @@ function renderDiaryY(){
   return h;
 }
 
+// 隔日勤務(勤・休・勤・休・休)の周期から次の出番を推定
+let nextShiftOverride=null;
+function nextShiftDate(){
+  if(nextShiftOverride) return nextShiftOverride;
+  const days=[...diaryByDay().keys()].sort();
+  const today=new Date(); today.setHours(12,0,0,0);
+  if(!days.length){ const t=new Date(today.getTime()+86400000); return t; }
+  const last=new Date(days[days.length-1]+"T12:00:00");
+  let gapNext=2;
+  if(days.length>=2){
+    const prev=new Date(days[days.length-2]+"T12:00:00");
+    const gap=Math.round((last-prev)/86400000);
+    gapNext = gap===2 ? 3 : 2; // 2日間隔の次は3日空き、3日空きの次は2日間隔
+  }
+  let base=new Date(last.getTime()+gapNext*86400000);
+  let flip = gapNext===2 ? 3 : 2;
+  while(base<=today){ base=new Date(base.getTime()+flip*86400000); flip=flip===2?3:2; }
+  return base;
+}
 function renderDiaryT(){
   const byDay=diaryByDay();
-  const tm=new Date(); tm.setDate(tm.getDate()+1);
+  const tm=nextShiftDate();
   const dw=tm.getDay();
   const dws=new Set([dw]);
-  let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">明日 ${tm.getMonth()+1}/${tm.getDate()}(${D_DN[dw]})の作戦</div>`;
+  let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">次の出番 <b style="color:var(--text);">${tm.getMonth()+1}/${tm.getDate()}(${D_DN[dw]})</b>の作戦
+    <span id="editNext" style="text-decoration:underline;cursor:pointer;margin-left:6px;">日付を変更</span></div>`;
   h+=`<div id="tmrWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;">☁ 天気を取得中…</div>`;
   const sameDowDays=[...byDay.keys()].filter(d=>dDow(d)===dw);
   if(sameDowDays.length){
@@ -1643,11 +1663,11 @@ function renderDiaryT(){
 async function fillTomorrowWx(){
   try{
     const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
-      +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=3";
+      +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=8";
     const j=await fetch(url).then(r=>r.ok?r.json():null);
     const el=document.getElementById("tmrWx");
     if(!j||!j.hourly||!el) return;
-    const tm=new Date(); tm.setDate(tm.getDate()+1);
+    const tm=nextShiftDate();
     const ds=tm.getFullYear()+"-"+String(tm.getMonth()+1).padStart(2,"0")+"-"+String(tm.getDate()).padStart(2,"0");
     const start=new Date(ds+"T05:00:00"), end=new Date(start.getTime()+24*3600*1000);
     const rain=[], temps=[];
@@ -1710,7 +1730,21 @@ function renderDiaryB(){
 function renderDiary(tab){
   const body=document.getElementById("diaryBody");
   body.innerHTML = tab==="y"?renderDiaryY() : tab==="t"?renderDiaryT() : renderDiaryB();
-  if(tab==="t") fillTomorrowWx();
+  if(tab==="t"){
+    fillTomorrowWx();
+    const en=document.getElementById("editNext");
+    if(en) en.onclick=()=>{
+      const cur=nextShiftDate();
+      const v=prompt("次の出番の日付を入力してください(例: 7/21)", (cur.getMonth()+1)+"/"+cur.getDate());
+      if(!v) return;
+      const m=v.trim().match(/^(\d{1,2})[\/月](\d{1,2})/);
+      if(!m) return;
+      const t=new Date(); t.setMonth(+m[1]-1, +m[2]); t.setHours(12,0,0,0);
+      if(t < new Date()) t.setFullYear(t.getFullYear()+1); // 年またぎ対応
+      nextShiftOverride=t;
+      renderDiary("t");
+    };
+  }
   if(tab==="b") body.querySelectorAll(".best-day").forEach(el=>el.onclick=()=>replayDay(el.dataset.d));
 }
 document.querySelectorAll(".diary-tab").forEach(c=>{
