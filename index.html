@@ -193,6 +193,27 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="reviewBody"></div>
 </div>
 
+<div id="diaryPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
+  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:14px;">📓 営業日誌</b>
+    <span style="flex:1"></span>
+    <span id="diaryClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div style="display:flex;gap:6px;margin-bottom:10px;">
+    <button class="chip on diary-tab" data-t="y">昨日</button>
+    <button class="chip diary-tab" data-t="t">明日</button>
+    <button class="chip diary-tab" data-t="b">ベスト</button>
+  </div>
+  <div id="diaryBody"></div>
+</div>
+
+<div id="replayBar" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1050;
+  background:rgba(19,26,42,.95);border:1px solid var(--amber);border-radius:20px;padding:7px 14px;font-size:12px;white-space:nowrap;">
+  <span id="replayTxt"></span>
+  <span id="replayClose" style="cursor:pointer;color:var(--muted);font-weight:700;margin-left:8px;">✕</span>
+</div>
+
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
 <div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
@@ -229,6 +250,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnBrief">📋 今日の情報</button>
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
     <button class="btn" id="btnReview">📊 振り返り</button>
+    <button class="btn" id="btnDiary">📓 日誌</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
     <button class="btn" id="btnAppMode">📲 アプリ営業</button>
@@ -445,7 +467,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.19-5";
+const APP_VER = "2026.07.19-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1537,6 +1559,173 @@ document.getElementById("btnReview").onclick=async ()=>{
   document.getElementById("reviewPanel").style.display="block";
 };
 document.getElementById("reviewClose").onclick=()=>document.getElementById("reviewPanel").style.display="none";
+
+// ===== 営業日誌(昨日レポート / 明日の作戦 / ベスト再現) =====
+const D_BANDS=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
+const D_DN=["日","月","火","水","木","金","土"];
+function diaryByDay(){
+  const m=new Map();
+  myRides().forEach(r=>{
+    const d=shiftDateStr(r);
+    if(!m.has(d)) m.set(d,[]);
+    m.get(d).push(r);
+  });
+  return m;
+}
+function dTotal(rs){ return rs.reduce((s,r)=>s+r.f,0); }
+function dBand(rs,b){ return rs.filter(r=>shiftHour(r.t)>=b[0]&&shiftHour(r.t)<b[1]).reduce((s,r)=>s+r.f,0); }
+function dDow(d){ return new Date(d+"T12:00:00").getDay(); }
+function pctTag(cur,base){
+  if(!base) return "";
+  const p=Math.round((cur/base-1)*100);
+  const col=p>=0?"#7dd87d":"#f08080";
+  return `<span style="color:${col};font-weight:700;">${p>=0?"▲":"▼"}${Math.abs(p)}%</span>`;
+}
+
+function renderDiaryY(){
+  const byDay=diaryByDay();
+  const days=[...byDay.keys()].sort();
+  if(!days.length) return "データがありません";
+  const target=days[days.length-1], rs=byDay.get(target);
+  const dw=dDow(target);
+  const peers=days.filter(d=>d!==target && dDow(d)===dw);
+  const total=dTotal(rs);
+  const peerAvg=peers.length? peers.reduce((s,d)=>s+dTotal(byDay.get(d)),0)/peers.length : 0;
+  const nApp=rs.filter(r=>(r.m||"app")==="app").length;
+  const top=rs.reduce((a,b)=>a.f>=b.f?a:b);
+  let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">${target.slice(5,7)}/${target.slice(8)}(${D_DN[dw]})の乗務</div>`;
+  h+=`<div style="font-size:22px;font-weight:800;">${yen(total)} ${pctTag(total,peerAvg)}</div>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)との比較`:"・比較対象の同曜日なし"}</div>`;
+  h+=sectionTitle("時間帯別(同曜日平均との差)");
+  D_BANDS.forEach(b=>{
+    const cur=dBand(rs,b);
+    const pAvg=peers.length? peers.reduce((s,d)=>s+dBand(byDay.get(d),b),0)/peers.length : 0;
+    h+=`<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px;">
+      <span style="width:86px;color:var(--muted);">${b[2]}</span>
+      <span style="flex:1;font-variant-numeric:tabular-nums;">${yen(cur)}</span>
+      <span style="font-size:12px;color:var(--muted);">平均${yen(Math.round(pAvg))}</span>
+      ${pctTag(cur,pAvg)||'<span style="color:var(--muted)">—</span>'}
+    </div>`;
+  });
+  h+=sectionTitle("この日の一番");
+  h+=`<div style="font-size:13px;">${top.t} ${top.p} → ${top.dst||"?"} <b style="color:var(--amber)">${yen(top.f)}</b></div>`;
+  return h;
+}
+
+function renderDiaryT(){
+  const byDay=diaryByDay();
+  const tm=new Date(); tm.setDate(tm.getDate()+1);
+  const dw=tm.getDay();
+  const dws=new Set([dw]);
+  let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">明日 ${tm.getMonth()+1}/${tm.getDate()}(${D_DN[dw]})の作戦</div>`;
+  h+=`<div id="tmrWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;">☁ 天気を取得中…</div>`;
+  const sameDowDays=[...byDay.keys()].filter(d=>dDow(d)===dw);
+  if(sameDowDays.length){
+    const best=sameDowDays.reduce((a,b)=>dTotal(byDay.get(a))>=dTotal(byDay.get(b))?a:b);
+    h+=`<div style="font-size:12px;margin-bottom:10px;">これまでの${D_DN[dw]}曜ベスト: <b style="color:var(--amber)">${yen(dTotal(byDay.get(best)))}</b>(${best.slice(5,7)}/${best.slice(8)})が目標の目安</div>`;
+  }
+  h+=sectionTitle("時間帯別のベストエリア("+D_DN[dw]+"曜の実績)");
+  const pool=myRides().filter(r=>dws.has(dDow(shiftDateStr(r))));
+  D_BANDS.forEach(b=>{
+    const agg=new Map();
+    pool.filter(r=>shiftHour(r.t)>=b[0]&&shiftHour(r.t)<b[1]).forEach(r=>{
+      const a=agg.get(r.p)||{sum:0,n:0}; a.sum+=r.f; a.n++; agg.set(r.p,a);
+    });
+    const tops=[...agg.entries()].map(([p,a])=>({p,avg:a.sum/a.n,n:a.n,score:(a.sum/a.n)*Math.log2(1+a.n)}))
+      .sort((x,y)=>y.score-x.score).slice(0,2);
+    h+=`<div style="margin:7px 0;font-size:13px;"><span style="color:var(--muted);">${b[2]}</span><br>`;
+    h+= tops.length? tops.map(t=>`<b>${t.p}</b> <span style="font-size:12px;color:var(--muted);">平均${yen(Math.round(t.avg))}・${t.n}件</span>`).join("<br>")
+      : `<span style="color:var(--muted);font-size:12px;">この曜日・時間帯の実績はまだありません</span>`;
+    h+=`</div>`;
+  });
+  return h;
+}
+async function fillTomorrowWx(){
+  try{
+    const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
+      +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=3";
+    const j=await fetch(url).then(r=>r.ok?r.json():null);
+    const el=document.getElementById("tmrWx");
+    if(!j||!j.hourly||!el) return;
+    const tm=new Date(); tm.setDate(tm.getDate()+1);
+    const ds=tm.getFullYear()+"-"+String(tm.getMonth()+1).padStart(2,"0")+"-"+String(tm.getDate()).padStart(2,"0");
+    const start=new Date(ds+"T05:00:00"), end=new Date(start.getTime()+24*3600*1000);
+    const rain=[], temps=[];
+    j.hourly.time.forEach((t,i)=>{
+      const dt=new Date(t);
+      if(dt<start||dt>=end) return;
+      temps.push(j.hourly.temperature_2m[i]);
+      if((j.hourly.precipitation[i]||0)>=0.5||(j.hourly.precipitation_probability?.[i]||0)>=60)
+        rain.push(dt.getHours()+"時");
+    });
+    el.textContent=(rain.length?"☔ 雨の見込み: "+rain.join("、"):"☀ 雨の心配なし")
+      +(temps.length?` / 気温 ${Math.round(Math.min(...temps))}〜${Math.round(Math.max(...temps))}℃`:"");
+  }catch(e){
+    const el=document.getElementById("tmrWx");
+    if(el) el.textContent="(天気予報を取得できませんでした)";
+  }
+}
+
+let replayLayer=null;
+function clearReplay(){
+  if(replayLayer){ map.removeLayer(replayLayer); replayLayer=null; }
+  document.getElementById("replayBar").style.display="none";
+}
+function replayDay(d){
+  clearReplay();
+  const rs=[...(diaryByDay().get(d)||[])].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  if(!rs.length) return;
+  const pts=rs.map(r=>[r.lat,r.lng]);
+  const items=[L.polyline(pts,{color:"#f5a623",weight:3,opacity:.75,dashArray:"1 7"})];
+  rs.forEach((r,i)=>{
+    items.push(L.marker([r.lat,r.lng],{icon:L.divIcon({className:"",iconSize:[20,20],iconAnchor:[10,10],
+      html:`<div style="background:#f5a623;color:#131a2a;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;border:1.5px solid #fff;">${i+1}</div>`})})
+      .bindTooltip(`${i+1}. ${r.t} ${r.p} ${yen(r.f)}${r.dst?" → "+r.dst:""}`));
+  });
+  replayLayer=L.layerGroup(items).addTo(map);
+  map.fitBounds(L.latLngBounds(pts).pad(0.15));
+  document.getElementById("replayTxt").textContent=`${d.slice(5,7)}/${d.slice(8)}(${D_DN[dDow(d)]})の動線 ${yen(dTotal(rs))}`;
+  document.getElementById("replayBar").style.display="block";
+  document.getElementById("diaryPanel").style.display="none";
+}
+function renderDiaryB(){
+  const byDay=diaryByDay();
+  const days=[...byDay.entries()].map(([d,rs])=>({d,rs,total:dTotal(rs)}))
+    .sort((x,y)=>y.total-x.total).slice(0,7);
+  if(!days.length) return "データがありません";
+  let h=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">営収の良かった日。タップすると、その日の動き(乗車順の動線)が地図に表示されます。</div>`;
+  days.forEach((x,i)=>{
+    const nApp=x.rs.filter(r=>(r.m||"app")==="app").length;
+    h+=`<div class="best-day" data-d="${x.d}" style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--line);cursor:pointer;">
+      <span style="width:18px;color:var(--muted);font-size:13px;">${i+1}</span>
+      <div style="flex:1;">
+        <div style="font-size:15px;font-weight:700;">${x.d.slice(5,7)}/${x.d.slice(8)}(${D_DN[dDow(x.d)]})</div>
+        <div style="font-size:11px;color:var(--muted);">${x.rs.length}回・アプリ${Math.round(nApp/x.rs.length*100)}%</div>
+      </div>
+      <span style="color:var(--amber);font-weight:800;font-variant-numeric:tabular-nums;">${yen(x.total)}</span>
+    </div>`;
+  });
+  return h;
+}
+function renderDiary(tab){
+  const body=document.getElementById("diaryBody");
+  body.innerHTML = tab==="y"?renderDiaryY() : tab==="t"?renderDiaryT() : renderDiaryB();
+  if(tab==="t") fillTomorrowWx();
+  if(tab==="b") body.querySelectorAll(".best-day").forEach(el=>el.onclick=()=>replayDay(el.dataset.d));
+}
+document.querySelectorAll(".diary-tab").forEach(c=>{
+  c.onclick=()=>{
+    document.querySelectorAll(".diary-tab").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on"); renderDiary(c.dataset.t);
+  };
+});
+document.getElementById("btnDiary").onclick=()=>{
+  document.getElementById("diaryPanel").style.display="block";
+  const on=document.querySelector(".diary-tab.on");
+  renderDiary(on?on.dataset.t:"y");
+};
+document.getElementById("diaryClose").onclick=()=>document.getElementById("diaryPanel").style.display="none";
+document.getElementById("replayClose").onclick=clearReplay;
 
 // ===== ヒートマップ / GPS =====
 document.getElementById("btnHeat").onclick=e=>{
