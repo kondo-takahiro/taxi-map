@@ -441,7 +441,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.18-14";
+const APP_VER = "2026.07.19-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1096,7 +1096,7 @@ async function callVisionAI(key, promptText, dataURLs){
     return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("")};
   }else{
     const content=[{type:"text",text:promptText},
-      ...dataURLs.map(u=>({type:"image_url", image_url:{url:u}}))];
+      ...dataURLs.map(u=>({type:"image_url", image_url:{url:u, detail:"high"}}))];
     const res=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",
       headers:{"content-type":"application/json","Authorization":"Bearer "+key},
@@ -1144,8 +1144,9 @@ document.getElementById("fileScan").onchange=async e=>{
   try{
     const imgs=await fileToImages(file);
     const promptText=
-`これは東京のタクシーの乗務記録(日報)です。乗車記録の表からすべての乗車を読み取り、次の形式のCSV行のみを出力してください。ヘッダー・説明・コードブロックは不要です。
+`これは東京のタクシーの乗務記録(日報)です。乗車記録の表を上から下まで1行も飛ばさずすべて読み取り、次の形式のCSV行のみを出力してください。ヘッダー・説明・コードブロック記号は不要です。
 date,time,pickup,fare,dropoff,mode
+重要: 表には通常15〜40行の乗車があります。途中で省略・要約せず、必ず全行を出力してください。出力前に表の行数と出力行数が一致しているか確認すること。
 ルール:
 - dateは日報の日付をYYYY-MM-DD形式で。ただし時刻が00:00〜04:59の行は翌日の日付にする
 - timeは乗車時刻(HH:MM)
@@ -1153,11 +1154,23 @@ date,time,pickup,fare,dropoff,mode
 - fareは料金を数字のみで(カンマなし)
 - modeは迎車欄に「4」がある行はapp、空欄の行はst
 - 判読できない行はスキップする`;
-    const r=await callVisionAI(key, promptText, imgs);
+    const extract=t=>(t||"").replace(/```[a-z]*\n?/g,"").split(/\r?\n/)
+      .map(l=>l.trim().replace(/\s*,\s*/g,","))
+      .filter(l=>/^\d{4}-\d{2}-\d{2},\d{1,2}:\d{2},/.test(l));
+    let r=await callVisionAI(key, promptText, imgs);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
     if(r.err) throw new Error(r.err);
-    const lines=(r.text||"").split(/\r?\n/).map(l=>l.trim())
-      .filter(l=>/^\d{4}-\d{2}-\d{2},\d{1,2}:\d{2},/.test(l));
+    let lines=extract(r.text);
+    // 行数が明らかに少ない場合は、全行出力を求めて1回だけ再読み取り
+    if(lines.length>0 && lines.length<10){
+      h.textContent="読み取りが"+lines.length+"行のみでした。全行を再読み取り中…";
+      const r2=await callVisionAI(key, promptText
+        +"\n\n重要: 先ほどの読み取りは"+lines.length+"行しか出力されませんでした。表の全行を欠けなく出力し直してください。", imgs);
+      if(r2.auth && !r2.err){
+        const lines2=extract(r2.text);
+        if(lines2.length>lines.length) lines=lines2;
+      }
+    }
     if(!lines.length) throw new Error("乗車記録を読み取れませんでした。表がはっきり写った画像でお試しください。");
     await loadChomeNow();
     const ok=[], miss=[];
@@ -1169,9 +1182,10 @@ date,time,pickup,fare,dropoff,mode
       ok.push([c[0],c[1],c[2],ll[0],ll[1],c[3].replace(/[^0-9]/g,""),c[4]||"",(c[5]==="app"?"app":"st"),MY_NAME].join(","));
     });
     h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
-    if(ok.length) importText(ok.join("\n"));
-    if(miss.length) alert("位置を特定できずスキップした乗車地:\n"+[...new Set(miss)].join("、")+"\n(貼り付け読み込みで座標付きなら追加できます)");
-    if(!ok.length && !miss.length) alert("取り込める行がありませんでした。");
+    let msg="AIが読み取った乗車: "+lines.length+"行";
+    if(ok.length){ const added=importText(ok.join("\n"), true); msg+="\n取り込み: "+added+"件"+(added<ok.length?"(重複"+(ok.length-added)+"件はスキップ)":""); }
+    if(miss.length) msg+="\n位置を特定できずスキップ: "+[...new Set(miss)].join("、");
+    alert(msg);
   }catch(err){
     h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
     alert("読み取りに失敗しました。\n"+err.message);
