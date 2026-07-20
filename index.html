@@ -45,6 +45,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   .stat small{color:var(--muted);font-size:10px;}
 
   /* 下部パネル */
+  .wardBest{background:rgba(19,26,42,.92)!important;color:var(--amber)!important;border:1px solid var(--amber)!important;font-weight:700;font-size:12px;}
   .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
     border-radius:16px 16px 0 0;padding:0 14px calc(18px + env(safe-area-inset-bottom));
@@ -234,6 +235,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
+    <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
@@ -443,7 +445,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.19-4";
+const APP_VER = "2026.07.19-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -567,8 +569,9 @@ function lampIcon(f){
 
 function render(){
   markerLayer.clearLayers();
+  if(typeof drawWardRank==="function") drawWardRank();
   const list = filtered();
-  if(!heatOn) list.forEach(r=>{
+  if(!heatOn && !wardsOn) list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
@@ -1426,6 +1429,7 @@ function renderReview(){
     html+=barRow(parseInt(m.slice(5),10)+"月度", a.sum, mMax,
       yen(a.sum)+`<br><span style="color:var(--muted)">${periodRange(m,mcfg)}・${a.days.size}日・日平均`+yen(Math.round(a.sum/a.days.size))+`</span>`);
   });
+  html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;">現在の設定: 各月${mcfg.d}日開始${Object.keys(mcfg.ov).length?`(変更あり: ${Object.entries(mcfg.ov).map(([k,v])=>parseInt(k.slice(5),10)+"月度="+v+"日開始").join("、")})`:""}<br>特定の月だけ変える場合は「締め日を変更」の2つ目の入力欄に <b>2026-05=17, 2026-07=15</b> のように「年-月=開始日」をカンマ区切りで入力</div>`;
 
   // 曜日別(営業日あたりの平均営収)
   const byDow=new Map();
@@ -1535,7 +1539,45 @@ document.getElementById("btnReview").onclick=async ()=>{
 document.getElementById("reviewClose").onclick=()=>document.getElementById("reviewPanel").style.display="none";
 
 // ===== ヒートマップ / GPS =====
-document.getElementById("btnHeat").onclick=e=>{ heatOn=!heatOn; e.target.classList.toggle("on",heatOn); render(); };
+document.getElementById("btnHeat").onclick=e=>{
+  heatOn=!heatOn; e.target.classList.toggle("on",heatOn);
+  if(heatOn && wardsOn){ wardsOn=false; document.getElementById("btnWards").classList.remove("on"); }
+  render();
+};
+// ===== 区別ランキング(現在のフィルターで市区ごとに平均単価を色分け) =====
+let wardLayer=null, wardsOn=false;
+document.getElementById("btnWards").onclick=e=>{
+  wardsOn=!wardsOn; e.target.classList.toggle("on",wardsOn);
+  if(wardsOn && heatOn){ heatOn=false; document.getElementById("btnHeat").classList.remove("on"); }
+  if(wardsOn && !wardsData) ensureChome(); // 境界データを裏で読み込み(完了後に自動描画)
+  render();
+};
+function drawWardRank(){
+  if(wardLayer){ map.removeLayer(wardLayer); wardLayer=null; }
+  if(!wardsOn || !wardsData) return;
+  const list=filtered();
+  const agg=new Map();
+  wardsData.features.forEach(f=>agg.set(f.properties.n,{sum:0,n:0}));
+  list.forEach(r=>{
+    for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; break; } }
+  });
+  const ranked=[...agg.entries()].filter(([,a])=>a.n>0)
+    .map(([w,a])=>({w, avg:a.sum/a.n, n:a.n})).sort((x,y)=>y.avg-x.avg);
+  const best=ranked[0];
+  const layers=[];
+  wardsData.features.forEach(f=>{
+    const name=f.properties.n, st=agg.get(name);
+    const has=st.n>0, avg=has?st.sum/st.n:0;
+    const isBest=best && name===best.w;
+    const lay=L.geoJSON(f,{renderer:heatRenderer,
+      style:{color:isBest?"#f5a623":"#5a6a75", weight:isBest?3:1, opacity:isBest?1:.5,
+        dashArray:isBest?null:"4 4", fillColor:has?fareTierColor(avg):"#888", fillOpacity:has?.55:.06}});
+    if(isBest) lay.bindTooltip(`👑 ${name} 平均${yen(Math.round(avg))}・${st.n}件`,{permanent:true,direction:"center",className:"wardBest"});
+    else lay.bindTooltip(`${name} ${has?("平均"+yen(Math.round(avg))+"・"+st.n+"件"):"実績なし"}`,{sticky:true});
+    layers.push(lay);
+  });
+  wardLayer=L.layerGroup(layers).addTo(map);
+}
 const btnStyle=document.getElementById("btnStyle");
 const STYLE_ORDER = GOOGLE_MAPS_API_KEY ? ["light","dark","google"] : ["light","dark"];
 const STYLE_NEXT_LABEL = {light:"🌙 夜間配色", dark: GOOGLE_MAPS_API_KEY ? "🗺 Google地図" : "☀️ 日中配色", google:"☀️ 日中配色"};
