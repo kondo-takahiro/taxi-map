@@ -222,6 +222,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip" data-min="3000">¥3,000+</button>
     <button class="chip" data-min="5000">¥5,000+</button>
     <button class="chip" data-min="8000">¥8,000+</button>
+    <button class="chip" data-min="10000">¥10,000+</button>
+    <button class="chip" data-min="20000">¥20,000+</button>
     <span style="flex:1"></span>
     <button class="btn" id="btnBrief">📋 今日の情報</button>
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
@@ -441,7 +443,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.19-1";
+const APP_VER = "2026.07.19-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1100,7 +1102,7 @@ async function callVisionAI(key, promptText, dataURLs){
     const res=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",
       headers:{"content-type":"application/json","Authorization":"Bearer "+key},
-      body:JSON.stringify({model:"gpt-4o-mini",max_completion_tokens:4000,
+      body:JSON.stringify({model:"gpt-4o",max_completion_tokens:4000,
         messages:[{role:"user",content}]})
     });
     if(res.status===401) return {auth:false};
@@ -1147,10 +1149,11 @@ document.getElementById("fileScan").onchange=async e=>{
 `これは東京のタクシーの乗務記録(日報)です。乗車記録の表を上から下まで1行も飛ばさずすべて読み取り、次の形式のCSV行のみを出力してください。ヘッダー・説明・コードブロック記号は不要です。
 date,time,pickup,fare,dropoff,mode
 重要: 表には通常15〜40行の乗車があります。途中で省略・要約せず、必ず全行を出力してください。出力前に表の行数と出力行数が一致しているか確認すること。
+絶対禁止: 画像から読み取れない内容を推測・創作して出力すること。文字が判読できない行は出力せず、判読できた行だけを出力する。表自体が判読できない場合は「READ_ERROR」とだけ出力する。
 ルール:
 - dateは日報の日付をYYYY-MM-DD形式で。ただし時刻が00:00〜04:59の行は翌日の日付にする
 - timeは乗車時刻(HH:MM)
-- pickupは乗車地、dropoffは降車地を表のままの表記で(例: 港区六本木5)
+- pickupは乗車地、dropoffは降車地を表のままの表記で、丁目番号まで正確に(例: 港区六本木5)。丁目番号を省略しない
 - fareは料金を数字のみで(カンマなし)
 - modeは迎車欄に「4」がある行はapp、空欄の行はst
 - 判読できない行はスキップする`;
@@ -1160,6 +1163,7 @@ date,time,pickup,fare,dropoff,mode
     let r=await callVisionAI(key, promptText, imgs);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
     if(r.err) throw new Error(r.err);
+    if((r.text||"").includes("READ_ERROR")) throw new Error("画像から表を判読できませんでした。明るい場所で、表全体が真上からはっきり写るように撮り直してみてください。");
     let lines=extract(r.text);
     // 行数が明らかに少ない場合は、全行出力を求めて1回だけ再読み取り
     if(lines.length>0 && lines.length<10){
