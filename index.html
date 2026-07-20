@@ -443,7 +443,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.19-3";
+const APP_VER = "2026.07.19-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1368,24 +1368,63 @@ function barRow(label, value, max, fmt){
 }
 function sectionTitle(t){ return `<div style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber);">${t}</div>`; }
 
+// ===== 月度(各月16日〜翌月15日など)の設定 =====
+function monthCfg(){
+  try{ const c=JSON.parse(localStorage.getItem("month-cfg")); if(c&&c.d) return {d:c.d, ov:c.ov||{}}; }catch(e){}
+  return {d:16, ov:{}}; // 既定: 各月16日開始
+}
+function periodStart(ym, cfg){ return cfg.ov[ym] || cfg.d; }
+function periodOf(ds, cfg){ // 営業日→所属月度("YYYY-MM")
+  const y=+ds.slice(0,4), m=+ds.slice(5,7), day=+ds.slice(8,10);
+  if(day >= periodStart(ds.slice(0,7), cfg)) return ds.slice(0,7);
+  let py=y, pm=m-1; if(pm===0){pm=12; py--;}
+  return py+"-"+String(pm).padStart(2,"0");
+}
+function periodRange(p, cfg){ // 月度の期間表示("4/16〜5/15")
+  const y=+p.slice(0,4), m=+p.slice(5,7);
+  let ny=y, nm=m+1; if(nm===13){nm=1; ny++;}
+  const nk=ny+"-"+String(nm).padStart(2,"0");
+  const end=new Date(ny, nm-1, periodStart(nk,cfg)); end.setDate(end.getDate()-1);
+  return `${m}/${periodStart(p,cfg)}〜${end.getMonth()+1}/${end.getDate()}`;
+}
+function editMonthCfg(){
+  const cfg=monthCfg();
+  const nd=prompt("月度の開始日を入力してください(1〜28)。\n例: 16 → 各月16日〜翌月15日", cfg.d);
+  if(nd===null) return;
+  const d=Math.min(28, Math.max(1, parseInt(nd,10)||16));
+  const cur=Object.entries(cfg.ov).map(([k,v])=>k+"="+v).join(", ");
+  const ovIn=prompt("特定の月だけ開始日を変える場合は「2026-05=17, 2026-07=15」の形式で入力。\n(全月同じなら空欄のままOKを押す)", cur);
+  const ov={};
+  if(ovIn!==null && ovIn.trim()){
+    ovIn.split(",").forEach(s=>{
+      const m=s.trim().match(/^(\d{4}-\d{2})\s*=\s*(\d{1,2})$/);
+      if(m) ov[m[1]]=Math.min(28, Math.max(1, +m[2]));
+    });
+  }else if(ovIn===null){ Object.assign(ov, cfg.ov); }
+  localStorage.setItem("month-cfg", JSON.stringify({d, ov}));
+  renderReview();
+}
+
 function renderReview(){
   const body=document.getElementById("reviewBody");
   const mine=myRides();
   if(!mine.length){ body.innerHTML="データがありません"; return; }
   let html=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">${MY_NAME}さんの記録のみ(${mine.length}件/全${rides.length}件)</div>`;
 
-  // 月別営収
+  // 月度別営収(各月16日〜翌月15日など。開始日は変更可能)
+  const mcfg=monthCfg();
   const byMonth=new Map();
   mine.forEach(r=>{
-    const m=shiftDateStr(r).slice(0,7);
+    const m=periodOf(shiftDateStr(r), mcfg);
     const a=byMonth.get(m)||{sum:0,days:new Set()};
     a.sum+=r.f; a.days.add(shiftDateStr(r)); byMonth.set(m,a);
   });
   const months=[...byMonth.entries()].sort();
   const mMax=Math.max(...months.map(([,a])=>a.sum));
-  html+=sectionTitle("月別の営収");
+  html+=sectionTitle(`月度別の営収 <span id="editCutoff" style="font-weight:400;font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer;">締め日を変更</span>`);
   months.forEach(([m,a])=>{
-    html+=barRow(m.slice(5)+"月", a.sum, mMax, yen(a.sum)+`<br><span style="color:var(--muted)">${a.days.size}日`+`・日平均`+yen(Math.round(a.sum/a.days.size))+`</span>`);
+    html+=barRow(parseInt(m.slice(5),10)+"月度", a.sum, mMax,
+      yen(a.sum)+`<br><span style="color:var(--muted)">${periodRange(m,mcfg)}・${a.days.size}日・日平均`+yen(Math.round(a.sum/a.days.size))+`</span>`);
   });
 
   // 曜日別(営業日あたりの平均営収)
@@ -1485,6 +1524,8 @@ function renderReview(){
   }
 
   body.innerHTML=html;
+  const ec=document.getElementById("editCutoff");
+  if(ec) ec.onclick=editMonthCfg;
 }
 document.getElementById("btnReview").onclick=async ()=>{
   if(!rainMap) loadWeather().then(()=>{ if(document.getElementById("reviewPanel").style.display==="block") renderReview(); });
