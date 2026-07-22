@@ -467,7 +467,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.19-8";
+const APP_VER = "2026.07.22-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1453,9 +1453,16 @@ function renderReview(){
   });
   html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;">現在の設定: 各月${mcfg.d}日開始${Object.keys(mcfg.ov).length?`(変更あり: ${Object.entries(mcfg.ov).map(([k,v])=>parseInt(k.slice(5),10)+"月度="+v+"日開始").join("、")})`:""}<br>特定の月だけ変える場合は「締め日を変更」の2つ目の入力欄に <b>2026-05=17, 2026-07=15</b> のように「年-月=開始日」をカンマ区切りで入力</div>`;
 
+  // ===== ここから下の平均値は「前月度まで」の確定実績で計算 =====
+  const tnow=new Date(); if(tnow.getHours()<5) tnow.setDate(tnow.getDate()-1);
+  const curP=periodOf(tnow.getFullYear()+"-"+String(tnow.getMonth()+1).padStart(2,"0")+"-"+String(tnow.getDate()).padStart(2,"0"), mcfg);
+  const hist=mine.filter(r=>periodOf(shiftDateStr(r), mcfg) < curP);
+  const histBase=hist.length? hist : mine;
+  const histNote=hist.length? "(前月度までの実績)" : "(今月度のみのため全期間)";
+
   // 曜日別(営業日あたりの平均営収)
   const byDow=new Map();
-  mine.forEach(r=>{
+  histBase.forEach(r=>{
     const dw=shiftDow(r);
     const a=byDow.get(dw)||{sum:0,days:new Set()};
     a.sum+=r.f; a.days.add(shiftDateStr(r)); byDow.set(dw,a);
@@ -1464,17 +1471,17 @@ function renderReview(){
   const dowAvg=[1,2,3,4,5,6,0].filter(d=>byDow.has(d))
     .map(d=>({d, avg:byDow.get(d).sum/byDow.get(d).days.size, days:byDow.get(d).days.size}));
   const dMax=Math.max(...dowAvg.map(x=>x.avg));
-  html+=sectionTitle("曜日別・1営業日あたりの平均営収");
+  html+=sectionTitle("曜日別・1営業日あたりの平均営収"+histNote);
   dowAvg.forEach(x=>{
     html+=barRow(dowNames[x.d]+"曜", x.avg, dMax, yen(Math.round(x.avg))+`<br><span style="color:var(--muted)">${x.days}日分</span>`);
   });
 
   // 時間帯別営収(朝・昼・夜・深夜の4区分・1営業日あたりの平均)
-  const totalDays=new Set(mine.map(r=>shiftDateStr(r))).size;
+  const totalDays=new Set(histBase.map(r=>shiftDateStr(r))).size;
   const bands=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
-  const bandAvg=bands.map(([a,b])=>mine.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(totalDays||1));
+  const bandAvg=bands.map(([a,b])=>histBase.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(totalDays||1));
   const bMax=Math.max(...bandAvg);
-  html+=sectionTitle("時間帯別・1営業日あたりの平均営収");
+  html+=sectionTitle("時間帯別・1営業日あたりの平均営収"+histNote);
   bands.forEach(([a,b,label],i)=>{
     html+=barRow(label, bandAvg[i], bMax, yen(Math.round(bandAvg[i])));
   });
@@ -1502,7 +1509,7 @@ function renderReview(){
   }
 
   // 時間効率の良い乗車地(乗車間隔から推定)
-  const sorted=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const sorted=[...histBase].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
   const eff=new Map();
   for(let i=0;i<sorted.length-1;i++){
     const cur=sorted[i], nxt=sorted[i+1];
@@ -1517,7 +1524,7 @@ function renderReview(){
     .sort((x,y)=>y.perH-x.perH).slice(0,5);
   if(effRows.length){
     const eMax=effRows[0].perH;
-    html+=sectionTitle("時間効率の良い乗車地(推定¥/時)");
+    html+=sectionTitle("時間効率の良い乗車地(推定¥/時)"+histNote);
     effRows.forEach(x=>{
       html+=barRow(x.p.length>7?x.p.slice(0,7)+"…":x.p, x.perH, eMax,
         yen(Math.round(x.perH))+`/時<br><span style="color:var(--muted)">間隔${Math.round(x.avgGap)}分・${x.n}回</span>`);
@@ -1528,7 +1535,7 @@ function renderReview(){
   // 雨の日と晴れの日(天気データ取得済みの場合)
   if(rainMap){
     const dayStat=new Map();
-    mine.forEach(r=>{
+    histBase.forEach(r=>{
       const d=shiftDateStr(r);
       const a=dayStat.get(d)||{sum:0};
       a.sum+=r.f; dayStat.set(d,a);
@@ -1541,7 +1548,7 @@ function renderReview(){
     });
     if(rN&&dN){
       const wMax=Math.max(rSum/rN,dSum/dN);
-      html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)");
+      html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)"+histNote);
       html+=barRow("☔ 雨", rSum/rN, wMax, yen(Math.round(rSum/rN))+`<br><span style="color:var(--muted)">${rN}日分</span>`);
       html+=barRow("☀ 晴", dSum/dN, wMax, yen(Math.round(dSum/dN))+`<br><span style="color:var(--muted)">${dN}日分</span>`);
     }
