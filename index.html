@@ -164,7 +164,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span id="briefClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
   <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
-  <div id="briefBody" style="font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>
+  <div id="briefBody" style="font-size:13px;"></div>
   <div style="font-size:10px;color:var(--muted);margin-top:8px;">天気: Open-Meteo / イベント: AI検索(内容は必ず公式情報で確認を)</div>
 </div>
 
@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.22-6";
+const APP_VER = "2026.07.22-7";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -882,6 +882,29 @@ async function callSearchAI(key, promptText){
   }
   return {auth:true, text:(data.choices?.[0]?.message?.content||"").trim()};
 }
+function briefFormat(t){
+  const esc=(t||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/\*\*/g,"").replace(/^#+\s*/gm,"");
+  function row(l){
+    l=l.replace(/^[-・•●▼]\s*/,"");
+    const dim=/[::]\s*(なし|不明)\s*$/.test(l);
+    l=l.replace(/^(第[1-3１-３]クール|青タン|[^::]{2,16})([::])/,'<b style="color:var(--text);">$1</b>$2');
+    return `<div style="padding:3px 0;line-height:1.65;${dim?'color:var(--muted);font-size:12px;':''}">${l}</div>`;
+  }
+  let out="";
+  esc.split(/\r?\n/).forEach(l=>{
+    l=l.trim();
+    if(!l) return;
+    const m=l.match(/^[「『]?(イベント|狙い)[」』]?[::]?\s*(.*)$/);
+    if(m && m[1]){
+      out+=`<div style="font-size:13px;font-weight:800;color:var(--amber);margin:10px 0 4px;border-bottom:1px solid var(--line);padding-bottom:3px;">${m[1]==="イベント"?"🎪 イベント":"🎯 狙い"}</div>`;
+      if(m[2]) out+=row(m[2]);
+      return;
+    }
+    out+=row(l);
+  });
+  return out || "生成できませんでした。";
+}
 async function buildBrief(force){
   const key=getAIKey();
   if(!key) return;
@@ -893,7 +916,7 @@ async function buildBrief(force){
     const c=localStorage.getItem(cacheKey);
     if(c){ const o=JSON.parse(c);
       document.getElementById("briefWx").textContent=o.wx||"";
-      document.getElementById("briefBody").textContent=o.text||"";
+      document.getElementById("briefBody").innerHTML=briefFormat(o.text||"");
       showEventMarkers(o.events||[]);
       return; }
   }
@@ -929,7 +952,7 @@ ${COACH_TIPS}
       try{ events=JSON.parse(em[1]); }catch(e){}
       text=text.replace(em[0],"").trim();
     }
-    document.getElementById("briefBody").textContent=text;
+    document.getElementById("briefBody").innerHTML=briefFormat(text);
     showEventMarkers(events);
     localStorage.setItem(cacheKey, JSON.stringify({wx, text, events}));
   }catch(err){
