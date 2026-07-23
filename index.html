@@ -204,6 +204,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip on diary-tab" data-t="y">前回</button>
     <button class="chip diary-tab" data-t="t">次の出番</button>
     <button class="chip diary-tab" data-t="b">ベスト</button>
+    <button class="chip diary-tab" data-t="c">カレンダー</button>
   </div>
   <div id="diaryBody"></div>
 </div>
@@ -467,7 +468,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.22-1";
+const APP_VER = "2026.07.22-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1458,7 +1459,8 @@ function renderReview(){
   const curP=periodOf(tnow.getFullYear()+"-"+String(tnow.getMonth()+1).padStart(2,"0")+"-"+String(tnow.getDate()).padStart(2,"0"), mcfg);
   const hist=mine.filter(r=>periodOf(shiftDateStr(r), mcfg) < curP);
   const histBase=hist.length? hist : mine;
-  const histNote=hist.length? "(前月度までの実績)" : "(今月度のみのため全期間)";
+  const histNote=hist.length? "(基準: 前月度まで)" : "(今月度のみのため全期間)";
+  const curRides=mine.filter(r=>periodOf(shiftDateStr(r), mcfg) === curP);
 
   // 曜日別(営業日あたりの平均営収)
   const byDow=new Map();
@@ -1471,9 +1473,18 @@ function renderReview(){
   const dowAvg=[1,2,3,4,5,6,0].filter(d=>byDow.has(d))
     .map(d=>({d, avg:byDow.get(d).sum/byDow.get(d).days.size, days:byDow.get(d).days.size}));
   const dMax=Math.max(...dowAvg.map(x=>x.avg));
+  const curByDow=new Map();
+  curRides.forEach(r=>{
+    const dw=shiftDow(r);
+    const a=curByDow.get(dw)||{sum:0,days:new Set()};
+    a.sum+=r.f; a.days.add(shiftDateStr(r)); curByDow.set(dw,a);
+  });
   html+=sectionTitle("曜日別・1営業日あたりの平均営収"+histNote);
   dowAvg.forEach(x=>{
-    html+=barRow(dowNames[x.d]+"曜", x.avg, dMax, yen(Math.round(x.avg))+`<br><span style="color:var(--muted)">${x.days}日分</span>`);
+    const c=curByDow.get(x.d);
+    const curTxt=c? yen(Math.round(c.sum/c.days.size))+" "+pctTag(c.sum/c.days.size, x.avg) : "—";
+    html+=barRow(dowNames[x.d]+"曜", x.avg, dMax,
+      yen(Math.round(x.avg))+`<br><span style="color:var(--muted)">${x.days}日分・今月度 ${curTxt}</span>`);
   });
 
   // 時間帯別営収(朝・昼・夜・深夜の4区分・1営業日あたりの平均)
@@ -1481,9 +1492,13 @@ function renderReview(){
   const bands=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
   const bandAvg=bands.map(([a,b])=>histBase.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(totalDays||1));
   const bMax=Math.max(...bandAvg);
+  const curDays=new Set(curRides.map(r=>shiftDateStr(r))).size;
+  const curBandAvg=bands.map(([a,b])=>curRides.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(curDays||1));
   html+=sectionTitle("時間帯別・1営業日あたりの平均営収"+histNote);
   bands.forEach(([a,b,label],i)=>{
-    html+=barRow(label, bandAvg[i], bMax, yen(Math.round(bandAvg[i])));
+    const curTxt=curDays? yen(Math.round(curBandAvg[i]))+" "+pctTag(curBandAvg[i], bandAvg[i]) : "—";
+    html+=barRow(label, bandAvg[i], bMax,
+      yen(Math.round(bandAvg[i]))+`<br><span style="color:var(--muted)">今月度 ${curTxt}</span>`);
   });
 
   // アプリ/流し
@@ -1509,7 +1524,7 @@ function renderReview(){
   }
 
   // 時間効率の良い乗車地(乗車間隔から推定)
-  const sorted=[...histBase].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const sorted=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
   const eff=new Map();
   for(let i=0;i<sorted.length-1;i++){
     const cur=sorted[i], nxt=sorted[i+1];
@@ -1524,7 +1539,7 @@ function renderReview(){
     .sort((x,y)=>y.perH-x.perH).slice(0,5);
   if(effRows.length){
     const eMax=effRows[0].perH;
-    html+=sectionTitle("時間効率の良い乗車地(推定¥/時)"+histNote);
+    html+=sectionTitle("時間効率の良い乗車地(推定¥/時)");
     effRows.forEach(x=>{
       html+=barRow(x.p.length>7?x.p.slice(0,7)+"…":x.p, x.perH, eMax,
         yen(Math.round(x.perH))+`/時<br><span style="color:var(--muted)">間隔${Math.round(x.avgGap)}分・${x.n}回</span>`);
@@ -1535,7 +1550,7 @@ function renderReview(){
   // 雨の日と晴れの日(天気データ取得済みの場合)
   if(rainMap){
     const dayStat=new Map();
-    histBase.forEach(r=>{
+    mine.forEach(r=>{
       const d=shiftDateStr(r);
       const a=dayStat.get(d)||{sum:0};
       a.sum+=r.f; dayStat.set(d,a);
@@ -1548,7 +1563,7 @@ function renderReview(){
     });
     if(rN&&dN){
       const wMax=Math.max(rSum/rN,dSum/dN);
-      html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)"+histNote);
+      html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)");
       html+=barRow("☔ 雨", rSum/rN, wMax, yen(Math.round(rSum/rN))+`<br><span style="color:var(--muted)">${rN}日分</span>`);
       html+=barRow("☀ 晴", dSum/dN, wMax, yen(Math.round(dSum/dN))+`<br><span style="color:var(--muted)">${dN}日分</span>`);
     }
@@ -1619,24 +1634,36 @@ function renderDiaryY(){
   return h;
 }
 
-// 隔日勤務(勤・休・勤・休・休)の周期から次の出番を推定
+// 隔日勤務のサイクル(出番→明け→出番→明け→公休)
 let nextShiftOverride=null;
+const SHIFT_PAT=["出番","明け","出番","明け","公休"];
+function dsOf(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function shiftAnchorInfo(){ // サイクル基準(手動設定 > 直近の乗務日)と、その日がサイクル何番目の出番か
+  const s=localStorage.getItem("shift-anchor");
+  if(s) return {ds:s, off:0}; // 手動基準は「公休明けの出番」として扱う
+  const days=[...diaryByDay().keys()].sort();
+  if(!days.length) return {ds:dsOf(new Date()), off:0};
+  const last=days[days.length-1];
+  let off=0;
+  if(days.length>=2){
+    const gap=Math.round((new Date(last+"T12:00:00")-new Date(days[days.length-2]+"T12:00:00"))/86400000);
+    if(gap===2) off=2; // 前の乗務が2日前 → 直近は2回目の出番(次は公休を挟む)
+  }
+  return {ds:last, off};
+}
+function shiftTypeOf(ds){
+  const a=shiftAnchorInfo();
+  const diff=Math.round((new Date(ds+"T12:00:00")-new Date(a.ds+"T12:00:00"))/86400000);
+  return SHIFT_PAT[(((diff+a.off)%5)+5)%5];
+}
 function nextShiftDate(){
   if(nextShiftOverride) return nextShiftOverride;
-  const days=[...diaryByDay().keys()].sort();
-  const today=new Date(); today.setHours(12,0,0,0);
-  if(!days.length){ const t=new Date(today.getTime()+86400000); return t; }
-  const last=new Date(days[days.length-1]+"T12:00:00");
-  let gapNext=2;
-  if(days.length>=2){
-    const prev=new Date(days[days.length-2]+"T12:00:00");
-    const gap=Math.round((last-prev)/86400000);
-    gapNext = gap===2 ? 3 : 2; // 2日間隔の次は3日空き、3日空きの次は2日間隔
+  const t=new Date(); t.setHours(12,0,0,0);
+  for(let i=1;i<=6;i++){
+    const d=new Date(t.getTime()+i*86400000);
+    if(shiftTypeOf(dsOf(d))==="出番") return d;
   }
-  let base=new Date(last.getTime()+gapNext*86400000);
-  let flip = gapNext===2 ? 3 : 2;
-  while(base<=today){ base=new Date(base.getTime()+flip*86400000); flip=flip===2?3:2; }
-  return base;
+  return new Date(t.getTime()+86400000);
 }
 function renderDiaryT(){
   const byDay=diaryByDay();
@@ -1734,9 +1761,64 @@ function renderDiaryB(){
   });
   return h;
 }
+let calBase=null; // 表示中の月(1日固定)
+function renderDiaryC(){
+  const byDay=diaryByDay();
+  if(!calBase){ calBase=new Date(); calBase.setDate(1); }
+  const y=calBase.getFullYear(), m=calBase.getMonth();
+  const today=dsOf(new Date());
+  let h=`<div style="display:flex;align-items:center;margin-bottom:8px;">
+    <span id="calPrev" style="cursor:pointer;padding:4px 14px;font-size:16px;color:var(--muted);">‹</span>
+    <b style="flex:1;text-align:center;font-size:15px;">${y}年${m+1}月</b>
+    <span id="calNext" style="cursor:pointer;padding:4px 14px;font-size:16px;color:var(--muted);">›</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:10px;color:var(--muted);text-align:center;margin-bottom:3px;">
+    <span style="color:#f08080;">日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span style="color:#7db3f0;">土</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">`;
+  const first=new Date(y,m,1), last=new Date(y,m+1,0);
+  for(let i=0;i<first.getDay();i++) h+=`<span></span>`;
+  for(let day=1;day<=last.getDate();day++){
+    const ds=dsOf(new Date(y,m,day));
+    const worked=byDay.has(ds);
+    const type=worked? "出番" : shiftTypeOf(ds);
+    const style = type==="出番"
+      ? "background:rgba(245,166,35,.16);border:1px solid rgba(245,166,35,.55);color:var(--amber);"
+      : type==="明け"
+      ? "background:rgba(125,179,240,.10);border:1px solid rgba(125,179,240,.3);color:#7db3f0;"
+      : "background:rgba(240,128,128,.10);border:1px solid rgba(240,128,128,.3);color:#f08080;";
+    const todayRing = ds===today? "box-shadow:0 0 0 1.5px #fff inset;" : "";
+    const amt = worked? `<div style="font-size:8px;color:var(--text);">${(dTotal(byDay.get(ds))/10000).toFixed(1)}万</div>` : "";
+    h+=`<div class="cal-cell" data-ds="${ds}" data-w="${worked?1:0}" style="border-radius:8px;padding:4px 2px;text-align:center;cursor:pointer;${style}${todayRing}">
+      <div style="font-size:12px;font-weight:700;">${day}</div>
+      <div style="font-size:9px;">${type==="出番"?(worked?"実績":"出番"):type}</div>${amt}
+    </div>`;
+  }
+  h+=`</div>
+  <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6;">
+  🟠出番 🔵明け 🔴公休。過去の🟠は実際の乗務記録(タップで動線を表示)。<br>
+  予定がずれたら、正しい出番の日をタップして基準を置き直せます。</div>`;
+  return h;
+}
 function renderDiary(tab){
   const body=document.getElementById("diaryBody");
-  body.innerHTML = tab==="y"?renderDiaryY() : tab==="t"?renderDiaryT() : renderDiaryB();
+  body.innerHTML = tab==="y"?renderDiaryY() : tab==="t"?renderDiaryT() : tab==="b"?renderDiaryB() : renderDiaryC();
+  if(tab==="c"){
+    document.getElementById("calPrev").onclick=()=>{ calBase.setMonth(calBase.getMonth()-1); renderDiary("c"); };
+    document.getElementById("calNext").onclick=()=>{ calBase.setMonth(calBase.getMonth()+1); renderDiary("c"); };
+    body.querySelectorAll(".cal-cell").forEach(el=>{
+      el.onclick=()=>{
+        const ds=el.dataset.ds;
+        if(el.dataset.w==="1"){ replayDay(ds); return; }
+        const d=new Date(ds+"T12:00:00");
+        if(confirm(`${d.getMonth()+1}/${d.getDate()}(${D_DN[d.getDay()]})を「出番」の基準に設定しますか?\n※この日を「公休明けの出番」(サイクルの先頭)として扱います。\nカレンダーと「次の出番」がこの日を起点に並び直ります。`)){
+          localStorage.setItem("shift-anchor", ds);
+          nextShiftOverride=null;
+          renderDiary("c");
+        }
+      };
+    });
+  }
   if(tab==="t"){
     fillTomorrowWx();
     const en=document.getElementById("editNext");
