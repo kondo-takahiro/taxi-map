@@ -190,6 +190,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="flex:1"></span>
     <span id="reviewClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
+  <button class="btn" id="reviewCoach" style="width:100%;padding:10px;margin-bottom:8px;">🤖 AIコーチングを受ける</button>
+  <div id="coachOut" style="display:none;margin-bottom:10px;padding:11px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>
   <div id="reviewBody"></div>
 </div>
 
@@ -468,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.22-5";
+const APP_VER = "2026.07.22-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -913,7 +915,10 @@ async function buildBrief(force){
 - 今日の天気: ${wx||"不明"}
 - 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
 - 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
-形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
+以下の会社の研修方針を助言の土台にしてください。
+${COACH_TIPS}
+形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。
+「狙い」はクールの流れ(第1→第2→第3→青タン)で構成し、研修方針の推奨エリア・連続配車の使い分け・今日の曜日特性・イベント終演を織り込むこと。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
 最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","s":"18:00","f":"21:20","lat":35.7056,"lng":139.7519}]`;
     const r=await callSearchAI(key, promptText);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
@@ -1002,6 +1007,16 @@ document.getElementById("btnStands").onclick=async ()=>{
   standsOn=true; b.classList.add("on");
 };
 
+// ===== 会社の研修方針の要約(AIコーチング・ブリーフィングの共通知識) =====
+const COACH_TIPS=`【クール区分】第1=7-13時/第2=13-18時/第3=18-22時/青タン=22-1:50。22時までに売上をつくるのが基本。
+【7時出庫の目標配分例】7万=27/22/15+青13、8万=30/24/15+青19、9万=32/26/16+青25、10万=35/30/20+青25(千円)。10時までに8.5万なら10万は楽に突破。
+【第1クール】平日は荒川を超えるまで無線停止、荒川区・文京区で拾って都心へ(行った先営業がベスト)。港区(芝・品川)、中央区。
+【第2クール】千代田区(大妻通り・麹町)、港区、恵比寿、大手町。
+【第3クール】中央区(京橋〜銀座)。20:30-22:00は銀座・日本橋・京橋・西新橋・赤坂・人形町(スマ配)。
+【青タン】銀座・新橋・赤坂・六本木・西麻布・麻布十番・渋谷・恵比寿・新宿・池袋・上野・神田・北千住・神楽坂・人形町・田町。青タン前は日本橋・千代田区の接待客、銀座昭和通り、八丁堀・人形町・浅草の料亭付け待ち。
+【連続配車】18時までよく鳴る(13時まで特に有利)。22-24時は鳴らないので早めに切って流し。25時過ぎから鳴り出しロングも出る(品川・目黒・中野・池袋西口・板橋・杉並環七、25時過ぎの上野春日通り、神田美土代町、日本橋スマ配)。渋谷・池袋西口・新宿は一日中連続配車OK。実車率50%以上が目標。
+【曜日】月=朝昼強い(13時まで無線強い)が午後夜厳しめ/火=客少なめ、夜は表参道・六本木・中目黒・渋谷/水=昼の会議需要、接待多くロング出やすい/木=週末感、繁華街期待/金=終日忙しく青タン伸びる、渋滞注意/土=昼から一気、深夜は繁華街以外も(北千住など足立も)/日=台数最少で昼間やりやすい、空港案件、22-1時はほぼダメで青タンまでに勝負。どの曜日も深夜1時以降(特に2時から)は乗せやすい。
+【休憩】14-16時・19-20時・22-23時。クールごとに5分。売上だけ追わず8〜9割の力で(事故違反防止)。`;
 // ===== AIによる立ち回り解説(OpenAI / Anthropic 両対応・キーは端末内のみに保存) =====
 let lastAdvice=null; // showAdviceで更新
 function getAIKey(){
@@ -1582,6 +1597,49 @@ document.getElementById("btnReview").onclick=async ()=>{
   document.getElementById("reviewPanel").style.display="block";
 };
 document.getElementById("reviewClose").onclick=()=>document.getElementById("reviewPanel").style.display="none";
+
+// ===== AIコーチング(実績サマリー×研修方針) =====
+function coachSummary(){
+  const mine=myRides(), mcfg=monthCfg(), byDay=diaryByDay();
+  const days=[...byDay.keys()].sort();
+  const L=[];
+  if(days.length){
+    const d=days[days.length-1], rs=byDay.get(d);
+    const nApp=rs.filter(r=>(r.m||"app")==="app").length;
+    L.push(`直近乗務: ${d}(${D_DN[dDow(d)]}) ${yen(dTotal(rs))}・${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%`);
+    const bandTxt=D_BANDS.map(b=>`${b[2].split(" ")[0]}${yen(dBand(rs,b))}`).join("/");
+    L.push(`直近の時間帯内訳: ${bandTxt}`);
+  }
+  const per={};
+  mine.forEach(r=>{const p=periodOf(shiftDateStr(r),mcfg); per[p]=(per[p]||0)+r.f;});
+  L.push("月度推移: "+Object.entries(per).sort().slice(-4).map(([p,v])=>parseInt(p.slice(5),10)+"月度"+(v/10000).toFixed(1)+"万").join("、"));
+  const dowM={};
+  mine.forEach(r=>{const dw=shiftDow(r); (dowM[dw]=dowM[dw]||{s:0,d:new Set()}).s+=r.f; dowM[dw].d.add(shiftDateStr(r));});
+  L.push("曜日別1日平均: "+[1,2,3,4,5,6,0].filter(d=>dowM[d]).map(d=>D_DN[d]+(dowM[d].s/dowM[d].d.size/10000).toFixed(1)+"万").join("、"));
+  const allDays=new Set(mine.map(r=>shiftDateStr(r))).size||1;
+  L.push("時間帯別1日平均: "+D_BANDS.map(b=>b[2].split(" ")[0]+Math.round(mine.filter(r=>shiftHour(r.t)>=b[0]&&shiftHour(r.t)<b[1]).reduce((s,r)=>s+r.f,0)/allDays/1000)+"千円").join("、"));
+  const nA=mine.filter(r=>(r.m||"app")==="app").length;
+  L.push(`全期間: ${mine.length}回・アプリ比率${Math.round(nA/mine.length*100)}%・営業日${allDays}日`);
+  return L.join("\n");
+}
+async function askCoach(){
+  const key=getAIKey();
+  if(!key) return;
+  const out=document.getElementById("coachOut");
+  out.style.display="block"; out.textContent="実績を分析中…(10〜20秒)";
+  const prompt_=`あなたは東京のタクシー会社のベテラン営業コーチです。以下の「会社の研修方針」を採点基準として、乗務員本人の実績サマリーを分析し、コーチングしてください。
+形式: 「◎良い点」2つ、「▲課題」2つ、「→次の乗務でやること」3つ。それぞれ1行、数字を引用して具体的に。方針のクール別目標(10万配分など)や曜日特性と照らすこと。前置き・締めの言葉は不要。
+■会社の研修方針
+${COACH_TIPS}
+■本人の実績サマリー
+${coachSummary()}`;
+  try{
+    const r=await callAI(key, prompt_);
+    if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
+    out.textContent=r.err? "エラー: "+r.err : (r.text||"生成できませんでした。");
+  }catch(e){ out.textContent="通信エラーです。("+e.message+")"; }
+}
+document.getElementById("reviewCoach").onclick=askCoach;
 
 // ===== 営業日誌(昨日レポート / 明日の作戦 / ベスト再現) =====
 const D_BANDS=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
