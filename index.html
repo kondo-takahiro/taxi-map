@@ -211,9 +211,21 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="diaryBody"></div>
 </div>
 
+<div id="roadsPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
+  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:14px;">🛣 この日の道</b>
+    <span id="roadsDay" style="font-size:12px;color:var(--muted);"></span>
+    <span style="flex:1"></span>
+    <span id="roadsClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="roadsBody" style="font-size:13px;"></div>
+</div>
+
 <div id="replayBar" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1050;
   background:rgba(19,26,42,.95);border:1px solid var(--amber);border-radius:20px;padding:7px 14px;font-size:12px;white-space:nowrap;">
   <span id="replayTxt"></span>
+  <span id="replayRoads" style="cursor:pointer;color:var(--amber);font-weight:700;margin-left:10px;">🛣 道</span>
   <span id="replayClose" style="cursor:pointer;color:var(--muted);font-weight:700;margin-left:8px;">✕</span>
 </div>
 
@@ -480,7 +492,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-8";
+const APP_VER = "2026.07.25-9";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1905,7 +1917,8 @@ function renderDiaryY(){
     h+=sectionTitle("この日の一番(万収なし)");
     h+=`<div style="font-size:13px;">${top.t} ${top.p} → ${top.dst||"?"} <b style="color:var(--amber)">${yen(top.f)}</b></div>`;
   }
-  h+=`<button class="btn" id="diaryAI" style="width:100%;padding:10px;margin-top:14px;">🤖 この日の立ち回りをAI分析</button>
+  h+=`<button class="btn" id="diaryRoads" style="width:100%;padding:10px;margin-top:14px;">🛣 この日の道を復習</button>`;
+  h+=`<button class="btn" id="diaryAI" style="width:100%;padding:10px;margin-top:8px;">🤖 この日の立ち回りをAI分析</button>
   <div id="diaryAIOut" style="display:none;margin-top:8px;padding:11px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>`;
   lastReportDay=target;
   return h;
@@ -1997,6 +2010,89 @@ async function fillTomorrowWx(){
   }
 }
 
+// ===== 走った道の復習(経路と通り名を取得) =====
+let roadsLayer=null;
+function clearRoads(){ if(roadsLayer){ map.removeLayer(roadsLayer); roadsLayer=null; } }
+function roadChain(steps){ // 連続する同名を畳んで通り名の並びにする
+  const out=[];
+  steps.forEach(s=>{
+    let n=(s.name||"").trim();
+    const ref=(s.ref||"").trim();
+    if(ref && /高速|自動車道|C\d|E\d/.test(ref+n)) n = n? n+"("+ref+")" : ref;
+    if(!n || n==="-") return;
+    if(out.length && out[out.length-1]===n) return;
+    out.push(n);
+  });
+  return out;
+}
+async function loadDayRoads(d){
+  const cacheKey="roads-"+d;
+  try{ const c=JSON.parse(localStorage.getItem(cacheKey)); if(c && c.length) return c; }catch(e){}
+  const rs=[...(diaryByDay().get(d)||[])].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  await loadChomeNow();
+  const body=document.getElementById("roadsBody");
+  const out=[];
+  for(let i=0;i<rs.length;i++){
+    const r=rs[i];
+    body.textContent=`経路を取得中… ${i+1}/${rs.length}`;
+    const dll=r.dst? locateAddress(r.dst) : null;
+    if(!dll){ out.push({t:r.t,p:r.p,dst:r.dst||"?",f:r.f,err:"降車地の位置が特定できません"}); continue; }
+    try{
+      const url=`https://router.project-osrm.org/route/v1/driving/${r.lng},${r.lat};${dll[1]},${dll[0]}?overview=full&geometries=geojson&steps=true`;
+      const j=await fetchT(url,{},20000).then(x=>x.json());
+      if(j.code!=="Ok"||!j.routes||!j.routes[0]) throw new Error("経路なし");
+      const rt=j.routes[0];
+      out.push({t:r.t,p:r.p,dst:r.dst,f:r.f,
+        km:+(rt.distance/1000).toFixed(1), min:Math.round(rt.duration/60),
+        names:roadChain(rt.legs[0].steps),
+        line:rt.geometry.coordinates.map(c=>[+c[1].toFixed(5),+c[0].toFixed(5)])});
+    }catch(e){
+      out.push({t:r.t,p:r.p,dst:r.dst,f:r.f,err:"経路を取得できませんでした"});
+    }
+    await new Promise(res=>setTimeout(res,250)); // 提供サーバーへの配慮
+  }
+  try{ localStorage.setItem(cacheKey, JSON.stringify(out)); }catch(e){}
+  return out;
+}
+function drawRoads(list){
+  clearRoads();
+  const items=[], all=[];
+  list.forEach((x,i)=>{
+    if(!x.line) return;
+    all.push(...x.line);
+    items.push(L.polyline(x.line,{color:"#1e88e5",weight:6,opacity:.35}));
+    items.push(L.polyline(x.line,{color:"#42a5f5",weight:2.5,opacity:.9}));
+    items.push(L.marker(x.line[0],{icon:L.divIcon({className:"",iconSize:[18,18],iconAnchor:[9,9],
+      html:`<div style="background:#f5a623;color:#131a2a;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;border:1.5px solid #fff;">${i+1}</div>`})}));
+  });
+  if(items.length){ roadsLayer=L.layerGroup(items).addTo(map); map.fitBounds(L.latLngBounds(all).pad(0.1)); }
+}
+async function showRoads(d){
+  document.getElementById("roadsPanel").style.display="block";
+  document.getElementById("roadsDay").textContent=`${d.slice(5,7)}/${d.slice(8)}(${D_DN[dDow(d)]})`;
+  const body=document.getElementById("roadsBody");
+  body.textContent="経路を取得中…";
+  const list=await loadDayRoads(d);
+  drawRoads(list);
+  const hw=new Set();
+  list.forEach(x=>(x.names||[]).forEach(n=>{ if(/高速|首都高|自動車道/.test(n)) hw.add(n); }));
+  let h="";
+  if(hw.size) h+=`<div style="font-size:12px;color:var(--amber);margin-bottom:8px;">高速: ${[...hw].join("、")}</div>`;
+  list.forEach((x,i)=>{
+    h+=`<div class="road-row" data-i="${i}" style="padding:9px 2px;border-top:1px solid var(--line);cursor:pointer;">
+      <div style="font-size:13px;"><b style="color:var(--amber);">${i+1}</b> ${x.t} ${x.p} → ${x.dst} <span style="color:var(--muted);font-size:11px;">${x.km?x.km+"km・"+x.min+"分":""}</span></div>
+      <div style="font-size:12px;color:${x.err?"#f08080":"var(--muted)"};line-height:1.6;margin-top:2px;">${x.err||((x.names||[]).join(" → ")||"通り名の情報なし")}</div>
+    </div>`;
+  });
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">※実際に走った道ではなく、その区間の推奨ルート(OSRM)です。自分が通った道と見比べる復習用としてお使いください。<br>地図には全区間の経路を表示しています。行をタップするとその区間に移動します。</div>`;
+  body.innerHTML=h;
+  body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>{
+    const x=list[+el.dataset.i];
+    if(x && x.line){ map.fitBounds(L.latLngBounds(x.line).pad(0.2)); document.getElementById("roadsPanel").style.display="none"; }
+  });
+}
+document.getElementById("roadsClose").onclick=()=>{ document.getElementById("roadsPanel").style.display="none"; clearRoads(); };
+
 let replayLayer=null;
 function clearReplay(){
   if(replayLayer){ map.removeLayer(replayLayer); replayLayer=null; }
@@ -2018,6 +2114,7 @@ function replayDay(d){
   document.getElementById("replayTxt").textContent=`${d.slice(5,7)}/${d.slice(8)}(${D_DN[dDow(d)]})の動線 ${yen(dTotal(rs))}`;
   document.getElementById("replayBar").style.display="block";
   document.getElementById("diaryPanel").style.display="none";
+  document.getElementById("replayRoads").onclick=()=>showRoads(d);
 }
 function renderDiaryB(){
   const byDay=diaryByDay();
@@ -2099,6 +2196,8 @@ function renderDiary(tab){
   if(tab==="y"){
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
+    const rd=document.getElementById("diaryRoads");
+    if(rd) rd.onclick=()=>{ document.getElementById("diaryPanel").style.display="none"; showRoads(lastReportDay); };
     const bk=document.getElementById("brkEdit");
     if(bk) bk.onclick=()=>{
       let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
