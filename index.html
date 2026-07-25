@@ -249,19 +249,6 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip" data-min="8000">¥8,000+</button>
     <button class="chip" data-min="10000">¥10,000+</button>
     <button class="chip" data-min="20000">¥20,000+</button>
-    <span style="flex:1"></span>
-    <button class="btn" id="btnBrief">📋 今日の情報</button>
-    <button class="btn" id="btnAdvice">💡 立ち回り</button>
-    <button class="btn" id="btnReview">📊 振り返り</button>
-    <button class="btn" id="btnDiary">📓 日誌</button>
-    <button class="btn" id="btnRank">🏆 ランキング</button>
-    <button class="btn" id="btnStands">🚕 乗り場</button>
-    <button class="btn" id="btnAppMode">📲 アプリ営業</button>
-    <button class="btn" id="btnHead">⬆️ 北固定</button>
-    <button class="btn" id="btnStyle">🌙 夜間配色</button>
-    <button class="btn" id="btnHeat">ヒート</button>
-    <button class="btn" id="btnWards">区別</button>
-    <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
     <span class="label">曜日</span>
@@ -282,6 +269,15 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip wx" data-wx="dry">☀晴</button>
   </div>
   <div class="row">
+    <span class="label">クール</span>
+    <button class="chip cool on" data-c="all">全て</button>
+    <button class="chip cool" data-c="7,13">第1</button>
+    <button class="chip cool" data-c="13,18">第2</button>
+    <button class="chip cool" data-c="18,22">第3</button>
+    <button class="chip cool" data-c="22,29">青タン</button>
+    <button class="chip cool" data-c="now">現在</button>
+  </div>
+  <div class="row">
     <span class="label">時間帯</span>
     <div class="timeline" id="timeline">
       <div class="tl-track"></div>
@@ -292,6 +288,20 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
       <input type="range" id="tMax" min="5" max="29" value="29" step="1">
     </div>
     <span class="tl-val" id="tlVal">5:00 – 5:00</span>
+  </div>
+  <div class="row">
+    <button class="btn" id="btnBrief">📋 今日の情報</button>
+    <button class="btn" id="btnAdvice">💡 立ち回り</button>
+    <button class="btn" id="btnReview">📊 振り返り</button>
+    <button class="btn" id="btnDiary">📓 日誌</button>
+    <button class="btn" id="btnRank">🏆 ランキング</button>
+    <button class="btn" id="btnStands">🚕 乗り場</button>
+    <button class="btn" id="btnAppMode">📲 アプリ営業</button>
+    <button class="btn" id="btnHead">⬆️ 北固定</button>
+    <button class="btn" id="btnStyle">🌙 夜間配色</button>
+    <button class="btn" id="btnHeat">ヒート</button>
+    <button class="btn" id="btnWards">区別</button>
+    <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
     <button class="btn" id="btnAdd">＋ 乗車を記録</button>
@@ -470,7 +480,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-7";
+const APP_VER = "2026.07.25-8";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1366,6 +1376,34 @@ function onSlide(){
   scheduleRender();
 }
 elMin.addEventListener("input",onSlide); elMax.addEventListener("input",onSlide);
+
+// ===== クール切替(第1/第2/第3/青タン) =====
+function setTimeRange(a,b){
+  tMin=a; tMax=b; elMin.value=a; elMax.value=b;
+  const fill=document.getElementById("tlFill");
+  fill.style.left=((tMin-5)/24*100)+"%";
+  fill.style.width=((tMax-tMin)/24*100)+"%";
+  document.getElementById("tlVal").textContent = `${fmtH(tMin)} – ${fmtH(tMax)}`;
+  render();
+}
+document.querySelectorAll(".chip.cool").forEach(c=>{
+  c.onclick=()=>{
+    document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
+    c.classList.add("on");
+    const v=c.dataset.c;
+    if(v==="all"){ setTimeRange(5,29); return; }
+    if(v==="now"){
+      const h=new Date().getHours(), sh=h<5?h+24:h;
+      setTimeRange(Math.max(5,sh-1), Math.min(29,sh+2)); return;
+    }
+    const [a,b]=v.split(",").map(Number);
+    setTimeRange(a,b);
+  };
+});
+// スライダーを手で動かしたらクールの選択を外す
+[elMin,elMax].forEach(el=>el.addEventListener("input",()=>{
+  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
+}));
 
 // ===== 単価チップ =====
 document.querySelectorAll(".chip[data-min]").forEach(c=>{
@@ -2437,6 +2475,7 @@ document.getElementById("btnAppMode").onclick=()=>{
   fill.style.left=((tMin-5)/24*100)+"%";
   fill.style.width=((tMax-tMin)/24*100)+"%";
   document.getElementById("tlVal").textContent=fmtH(tMin)+" – "+fmtH(tMax);
+  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="now"));
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
