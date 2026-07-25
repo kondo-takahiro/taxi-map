@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-1";
+const APP_VER = "2026.07.25-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1052,14 +1052,14 @@ function getAIKey(){
   return k;
 }
 function clearAIKey(){ localStorage.removeItem("ai-api-key"); localStorage.removeItem("claude-api-key"); }
-async function callAI(key, prompt_){
+async function callAI(key, prompt_, strong){
   if(key.startsWith("sk-ant-")){
     // Anthropic (Claude)
     const res=await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,
         "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:400,
+      body:JSON.stringify({model:strong?"claude-sonnet-4-6":"claude-haiku-4-5-20251001",max_tokens:strong?900:400,
         messages:[{role:"user",content:prompt_}]})
     });
     if(res.status===401) return {auth:false};
@@ -1071,7 +1071,7 @@ async function callAI(key, prompt_){
     const res=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",
       headers:{"content-type":"application/json","Authorization":"Bearer "+key},
-      body:JSON.stringify({model:"gpt-4o-mini",max_completion_tokens:400,
+      body:JSON.stringify({model:strong?"gpt-4o":"gpt-4o-mini",max_completion_tokens:strong?900:400,
         messages:[{role:"user",content:prompt_}]})
     });
     if(res.status===401) return {auth:false};
@@ -1657,7 +1657,7 @@ ${COACH_TIPS}
 ■本人の実績サマリー
 ${coachSummary()}`;
   try{
-    const r=await callAI(key, prompt_);
+    const r=await callAI(key, prompt_, true);
     if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
     out.textContent=r.err? "エラー: "+r.err : (r.text||"生成できませんでした。");
   }catch(e){ out.textContent="通信エラーです。("+e.message+")"; }
@@ -1696,17 +1696,33 @@ async function analyzeLastShift(){
   const rs=[...byDay.get(d)].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
   const dw=dDow(d);
   const seq=rs.map(r=>`${r.t} ${r.p}→${r.dst||"?"} ${r.f}円 ${(r.m||"app")==="app"?"配車":"流し"}`).join("\n");
-  const peers=[...byDay.keys()].filter(x=>x!==d && dDow(x)===dw);
-  const bandCmp=D_BANDS.map(b=>{
-    const cur=dBand(rs,b);
-    const avg=peers.length? Math.round(peers.reduce((s,x)=>s+dBand(byDay.get(x),b),0)/peers.length) : 0;
-    return `${b[2]} ${cur}円(同曜日平均${avg}円)`;
-  }).join(" / ");
-  const prompt_=`あなたは東京のタクシー営業コーチです。以下は乗務員の1乗務の全乗車の時系列です。乗車間の空白時間や移動(降車地から次の乗車地への距離感)も読み取り、会社の研修方針のクール(第1=7-13時/第2=13-18時/第3=18-22時/青タン=22時〜)の枠組みで立ち回りを分析してください。
-形式: 「◎うまくいった動き」2つ、「▲もったいなかった動き」2つ、「→次回の${D_DN[dw]}曜でやること」2つ。時刻と場所を引用して1行ずつ具体的に。前置き・締めは不要。
+  // 45分以上の空白区間を事前計算(休憩込みの可能性あり)
+  const gaps=[];
+  for(let i=1;i<rs.length;i++){
+    const g=(new Date(rs[i].d+"T"+rs[i].t)-new Date(rs[i-1].d+"T"+rs[i-1].t))/60000;
+    if(g>=45) gaps.push(`${rs[i-1].t}に${rs[i-1].p}で乗せ${rs[i-1].dst||"?"}で降車 → 次の乗車は${rs[i].t} ${rs[i].p}(間隔${Math.round(g)}分)`);
+  }
+  // クール別実績と目標配分(10万目標・7時出庫の配分)との差
+  const CO=[["第1クール(7-13時)",7,13,35000],["第2クール(13-18時)",13,18,30000],["第3クール(18-22時)",18,22,20000],["青タン(22時〜)",22,29,25000]];
+  const coolCmp=CO.map(([n,a,b,tg])=>{
+    const v=rs.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0);
+    const df=v-tg;
+    return `${n}: ${yen(v)} / 目標${yen(tg)}(${df>=0?"+":""}${yen(df).replace("¥","")}円)`;
+  }).join("\n");
+  const prompt_=`あなたは日日交通のベテラン班長で、後輩の1乗務を添削します。
+分析対象は「位置取り・時間の使い方・クール配分」だけです。以下を厳守:
+- 個々の乗車の金額の高低は運なので論評禁止。「高額でよかった」「安い配車にしてしまった」の類は書かない
+- 「高額スポットを狙う」「リサーチする」のような抽象的な助言は禁止。必ず「時刻帯×具体的なエリア名×行動」で書く
+- ▲の指摘は、下に示す空白区間かクール目標差のどちらかを必ず根拠にする(空白は休憩の可能性もあるので断定せず「移動か休憩なら位置をこう使う」と書く)
+- →の提案は研修方針の推奨エリア名を使い、出庫から青タンまでの1日の設計として流れがつながるように
+形式: ◎良かった位置取り(2つ、降車地がその後の展開にどう効いたかまで)/▲時間とエリアのロス(2つ)/→次回の${D_DN[dw]}曜の設計(3つ)。各1〜2行、時刻とエリア名を必ず引用。前置き・締めは不要。
 ■会社の研修方針(要約)
 ${COACH_TIPS}
-■乗務日: ${d}(${D_DN[dw]}曜) 時間帯別実績: ${bandCmp}
+■乗務日: ${d}(${D_DN[dw]}曜)
+■クール別実績と目標差
+${coolCmp}
+■45分以上の空白区間
+${gaps.length?gaps.join("\n"):"なし"}
 ■全乗車の時系列
 ${seq}`;
   try{
