@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.22-7";
+const APP_VER = "2026.07.25-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1686,6 +1686,35 @@ function pctTag(cur,base){
   return `<span style="color:${col};font-weight:700;">${p>=0?"▲":"▼"}${Math.abs(p)}%</span>`;
 }
 
+let lastReportDay=null;
+async function analyzeLastShift(){
+  const key=getAIKey(); if(!key) return;
+  const out=document.getElementById("diaryAIOut");
+  out.style.display="block"; out.textContent="この日の動きを分析中…(10〜20秒)";
+  const byDay=diaryByDay();
+  const d=lastReportDay || [...byDay.keys()].sort().pop();
+  const rs=[...byDay.get(d)].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const dw=dDow(d);
+  const seq=rs.map(r=>`${r.t} ${r.p}→${r.dst||"?"} ${r.f}円 ${(r.m||"app")==="app"?"配車":"流し"}`).join("\n");
+  const peers=[...byDay.keys()].filter(x=>x!==d && dDow(x)===dw);
+  const bandCmp=D_BANDS.map(b=>{
+    const cur=dBand(rs,b);
+    const avg=peers.length? Math.round(peers.reduce((s,x)=>s+dBand(byDay.get(x),b),0)/peers.length) : 0;
+    return `${b[2]} ${cur}円(同曜日平均${avg}円)`;
+  }).join(" / ");
+  const prompt_=`あなたは東京のタクシー営業コーチです。以下は乗務員の1乗務の全乗車の時系列です。乗車間の空白時間や移動(降車地から次の乗車地への距離感)も読み取り、会社の研修方針のクール(第1=7-13時/第2=13-18時/第3=18-22時/青タン=22時〜)の枠組みで立ち回りを分析してください。
+形式: 「◎うまくいった動き」2つ、「▲もったいなかった動き」2つ、「→次回の${D_DN[dw]}曜でやること」2つ。時刻と場所を引用して1行ずつ具体的に。前置き・締めは不要。
+■会社の研修方針(要約)
+${COACH_TIPS}
+■乗務日: ${d}(${D_DN[dw]}曜) 時間帯別実績: ${bandCmp}
+■全乗車の時系列
+${seq}`;
+  try{
+    const r=await callAI(key, prompt_);
+    if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
+    out.textContent=r.err? "エラー: "+r.err : (r.text||"生成できませんでした。");
+  }catch(e){ out.textContent="通信エラーです。("+e.message+")"; }
+}
 function renderDiaryY(){
   const byDay=diaryByDay();
   const days=[...byDay.keys()].sort();
@@ -1711,8 +1740,19 @@ function renderDiaryY(){
       ${pctTag(cur,pAvg)||'<span style="color:var(--muted)">—</span>'}
     </div>`;
   });
-  h+=sectionTitle("この日の一番");
-  h+=`<div style="font-size:13px;">${top.t} ${top.p} → ${top.dst||"?"} <b style="color:var(--amber)">${yen(top.f)}</b></div>`;
+  const big=[...rs].filter(r=>r.f>=10000).sort((a,b)=>b.f-a.f);
+  if(big.length){
+    h+=sectionTitle(`この日の万収(${big.length}本)`);
+    big.forEach(r=>{
+      h+=`<div style="font-size:13px;padding:3px 0;">${r.t} ${r.p} → ${r.dst||"?"} <b style="color:var(--amber)">${yen(r.f)}</b><span style="font-size:11px;color:var(--muted);"> ${(r.m||"app")==="app"?"配車":"流し"}</span></div>`;
+    });
+  }else{
+    h+=sectionTitle("この日の一番(万収なし)");
+    h+=`<div style="font-size:13px;">${top.t} ${top.p} → ${top.dst||"?"} <b style="color:var(--amber)">${yen(top.f)}</b></div>`;
+  }
+  h+=`<button class="btn" id="diaryAI" style="width:100%;padding:10px;margin-top:14px;">🤖 この日の立ち回りをAI分析</button>
+  <div id="diaryAIOut" style="display:none;margin-top:8px;padding:11px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>`;
+  lastReportDay=target;
   return h;
 }
 
@@ -1900,6 +1940,10 @@ function renderDiary(tab){
         }
       };
     });
+  }
+  if(tab==="y"){
+    const b=document.getElementById("diaryAI");
+    if(b) b.onclick=analyzeLastShift;
   }
   if(tab==="t"){
     fillTomorrowWx();
