@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-5";
+const APP_VER = "2026.07.25-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1763,17 +1763,26 @@ async function analyzeLastShift(){
     const df=v-tg;
     return `${n}: ${yen(v)} / 目標${yen(tg)}(${df>=0?"+":""}${yen(df).replace("¥","")}円)`;
   }).join("\n");
+  let brkAll={}; try{ brkAll=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+  const brkTxt=brkAll[d]||"未記録";
+  const nx=nextShiftDate(); const nxDow=D_DN[nx.getDay()];
+  const nxLabel=`${nx.getMonth()+1}/${nx.getDate()}(${nxDow}曜)`;
   const prompt_=`あなたは日日交通のベテラン班長で、後輩の1乗務を添削します。
 分析対象は「位置取り・時間の使い方・クール配分」だけです。以下を厳守:
 - 個々の乗車の金額の高低は運なので論評禁止。「高額でよかった」「安い配車にしてしまった」の類は書かない
 - 「高額スポットを狙う」「リサーチする」のような抽象的な助言は禁止。必ず「時刻帯×具体的なエリア名×行動」で書く
-- ▲の指摘は、下に示す空白区間かクール目標差のどちらかを必ず根拠にする(空白は休憩の可能性もあるので断定せず「移動か休憩なら位置をこう使う」と書く)
+- ▲の指摘は、下に示す空白区間かクール目標差のどちらかを必ず根拠にする
 - 空白時間は「45分以上の空白区間」リストに記載のものだけを使う。自分で乗車間隔を計算・推定してはいけない
+- 「休憩時間」に記載された時間帯と重なる空白は、必要な休憩なのでロスとして指摘しない。触れる場合は「休憩の場所をどこにすると次が拾いやすいか」という観点のみにする
+- 休憩が未記録の場合、長い空白は休憩の可能性があるため「休憩だったなら〜」と条件付きで書く
 - →の提案は研修方針の推奨エリア名を使い、出庫から青タンまでの1日の設計として流れがつながるように
-形式: ◎良かった位置取り(2つ、降車地がその後の展開にどう効いたかまで)/▲時間とエリアのロス(2つ)/→次回の${D_DN[dw]}曜の設計(3つ)。各1〜2行、時刻とエリア名を必ず引用。前置き・締めは不要。
+形式: ◎良かった位置取り(2つ、降車地がその後の展開にどう効いたかまで)/▲時間とエリアのロス(2つ)/→次回の設計(3つ)。各1〜2行、時刻とエリア名を必ず引用。前置き・締めは不要。
+重要: 「→次回の設計」は分析対象日(${D_DN[dw]}曜)ではなく、次の出番である${nxLabel}向けに書くこと。見出しは「→次回${nxLabel}の設計」とし、研修方針の${nxDow}曜の特徴を必ず踏まえること。
 ■会社の研修方針(要約)
 ${COACH_TIPS}
 ■本人の重点目標: 実車率を高めること(研修方針の目標は50%以上、55%超えが理想)。助言は空走を減らす観点を最優先に。
+■休憩時間: ${brkTxt}
+■次の出番: ${nxLabel}
 ■乗務日: ${d}(${D_DN[dw]}曜) 実車率: ${(function(){try{const k=JSON.parse(localStorage.getItem("kpi-v1"))||{};return k[d]?k[d]+"%":"未記録";}catch(e){return "未記録";}})()}
 ■クール別実績と目標差
 ${coolCmp}
@@ -1800,7 +1809,10 @@ function renderDiaryY(){
   const top=rs.reduce((a,b)=>a.f>=b.f?a:b);
   let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">${target.slice(5,7)}/${target.slice(8)}(${D_DN[dw]})の乗務</div>`;
   h+=`<div style="font-size:22px;font-weight:800;">${yen(total)} ${pctTag(total,peerAvg)}</div>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%・実車率<span id="kpiEdit" style="text-decoration:underline;cursor:pointer;color:${jr?"var(--text)":"var(--amber)"};">${jr? jr+"%" : "を記録"}</span>${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)との比較`:""}</div>`;
+  let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+  const br=brk[target];
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%・実車率<span id="kpiEdit" style="text-decoration:underline;cursor:pointer;color:${jr?"var(--text)":"var(--amber)"};">${jr? jr+"%" : "を記録"}</span>${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)`:""}</div>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">休憩: <span id="brkEdit" style="text-decoration:underline;cursor:pointer;color:${br?"var(--text)":"var(--amber)"};">${br||"を記録"}</span></div>`;
   h+=sectionTitle("時間帯別(同曜日平均との差)");
   D_BANDS.forEach(b=>{
     const cur=dBand(rs,b);
@@ -2016,6 +2028,15 @@ function renderDiary(tab){
   if(tab==="y"){
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
+    const bk=document.getElementById("brkEdit");
+    if(bk) bk.onclick=()=>{
+      let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+      const v=prompt("この乗務の休憩時間を日報のとおり入力(例: 13:20-13:56 六本木7, 18:23-19:03 新橋1)", brk[lastReportDay]||"");
+      if(v===null) return;
+      if(v.trim()) brk[lastReportDay]=v.trim(); else delete brk[lastReportDay];
+      localStorage.setItem("break-v1", JSON.stringify(brk));
+      renderDiary("y");
+    };
     const k=document.getElementById("kpiEdit");
     if(k) k.onclick=()=>{
       let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
