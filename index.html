@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-3";
+const APP_VER = "2026.07.25-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1052,28 +1052,52 @@ function getAIKey(){
   return k;
 }
 function clearAIKey(){ localStorage.removeItem("ai-api-key"); localStorage.removeItem("claude-api-key"); }
+// 通信失敗時に1度だけ再試行し、それでも駄目なら軽量モデルで再挑戦
+async function callAIRetry(key, prompt_, onStatus){
+  for(let i=0;i<2;i++){
+    try{
+      const r=await callAI(key, prompt_, true);
+      if(r.auth!==false && !r.err) return r;
+      if(r.auth===false) return r;
+      if(i===0 && onStatus) onStatus("応答が得られませんでした。再試行中…");
+    }catch(e){
+      if(i===0 && onStatus) onStatus("通信が不安定です。再試行中…(電波の良い場所でお試しください)");
+      else{
+        if(onStatus) onStatus("高精度モデルに接続できず、軽量モデルで分析中…");
+        try{ return await callAI(key, prompt_, false); }
+        catch(e2){ return {auth:true, err:"通信エラー("+e2.message+")。電波状況を確認してもう一度お試しください。"}; }
+      }
+    }
+  }
+  return {auth:true, err:"応答を取得できませんでした。もう一度お試しください。"};
+}
+function fetchT(url, opt, ms){ // 指定時間で打ち切るfetch
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(), ms||90000);
+  return fetch(url, Object.assign({}, opt, {signal:c.signal})).finally(()=>clearTimeout(t));
+}
 async function callAI(key, prompt_, strong){
   if(key.startsWith("sk-ant-")){
     // Anthropic (Claude)
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
+    const res=await fetchT("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,
         "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
       body:JSON.stringify({model:strong?"claude-sonnet-4-6":"claude-haiku-4-5-20251001",max_tokens:strong?2000:400,
         messages:[{role:"user",content:prompt_}]})
-    });
+    }, strong?110000:45000);
     if(res.status===401) return {auth:false};
     const data=await res.json();
     if(data.error) return {auth:true, text:null, err:data.error.message};
     return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("").trim()};
   }else{
     // OpenAI (ChatGPT)
-    const res=await fetch("https://api.openai.com/v1/chat/completions",{
+    const res=await fetchT("https://api.openai.com/v1/chat/completions",{
       method:"POST",
       headers:{"content-type":"application/json","Authorization":"Bearer "+key},
       body:JSON.stringify({model:strong?"gpt-4o":"gpt-4o-mini",max_completion_tokens:strong?2000:400,
         messages:[{role:"user",content:prompt_}]})
-    });
+    }, strong?110000:45000);
     if(res.status===401) return {auth:false};
     const data=await res.json();
     if(data.error) return {auth:true, text:null, err:data.error.message};
@@ -1586,6 +1610,37 @@ function renderReview(){
     html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;">※次の乗車までの間隔(実車時間込み)からの概算です</div>`;
   }
 
+  // 空走(降車後の回送)分析: 実車率向上のための指標
+  const seq2=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const emp=new Map(); let empTotal=0, empN=0;
+  for(let i=0;i<seq2.length-1;i++){
+    const cur=seq2[i], nxt=seq2[i+1];
+    if(shiftDateStr(cur)!==shiftDateStr(nxt)) continue;
+    const gap=(new Date(nxt.d+"T"+nxt.t)-new Date(cur.d+"T"+cur.t))/60000;
+    if(gap<=0 || gap>120) continue;
+    if(!cur.dst) continue;
+    const ll=locateAddress(cur.dst);
+    if(!ll) continue;
+    const km=haversineKm(ll,[nxt.lat,nxt.lng]);
+    empTotal+=km; empN++;
+    const base=cur.dst.replace(/[0-9]+$/,"");
+    const a=emp.get(base)||{km:0,n:0};
+    a.km+=km; a.n++; emp.set(base,a);
+  }
+  if(empN>=10){
+    const rowsE=[...emp.entries()].filter(([,a])=>a.n>=3)
+      .map(([p,a])=>({p, avg:a.km/a.n, n:a.n})).sort((x,y)=>y.avg-x.avg).slice(0,5);
+    if(rowsE.length){
+      html+=sectionTitle("空走の多い降車先(実車率のロス源)");
+      html+=`<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">降ろした後、次の乗車まで平均${(empTotal/empN).toFixed(1)}km空車移動(直線距離の目安)。長い場所ほど「行った先営業」か回避を検討。</div>`;
+      const eM=rowsE[0].avg;
+      rowsE.forEach(x=>{
+        html+=barRow(x.p.length>7?x.p.slice(0,7)+"…":x.p, x.avg, eM,
+          x.avg.toFixed(1)+"km<br><span style=\"color:var(--muted)\">"+x.n+"回</span>");
+      });
+    }
+  }
+
   // 雨の日と晴れの日(天気データ取得済みの場合)
   if(rainMap){
     const dayStat=new Map();
@@ -1652,15 +1707,14 @@ async function askCoach(){
   out.style.display="block"; out.textContent="実績を分析中…(10〜20秒)";
   const prompt_=`あなたは東京のタクシー会社のベテラン営業コーチです。以下の「会社の研修方針」を採点基準として、乗務員本人の実績サマリーを分析し、コーチングしてください。
 形式: 「◎良い点」2つ、「▲課題」2つ、「→次の乗務でやること」3つ。それぞれ1行、数字を引用して具体的に。方針のクール別目標(10万配分など)や曜日特性と照らすこと。前置き・締めの言葉は不要。
+■本人の重点目標: 実車率を高めること(55%超えが理想)。空走を減らす観点を必ず盛り込むこと。
 ■会社の研修方針
 ${COACH_TIPS}
 ■本人の実績サマリー
 ${coachSummary()}`;
-  try{
-    const r=await callAI(key, prompt_, true);
-    if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
-    out.textContent=r.err? "エラー: "+r.err : (r.text||"生成できませんでした。");
-  }catch(e){ out.textContent="通信エラーです。("+e.message+")"; }
+  const r=await callAIRetry(key, prompt_, s=>{ out.textContent=s; });
+  if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
+  out.textContent=r.err? r.err : (r.text||"生成できませんでした。");
 }
 document.getElementById("reviewCoach").onclick=askCoach;
 
@@ -1719,18 +1773,17 @@ async function analyzeLastShift(){
 形式: ◎良かった位置取り(2つ、降車地がその後の展開にどう効いたかまで)/▲時間とエリアのロス(2つ)/→次回の${D_DN[dw]}曜の設計(3つ)。各1〜2行、時刻とエリア名を必ず引用。前置き・締めは不要。
 ■会社の研修方針(要約)
 ${COACH_TIPS}
-■乗務日: ${d}(${D_DN[dw]}曜)
+■本人の重点目標: 実車率を高めること(研修方針の目標は50%以上、55%超えが理想)。助言は空走を減らす観点を最優先に。
+■乗務日: ${d}(${D_DN[dw]}曜) 実車率: ${(function(){try{const k=JSON.parse(localStorage.getItem("kpi-v1"))||{};return k[d]?k[d]+"%":"未記録";}catch(e){return "未記録";}})()}
 ■クール別実績と目標差
 ${coolCmp}
 ■45分以上の空白区間
 ${gaps.length?gaps.join("\n"):"なし"}
 ■全乗車の時系列
 ${seq}`;
-  try{
-    const r=await callAI(key, prompt_, true);
-    if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
-    out.textContent=r.err? "エラー: "+r.err : (r.text||"生成できませんでした。");
-  }catch(e){ out.textContent="通信エラーです。("+e.message+")"; }
+  const r=await callAIRetry(key, prompt_, s=>{ out.textContent=s; });
+  if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
+  out.textContent=r.err? r.err : (r.text||"生成できませんでした。");
 }
 function renderDiaryY(){
   const byDay=diaryByDay();
@@ -1742,10 +1795,12 @@ function renderDiaryY(){
   const total=dTotal(rs);
   const peerAvg=peers.length? peers.reduce((s,d)=>s+dTotal(byDay.get(d)),0)/peers.length : 0;
   const nApp=rs.filter(r=>(r.m||"app")==="app").length;
+  let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+  const jr=kpi[target];
   const top=rs.reduce((a,b)=>a.f>=b.f?a:b);
   let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">${target.slice(5,7)}/${target.slice(8)}(${D_DN[dw]})の乗務</div>`;
   h+=`<div style="font-size:22px;font-weight:800;">${yen(total)} ${pctTag(total,peerAvg)}</div>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)との比較`:"・比較対象の同曜日なし"}</div>`;
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%・実車率<span id="kpiEdit" style="text-decoration:underline;cursor:pointer;color:${jr?"var(--text)":"var(--amber)"};">${jr? jr+"%" : "を記録"}</span>${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)との比較`:""}</div>`;
   h+=sectionTitle("時間帯別(同曜日平均との差)");
   D_BANDS.forEach(b=>{
     const cur=dBand(rs,b);
@@ -1961,6 +2016,15 @@ function renderDiary(tab){
   if(tab==="y"){
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
+    const k=document.getElementById("kpiEdit");
+    if(k) k.onclick=()=>{
+      let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+      const v=prompt("この乗務の実車率(%)を日報から入力", kpi[lastReportDay]||"");
+      if(v===null) return;
+      const n=parseFloat(v);
+      if(isFinite(n) && n>0 && n<100){ kpi[lastReportDay]=n; localStorage.setItem("kpi-v1", JSON.stringify(kpi)); }
+      renderDiary("y");
+    };
   }
   if(tab==="t"){
     fillTomorrowWx();
