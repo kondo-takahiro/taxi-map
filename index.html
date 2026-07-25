@@ -222,6 +222,19 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="roadsBody" style="font-size:13px;"></div>
 </div>
 
+<div id="roadStep" style="display:none;position:fixed;top:calc(58px + env(safe-area-inset-top));left:8px;right:8px;z-index:1150;
+  background:rgba(19,26,42,.96);border:1px solid var(--amber);border-radius:12px;padding:8px 10px;">
+  <div style="display:flex;align-items:center;gap:6px;">
+    <span id="rsPrev" style="cursor:pointer;font-size:18px;color:var(--amber);padding:0 8px;">◀</span>
+    <div style="flex:1;min-width:0;">
+      <div id="rsTitle" style="font-size:13px;font-weight:700;"></div>
+      <div id="rsRoads" style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:2px;"></div>
+    </div>
+    <span id="rsNext" style="cursor:pointer;font-size:18px;color:var(--amber);padding:0 8px;">▶</span>
+    <span id="rsClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 4px;">✕</span>
+  </div>
+</div>
+
 <div id="replayBar" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1050;
   background:rgba(19,26,42,.95);border:1px solid var(--amber);border-radius:20px;padding:7px 14px;font-size:12px;white-space:nowrap;">
   <span id="replayTxt"></span>
@@ -492,7 +505,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-9";
+const APP_VER = "2026.07.25-10";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -2054,44 +2067,92 @@ async function loadDayRoads(d){
   try{ localStorage.setItem(cacheKey, JSON.stringify(out)); }catch(e){}
   return out;
 }
-function drawRoads(list){
+const COOL_COL=[["第1",7,13,"#4fc3f7"],["第2",13,18,"#66bb6a"],["第3",18,22,"#ffa726"],["青タン",22,30,"#ba68c8"]];
+function coolOf(t){
+  const h=shiftHour(t);
+  const c=COOL_COL.find(c=>h>=c[1]&&h<c[2]);
+  return c||COOL_COL[0];
+}
+function numIcon(n,col){
+  return L.divIcon({className:"",iconSize:[19,19],iconAnchor:[9.5,9.5],
+    html:`<div style="background:${col};color:#0d1220;border-radius:50%;width:19px;height:19px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;border:1.5px solid #fff;">${n}</div>`});
+}
+function drawRoads(list, sel){
   clearRoads();
   const items=[], all=[];
   list.forEach((x,i)=>{
     if(!x.line) return;
-    all.push(...x.line);
-    items.push(L.polyline(x.line,{color:"#1e88e5",weight:6,opacity:.35}));
-    items.push(L.polyline(x.line,{color:"#42a5f5",weight:2.5,opacity:.9}));
-    items.push(L.marker(x.line[0],{icon:L.divIcon({className:"",iconSize:[18,18],iconAnchor:[9,9],
-      html:`<div style="background:#f5a623;color:#131a2a;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;border:1.5px solid #fff;">${i+1}</div>`})}));
+    const col=coolOf(x.t)[3];
+    const isSel = sel!=null && i===sel;
+    if(sel!=null && !isSel){
+      items.push(L.polyline(x.line,{color:"#5a6a85",weight:1.5,opacity:.22}));
+      return;
+    }
+    if(isSel) all.push(...x.line); else all.push(...x.line);
+    items.push(L.polyline(x.line,{color:"#0d1220",weight:isSel?9:5,opacity:isSel?.5:.28}));
+    items.push(L.polyline(x.line,{color:col,weight:isSel?5:2.5,opacity:isSel?1:.85}));
+    items.push(L.marker(x.line[0],{icon:numIcon(i+1,col)}).bindTooltip(`${x.t} ${x.p}`));
+    if(isSel){
+      items.push(L.marker(x.line[x.line.length-1],{icon:L.divIcon({className:"",iconSize:[22,22],iconAnchor:[11,11],
+        html:`<div style="background:#fff;color:#0d1220;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid ${col};">🏁</div>`})}).bindTooltip(x.dst));
+    }
   });
-  if(items.length){ roadsLayer=L.layerGroup(items).addTo(map); map.fitBounds(L.latLngBounds(all).pad(0.1)); }
+  if(items.length){
+    roadsLayer=L.layerGroup(items).addTo(map);
+    const bounds = sel!=null && list[sel] && list[sel].line ? L.latLngBounds(list[sel].line) : L.latLngBounds(all);
+    map.fitBounds(bounds.pad(sel!=null?0.25:0.1));
+  }
 }
+// 1区間ずつ送って見るモード
+let roadList=[], roadSel=0;
+function showRoadStep(i){
+  const av=roadList.map((x,idx)=>x.line?idx:-1).filter(idx=>idx>=0);
+  if(!av.length) return;
+  if(i<av[0]) i=av[av.length-1];
+  if(i>av[av.length-1]) i=av[0];
+  while(!roadList[i] || !roadList[i].line){ i = i<roadSel ? i-1 : i+1; if(i<0) i=av[av.length-1]; if(i>=roadList.length) i=av[0]; }
+  roadSel=i;
+  const x=roadList[i], c=coolOf(x.t);
+  document.getElementById("roadsPanel").style.display="none";
+  document.getElementById("roadStep").style.display="block";
+  document.getElementById("rsTitle").innerHTML=
+    `<span style="color:${c[3]};">${i+1}/${roadList.length}・${c[0]}</span> ${x.t} ${x.p} → ${x.dst}` +
+    (x.km?` <span style="color:var(--muted);font-weight:400;">${x.km}km・${x.min}分</span>`:"");
+  document.getElementById("rsRoads").textContent=(x.names||[]).join(" → ")||"通り名の情報なし";
+  drawRoads(roadList, i);
+}
+document.getElementById("rsPrev").onclick=()=>showRoadStep(roadSel-1);
+document.getElementById("rsNext").onclick=()=>showRoadStep(roadSel+1);
+document.getElementById("rsClose").onclick=()=>{
+  document.getElementById("roadStep").style.display="none";
+  drawRoads(roadList, null);
+  document.getElementById("roadsPanel").style.display="block";
+};
 async function showRoads(d){
   document.getElementById("roadsPanel").style.display="block";
   document.getElementById("roadsDay").textContent=`${d.slice(5,7)}/${d.slice(8)}(${D_DN[dDow(d)]})`;
   const body=document.getElementById("roadsBody");
   body.textContent="経路を取得中…";
   const list=await loadDayRoads(d);
-  drawRoads(list);
+  roadList=list; roadSel=0;
+  drawRoads(list, null);
   const hw=new Set();
   list.forEach(x=>(x.names||[]).forEach(n=>{ if(/高速|首都高|自動車道/.test(n)) hw.add(n); }));
-  let h="";
+  let h=`<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;margin-bottom:8px;">`
+    + COOL_COL.map(c=>`<span><span style="display:inline-block;width:10px;height:3px;background:${c[3]};vertical-align:middle;margin-right:3px;"></span>${c[0]}</span>`).join("")
+    + `</div>`;
   if(hw.size) h+=`<div style="font-size:12px;color:var(--amber);margin-bottom:8px;">高速: ${[...hw].join("、")}</div>`;
   list.forEach((x,i)=>{
     h+=`<div class="road-row" data-i="${i}" style="padding:9px 2px;border-top:1px solid var(--line);cursor:pointer;">
-      <div style="font-size:13px;"><b style="color:var(--amber);">${i+1}</b> ${x.t} ${x.p} → ${x.dst} <span style="color:var(--muted);font-size:11px;">${x.km?x.km+"km・"+x.min+"分":""}</span></div>
+      <div style="font-size:13px;"><b style="color:${coolOf(x.t)[3]};">${i+1}</b> ${x.t} ${x.p} → ${x.dst} <span style="color:var(--muted);font-size:11px;">${x.km?x.km+"km・"+x.min+"分":""}</span></div>
       <div style="font-size:12px;color:${x.err?"#f08080":"var(--muted)"};line-height:1.6;margin-top:2px;">${x.err||((x.names||[]).join(" → ")||"通り名の情報なし")}</div>
     </div>`;
   });
-  h+=`<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">※実際に走った道ではなく、その区間の推奨ルート(OSRM)です。自分が通った道と見比べる復習用としてお使いください。<br>地図には全区間の経路を表示しています。行をタップするとその区間に移動します。</div>`;
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">※実際に走った道ではなく、その区間の推奨ルート(OSRM)です。自分が通った道と見比べる復習用としてお使いください。<br>行をタップすると1区間ずつ表示に切り替わり、◀▶で前後の区間に送れます。</div>`;
   body.innerHTML=h;
-  body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>{
-    const x=list[+el.dataset.i];
-    if(x && x.line){ map.fitBounds(L.latLngBounds(x.line).pad(0.2)); document.getElementById("roadsPanel").style.display="none"; }
-  });
+  body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>showRoadStep(+el.dataset.i));
 }
-document.getElementById("roadsClose").onclick=()=>{ document.getElementById("roadsPanel").style.display="none"; clearRoads(); };
+document.getElementById("roadsClose").onclick=()=>{ document.getElementById("roadsPanel").style.display="none"; document.getElementById("roadStep").style.display="none"; clearRoads(); };
 
 let replayLayer=null;
 function clearReplay(){
