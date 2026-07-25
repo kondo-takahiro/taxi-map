@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-6";
+const APP_VER = "2026.07.25-7";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1741,6 +1741,36 @@ function pctTag(cur,base){
 }
 
 let lastReportDay=null;
+// 次の出番と同じ曜日の、自分の過去実績サマリー
+function dowProfile(dw){
+  const byDay=diaryByDay();
+  const days=[...byDay.keys()].filter(d=>dDow(d)===dw).sort();
+  if(!days.length) return `${D_DN[dw]}曜の乗務実績はまだありません。`;
+  const rs=days.flatMap(d=>byDay.get(d));
+  const L=[];
+  L.push(`${D_DN[dw]}曜の乗務: ${days.length}日(${days.map(d=>d.slice(5).replace("-","/")).join("、")})・1日平均${yen(Math.round(rs.reduce((s,r)=>s+r.f,0)/days.length))}・平均${Math.round(rs.length/days.length)}回`);
+  L.push("時間帯別の1日平均: "+D_BANDS.map(b=>{
+    const v=Math.round(rs.filter(r=>shiftHour(r.t)>=b[0]&&shiftHour(r.t)<b[1]).reduce((s,r)=>s+r.f,0)/days.length);
+    return `${b[2].split(" ")[0]}${yen(v)}`;
+  }).join(" / "));
+  const nApp=rs.filter(r=>(r.m||"app")==="app").length;
+  L.push(`配車比率: アプリ${Math.round(nApp/rs.length*100)}%・流し${100-Math.round(nApp/rs.length*100)}%`);
+  // 時間帯ごとの強い乗車地(件数×平均)
+  D_BANDS.forEach(b=>{
+    const agg=new Map();
+    rs.filter(r=>shiftHour(r.t)>=b[0]&&shiftHour(r.t)<b[1]).forEach(r=>{
+      const a=agg.get(r.p)||{s:0,n:0}; a.s+=r.f; a.n++; agg.set(r.p,a);
+    });
+    const top=[...agg.entries()].map(([p,a])=>({p,avg:a.s/a.n,n:a.n,sc:(a.s/a.n)*Math.log2(1+a.n)}))
+      .sort((x,y)=>y.sc-x.sc).slice(0,3);
+    if(top.length) L.push(`${b[2]}に強い乗車地: `+top.map(t=>`${t.p}(平均${Math.round(t.avg)}円/${t.n}回)`).join("、"));
+  });
+  // ベスト日の動線
+  const best=days.reduce((a,b)=>dTotal(byDay.get(a))>=dTotal(byDay.get(b))?a:b);
+  const bs=[...byDay.get(best)].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  L.push(`${D_DN[dw]}曜ベスト(${best.slice(5).replace("-","/")}・${yen(dTotal(bs))})の動線: `+bs.filter((_,i)=>i%2===0).map(r=>`${r.t}${r.p}`).join("→"));
+  return L.join("\n");
+}
 async function analyzeLastShift(){
   const key=getAIKey(); if(!key) return;
   const out=document.getElementById("diaryAIOut");
@@ -1777,12 +1807,15 @@ async function analyzeLastShift(){
 - 休憩が未記録の場合、長い空白は休憩の可能性があるため「休憩だったなら〜」と条件付きで書く
 - →の提案は研修方針の推奨エリア名を使い、出庫から青タンまでの1日の設計として流れがつながるように
 形式: ◎良かった位置取り(2つ、降車地がその後の展開にどう効いたかまで)/▲時間とエリアのロス(2つ)/→次回の設計(3つ)。各1〜2行、時刻とエリア名を必ず引用。前置き・締めは不要。
-重要: 「→次回の設計」は分析対象日(${D_DN[dw]}曜)ではなく、次の出番である${nxLabel}向けに書くこと。見出しは「→次回${nxLabel}の設計」とし、研修方針の${nxDow}曜の特徴を必ず踏まえること。
+重要: 「→次回の設計」は分析対象日(${D_DN[dw]}曜)ではなく、次の出番である${nxLabel}向けに書くこと。見出しは「→次回${nxLabel}の設計」とする。
+設計は「${nxDow}曜における本人の過去実績」を最優先の根拠にし(実際に効いている乗車地名と時間帯を引用)、研修方針の${nxDow}曜の特徴で補うこと。本人の${nxDow}曜で弱い時間帯があれば、そこの立て直し策を必ず1つ入れる。
 ■会社の研修方針(要約)
 ${COACH_TIPS}
 ■本人の重点目標: 実車率を高めること(研修方針の目標は50%以上、55%超えが理想)。助言は空走を減らす観点を最優先に。
 ■休憩時間: ${brkTxt}
 ■次の出番: ${nxLabel}
+■【重要】次の出番と同じ${nxDow}曜における本人の過去実績
+${dowProfile(nx.getDay())}
 ■乗務日: ${d}(${D_DN[dw]}曜) 実車率: ${(function(){try{const k=JSON.parse(localStorage.getItem("kpi-v1"))||{};return k[d]?k[d]+"%":"未記録";}catch(e){return "未記録";}})()}
 ■クール別実績と目標差
 ${coolCmp}
