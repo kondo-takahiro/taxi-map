@@ -470,7 +470,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-2";
+const APP_VER = "2026.07.25-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1059,7 +1059,7 @@ async function callAI(key, prompt_, strong){
       method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,
         "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:strong?"claude-sonnet-4-6":"claude-haiku-4-5-20251001",max_tokens:strong?900:400,
+      body:JSON.stringify({model:strong?"claude-sonnet-4-6":"claude-haiku-4-5-20251001",max_tokens:strong?2000:400,
         messages:[{role:"user",content:prompt_}]})
     });
     if(res.status===401) return {auth:false};
@@ -1071,7 +1071,7 @@ async function callAI(key, prompt_, strong){
     const res=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",
       headers:{"content-type":"application/json","Authorization":"Bearer "+key},
-      body:JSON.stringify({model:strong?"gpt-4o":"gpt-4o-mini",max_completion_tokens:strong?900:400,
+      body:JSON.stringify({model:strong?"gpt-4o":"gpt-4o-mini",max_completion_tokens:strong?2000:400,
         messages:[{role:"user",content:prompt_}]})
     });
     if(res.status===401) return {auth:false};
@@ -1714,6 +1714,7 @@ async function analyzeLastShift(){
 - 個々の乗車の金額の高低は運なので論評禁止。「高額でよかった」「安い配車にしてしまった」の類は書かない
 - 「高額スポットを狙う」「リサーチする」のような抽象的な助言は禁止。必ず「時刻帯×具体的なエリア名×行動」で書く
 - ▲の指摘は、下に示す空白区間かクール目標差のどちらかを必ず根拠にする(空白は休憩の可能性もあるので断定せず「移動か休憩なら位置をこう使う」と書く)
+- 空白時間は「45分以上の空白区間」リストに記載のものだけを使う。自分で乗車間隔を計算・推定してはいけない
 - →の提案は研修方針の推奨エリア名を使い、出庫から青タンまでの1日の設計として流れがつながるように
 形式: ◎良かった位置取り(2つ、降車地がその後の展開にどう効いたかまで)/▲時間とエリアのロス(2つ)/→次回の${D_DN[dw]}曜の設計(3つ)。各1〜2行、時刻とエリア名を必ず引用。前置き・締めは不要。
 ■会社の研修方針(要約)
@@ -1726,7 +1727,7 @@ ${gaps.length?gaps.join("\n"):"なし"}
 ■全乗車の時系列
 ${seq}`;
   try{
-    const r=await callAI(key, prompt_);
+    const r=await callAI(key, prompt_, true);
     if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
     out.textContent=r.err? "エラー: "+r.err : (r.text||"生成できませんでした。");
   }catch(e){ out.textContent="通信エラーです。("+e.message+")"; }
