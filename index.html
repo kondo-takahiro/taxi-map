@@ -249,7 +249,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <span>低</span>
   <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
   <span>高</span>
-  <span style="font-size:8px;opacity:.6;">境界:国勢調査</span>
+  <span id="legendLabel" style="font-size:8px;opacity:.6;">単価</span>
 </div>
 
 <div id="tileWarn" style="display:none;position:fixed;top:70px;left:12px;right:12px;z-index:1500;
@@ -327,6 +327,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
+    <button class="btn" id="btnMetric">指標: 単価</button>
     <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
@@ -495,6 +496,33 @@ let markerLayer = L.layerGroup().addTo(map);
 let heatLayer = null, heatOn = true;
 const heatRenderer = L.canvas({padding:0.3}); // マスが多くても軽いCanvas描画
 
+// 表示指標: fare=平均単価 / hit=万収(¥10,000+)ヒット率
+let metric = "fare";
+// 万収ヒット率→色
+function hitTierColor(rate){
+  if(rate>=0.30) return "#b71c1c";
+  if(rate>=0.20) return "#e53935";
+  if(rate>=0.12) return "#fb8c00";
+  if(rate>=0.06) return "#fdd835";
+  if(rate>0)     return "#aed581";
+  return "#81c784";
+}
+// 指標に応じた色(件数が少ないものは薄く=まぐれと区別)
+function metricColor(a){
+  if(metric==="hit") return hitTierColor(a.big/a.n);
+  return fareTierColor(a.sum/a.n);
+}
+function metricOpacity(a, base){
+  if(metric!=="hit") return base;
+  return a.n>=5 ? base : (a.n>=3 ? base*0.72 : base*0.45);
+}
+function metricTip(name,a){
+  if(metric==="hit"){
+    return `${name}<br>万収 ${a.big}本 / ${a.n}件 = <b>${Math.round(a.big/a.n*100)}%</b>`
+      + (a.n<3?"<br><span style='opacity:.7'>※件数が少なく参考値</span>":"");
+  }
+  return `${name}<br>平均 ${yen(Math.round(a.sum/a.n))} / ${a.n}件`;
+}
 // 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
 function fareTierColor(avg){
   if(avg>=8000) return "#b71c1c";
@@ -506,7 +534,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.30-2";
+const APP_VER = "2026.07.30-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -539,25 +567,26 @@ function drawHeat(list){
   const SIZE=0.0025;
   const byAddr=new Map();
   list.forEach(r=>{
-    const a=byAddr.get(r.p)||{sum:0,n:0,latS:0,lngS:0};
+    const a=byAddr.get(r.p)||{sum:0,n:0,big:0,latS:0,lngS:0};
     a.sum+=r.f; a.n++; a.latS+=r.lat; a.lngS+=r.lng;
+    if(r.f>=10000) a.big++;
     byAddr.set(r.p,a);
   });
   byAddr.forEach((a,name)=>{
-    const avg=a.sum/a.n;
-    const col=fareTierColor(avg);
-    const tip=`${name}<br>平均 ${yen(Math.round(avg))} / ${a.n}件`;
+    if(metric==="hit" && a.n<2) return; // 1件だけの場所は率が意味を持たない
+    const col=metricColor(a);
+    const tip=metricTip(name,a);
     const f=chomeIndex ? chomeIndex.get(name) : null;
     if(f){
       // 町丁目の実際の形で塗る
       L.geoJSON(f,{renderer:heatRenderer,
-        style:{color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:.78}})
+        style:{color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:metricOpacity(a,.78)}})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }else{
       // 境界未収録の住所や読み込み前はマス目で表示
       const la=Math.floor((a.latS/a.n)/SIZE)*SIZE, lo=Math.floor((a.lngS/a.n)/SIZE)*SIZE;
       L.rectangle([[la,lo],[la+SIZE,lo+SIZE]],{renderer:heatRenderer,
-        color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:.78})
+        color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:metricOpacity(a,.78)})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }
   });
@@ -1699,6 +1728,40 @@ function renderReview(){
     html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;">※次の乗車までの間隔(実車時間込み)からの概算です</div>`;
   }
 
+  // 万収ヒット率(時刻×乗車地)
+  const HB=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],
+            [22,23,"22時台"],[23,24,"23時台"],[24,25,"0時台"],[25,29,"1-2時台"]];
+  const anyBig=mine.some(r=>r.f>=10000);
+  if(anyBig){
+    html+=sectionTitle("万収ヒット率(時刻×乗車地)");
+    html+=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">¥10,000以上が出た確率。2回以上乗せた場所のみ。平均単価では見えない「一発の出やすさ」です。</div>`;
+    HB.forEach(([a,b,label])=>{
+      const pool=mine.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b);
+      if(!pool.length) return;
+      const nb=pool.filter(r=>r.f>=10000).length;
+      const agg=new Map();
+      pool.forEach(r=>{ const x=agg.get(r.p)||{n:0,big:0}; x.n++; if(r.f>=10000) x.big++; agg.set(r.p,x); });
+      const top=[...agg.entries()].filter(([,x])=>x.n>=2 && x.big>0)
+        .map(([p,x])=>({p, rate:x.big/x.n, n:x.n, big:x.big}))
+        .sort((x,y)=>y.rate-x.rate || y.n-x.n).slice(0,4);
+      html+=`<div style="margin:8px 0 2px;font-size:12px;">
+        <b>${label}</b> <span style="color:var(--muted);">全体 ${nb}/${pool.length}件 = ${Math.round(nb/pool.length*100)}%</span></div>`;
+      if(!top.length){
+        html+=`<div style="font-size:12px;color:var(--muted);padding-left:8px;">2回以上の場所での万収なし</div>`;
+      }else{
+        top.forEach(t=>{
+          const col = t.rate>=0.3?"#e53935" : t.rate>=0.15?"#fb8c00" : "#fdd835";
+          html+=`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0 3px 8px;">
+            <span style="flex:1;">${t.p}</span>
+            <span style="color:var(--muted);">${t.n}回中${t.big}本</span>
+            <span style="color:${col};font-weight:800;width:38px;text-align:right;">${Math.round(t.rate*100)}%</span>
+          </div>`;
+        });
+      }
+    });
+    html+=`<div style="font-size:10px;color:var(--muted);margin-top:6px;">※回数が少ないほど偶然の影響が大きくなります。回数と併せて見てください。</div>`;
+  }
+
   // 空走(降車後の回送)分析: 実車率向上のための指標
   const seq2=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
   const emp=new Map(); let empTotal=0, empN=0;
@@ -2349,6 +2412,13 @@ document.getElementById("btnHeat").onclick=e=>{
 };
 // ===== 万収スポット(¥10,000以上が出た乗車地) =====
 let bigLayer=null, bigOn=false;
+document.getElementById("btnMetric").onclick=e=>{
+  metric = metric==="fare" ? "hit" : "fare";
+  e.target.textContent = metric==="hit" ? "指標: 万収率" : "指標: 単価";
+  e.target.classList.toggle("on", metric==="hit");
+  document.getElementById("legendLabel").textContent = metric==="hit" ? "万収率" : "単価";
+  render();
+};
 document.getElementById("btnBig").onclick=e=>{
   bigOn=!bigOn; e.target.classList.toggle("on",bigOn); render();
 };
@@ -2411,21 +2481,22 @@ function drawWardRank(){
   if(!data) return;
   const list=filtered();
   const agg=new Map();
-  data.features.forEach(f=>agg.set(f.properties.n,{sum:0,n:0}));
+  data.features.forEach(f=>agg.set(f.properties.n,{sum:0,n:0,big:0}));
   if(areaMode===2){
     // 町別: 乗車地名から丁目番号を除いた名前で対応付け
     list.forEach(r=>{
       const base=r.p.replace(/[0-9]+$/,"");
       const a=agg.get(base);
-      if(a){ a.sum+=r.f; a.n++; }
+      if(a){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; }
     });
   }else{
     list.forEach(r=>{
-      for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; break; } }
+      for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; break; } }
     });
   }
-  const ranked=[...agg.entries()].filter(([,a])=>a.n>0)
-    .map(([w,a])=>({w, avg:a.sum/a.n, n:a.n})).sort((x,y)=>y.avg-x.avg);
+  const ranked=[...agg.entries()].filter(([,a])=>a.n>0 && (metric!=="hit"||a.n>=2))
+    .map(([w,a])=>({w, avg:a.sum/a.n, rate:a.big/a.n, n:a.n, big:a.big}))
+    .sort((x,y)=> metric==="hit" ? (y.rate-x.rate)||(y.n-x.n) : y.avg-x.avg);
   const best=ranked[0];
   const layers=[];
   data.features.forEach(f=>{
@@ -2435,9 +2506,12 @@ function drawWardRank(){
     if(areaMode===2 && !has) return; // 町別は実績のある町だけ描く
     const lay=L.geoJSON(f,{renderer:heatRenderer,
       style:{color:isBest?"#f5a623":"#5a6a75", weight:isBest?3:1, opacity:isBest?1:.5,
-        dashArray:isBest?null:"4 4", fillColor:has?fareTierColor(avg):"#888", fillOpacity:has?.6:.06}});
-    if(isBest) lay.bindTooltip(`👑 ${name} 平均${yen(Math.round(avg))}・${st.n}件`,{permanent:true,direction:"center",className:"wardBest"});
-    else lay.bindTooltip(`${name} ${has?("平均"+yen(Math.round(avg))+"・"+st.n+"件"):"実績なし"}`,{sticky:true});
+        dashArray:isBest?null:"4 4", fillColor:has?metricColor(st):"#888", fillOpacity:has?metricOpacity(st,.6):.06}});
+    const lbl = metric==="hit"
+      ? `${name} 万収${st.big}/${st.n}件 ${Math.round(st.big/st.n*100)}%`
+      : `${name} 平均${yen(Math.round(avg))}・${st.n}件`;
+    if(isBest) lay.bindTooltip("👑 "+lbl,{permanent:true,direction:"center",className:"wardBest"});
+    else lay.bindTooltip(has?lbl:`${name} 実績なし`,{sticky:true});
     layers.push(lay);
   });
   wardLayer=L.layerGroup(layers).addTo(map);
