@@ -326,6 +326,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnWards">区別</button>
+    <button class="btn" id="btnBig">⭐ 万収</button>
     <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
@@ -505,7 +506,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.25-11";
+const APP_VER = "2026.07.30-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -630,6 +631,7 @@ function lampIcon(f){
 function render(){
   markerLayer.clearLayers();
   if(typeof drawWardRank==="function") drawWardRank();
+  if(typeof drawBig==="function") drawBig();
   const list = filtered();
   if(!heatOn && !wardsOn) list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
@@ -1280,7 +1282,10 @@ date,time,pickup,fare,dropoff,mode
 - pickupは乗車地、dropoffは降車地を表のままの表記で、丁目番号まで正確に(例: 港区六本木5)。丁目番号を省略しない
 - fareは料金を数字のみで(カンマなし)
 - modeは迎車欄に「4」がある行はapp、空欄の行はst
-- 判読できない行はスキップする`;
+- 判読できない行はスキップする
+CSV行のあとに、次の2行を必ず追加してください(読み取れない場合は「なし」):
+BREAK:休憩時間と休憩場所の表の内容(例: BREAK:13:28-13:56 品川区西五反田6, 19:59-20:34 港区六本木7)
+RATE:実車率の数値のみ(例: RATE:51.07)`;
     const extract=t=>(t||"").replace(/```[a-z]*\n?/g,"").split(/\r?\n/)
       .map(l=>l.trim().replace(/\s*,\s*/g,","))
       .filter(l=>/^\d{4}-\d{2}-\d{2},\d{1,2}:\d{2},/.test(l));
@@ -1300,6 +1305,12 @@ date,time,pickup,fare,dropoff,mode
       }
     }
     if(!lines.length) throw new Error("乗車記録を読み取れませんでした。表がはっきり写った画像でお試しください。");
+    // 休憩時間・実車率の抽出(乗務日が確定してから保存)
+    const raw=r.text||"";
+    const mB=raw.match(/BREAK\s*[::]\s*(.+)/);
+    const mR=raw.match(/RATE\s*[::]\s*([0-9]+(?:\.[0-9]+)?)/);
+    const brkVal=mB? mB[1].trim() : "";
+    const rateVal=mR? parseFloat(mR[1]) : null;
     await loadChomeNow();
     const ok=[], miss=[];
     lines.forEach(l=>{
@@ -1312,6 +1323,21 @@ date,time,pickup,fare,dropoff,mode
     h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
     let msg="AIが読み取った乗車: "+lines.length+"行";
     if(ok.length){ const added=importText(ok.join("\n"), true); msg+="\n取り込み: "+added+"件"+(added<ok.length?"(重複"+(ok.length-added)+"件はスキップ)":""); }
+    // 乗務日(営業日)を確定して休憩・実車率を保存
+    if(ok.length){
+      const first=ok[0].split(",");
+      const bd=shiftDateStr({d:first[0], t:first[1]});
+      if(brkVal && !/^なし$/.test(brkVal)){
+        let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+        brk[bd]=brkVal; localStorage.setItem("break-v1", JSON.stringify(brk));
+        msg+="\n休憩: "+brkVal;
+      }
+      if(rateVal && rateVal>0 && rateVal<100){
+        let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+        kpi[bd]=rateVal; localStorage.setItem("kpi-v1", JSON.stringify(kpi));
+        msg+="\n実車率: "+rateVal+"%";
+      }
+    }
     if(miss.length) msg+="\n位置を特定できずスキップ: "+[...new Set(miss)].join("、");
     alert(msg);
   }catch(err){
@@ -2321,6 +2347,43 @@ document.getElementById("btnHeat").onclick=e=>{
   if(heatOn && wardsOn){ wardsOn=false; document.getElementById("btnWards").classList.remove("on"); }
   render();
 };
+// ===== 万収スポット(¥10,000以上が出た乗車地) =====
+let bigLayer=null, bigOn=false;
+document.getElementById("btnBig").onclick=e=>{
+  bigOn=!bigOn; e.target.classList.toggle("on",bigOn); render();
+};
+function drawBig(){
+  if(bigLayer){ map.removeLayer(bigLayer); bigLayer=null; }
+  if(!bigOn) return;
+  const list=filtered().filter(r=>r.f>=10000);
+  if(!list.length) return;
+  const g=new Map();
+  list.forEach(r=>{
+    const a=g.get(r.p)||{la:0,lo:0,n:0,items:[]};
+    a.la+=r.lat; a.lo+=r.lng; a.n++; a.items.push(r); g.set(r.p,a);
+  });
+  const items=[];
+  g.forEach((a,p)=>{
+    const ll=[a.la/a.n, a.lo/a.n];
+    a.items.sort((x,y)=>y.f-x.f);
+    const best=a.items[0];
+    const label = a.n>1 ? "×"+a.n : best.t;
+    const size = a.n>1 ? 15 : 13;
+    items.push(L.marker(ll,{icon:L.divIcon({className:"",iconSize:[46,34],iconAnchor:[23,30],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="font-size:${size+7}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">⭐</div>
+        <div style="background:rgba(19,26,42,.92);color:#ffd54f;border:1px solid #ffd54f;border-radius:7px;padding:1px 4px;font-size:9px;font-weight:800;margin-top:-2px;white-space:nowrap;">${label}</div>
+      </div>`})})
+      .bindPopup(`<b>${p}</b><br><span style="color:#8b98ad;font-size:11px;">万収 ${a.n}本・最高 ${yen(best.f)}</span><br>`
+        + a.items.slice(0,6).map(r=>{
+            const own = !r.drv || normName(r.drv)===normName(MY_NAME);
+            return `<div style="margin-top:4px;font-size:12px;">${r.d.slice(5).replace("-","/")} ${r.t} → ${r.dst||"?"} <b>${yen(r.f)}</b> <span style="color:#8b98ad;">${(r.m||"app")==="app"?"配車":"流し"}${own?"":"・"+r.drv}</span></div>`;
+          }).join("")
+        + (a.items.length>6?`<div style="font-size:11px;color:#8b98ad;margin-top:4px;">ほか${a.items.length-6}本</div>`:"")));
+  });
+  bigLayer=L.layerGroup(items).addTo(map);
+}
+
 // ===== エリア別ランキング(タップで オフ→区別→町別 を切替) =====
 let wardLayer=null, wardsOn=false, areaMode=0; // 0:オフ 1:区別 2:町別
 let townsData=null, townsLoading=false;
