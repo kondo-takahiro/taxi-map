@@ -138,7 +138,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <span id="routeClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 2px;">✕</span>
 </div>
 
-<div id="zoomBtns" style="position:fixed;right:10px;top:45%;transform:translateY(-50%);z-index:900;display:flex;flex-direction:column;gap:8px;">
+<div id="zoomBtns" style="position:fixed;left:10px;top:calc(46px + env(safe-area-inset-top));z-index:900;display:flex;flex-direction:column;gap:8px;">
+  <button id="btnCenter" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:20px;">◎</button>
   <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
   <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
 </div>
@@ -534,7 +535,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.30-4";
+const APP_VER = "2026.07.30-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -2572,14 +2573,26 @@ btnGps.onclick=()=>{
     if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
     gpsSilent=false;
     navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
-    btnGps.classList.remove("on"); btnGps.textContent="現在地";
+    btnGps.classList.remove("on"); btnGps.textContent="現在地"; syncCenterBtn();
   },{enableHighAccuracy:true, maximumAge:3000, timeout:15000});
 };
 
 // 地図を手で動かしたらセンター追尾を一時解除(記録は継続)
+function syncCenterBtn(){
+  const b=document.getElementById("btnCenter");
+  const on = watchId!==null && follow;
+  b.style.color = on ? "var(--amber)" : "var(--text)";
+  b.style.borderColor = on ? "var(--amber)" : "var(--line)";
+}
 map.on("dragstart",()=>{
-  if(watchId!==null && follow){ follow=false; btnGps.textContent="再センター"; }
+  if(watchId!==null && follow){ follow=false; btnGps.textContent="再センター"; syncCenterBtn(); }
 });
+document.getElementById("btnCenter").onclick=()=>{
+  if(watchId===null){ btnGps.onclick(); return; }   // 停止中なら追尾を開始
+  follow=true; btnGps.textContent="現在地";
+  if(lastLL) map.setView(lastLL, Math.max(map.getZoom(),15), {animate:true});
+  syncCenterBtn();
+};
 
 // 北固定 ⇔ 進行方向の切り替え
 btnHead.onclick=()=>{
@@ -2779,6 +2792,13 @@ document.getElementById("btnAppMode").onclick=()=>{
   fill.style.width=((tMax-tMin)/24*100)+"%";
   document.getElementById("tlVal").textContent=fmtH(tMin)+" – "+fmtH(tMax);
   document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="now"));
+  // 曜日フィルターの初期値: 平日は月〜金、土日は土日
+  const td=new Date(); if(td.getHours()<5) td.setDate(td.getDate()-1);
+  const isWeekend = td.getDay()===0 || td.getDay()===6;
+  const initDows = isWeekend ? ["6","0"] : ["1","2","3","4","5"];
+  dowSet = new Set(initDows.map(Number));
+  document.querySelectorAll(".chip.dow").forEach(c=>
+    c.classList.toggle("on", initDows.includes(c.dataset.dow)));
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
