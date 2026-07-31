@@ -138,6 +138,13 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <span id="routeClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 2px;">✕</span>
 </div>
 
+<div id="hud" style="display:none;position:fixed;left:64px;right:8px;top:calc(58px + env(safe-area-inset-top));z-index:880;">
+  <div style="background:rgba(19,26,42,.93);border:1px solid var(--line);border-radius:11px;padding:6px 10px;">
+    <div id="hudRoad" style="font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 —</div>
+    <div id="hudHot" style="font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;"></div>
+  </div>
+</div>
+
 <div id="zoomBtns" style="position:fixed;left:10px;top:calc(46px + env(safe-area-inset-top));z-index:900;display:flex;flex-direction:column;gap:8px;">
   <button id="btnCenter" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:20px;">◎</button>
   <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
@@ -536,7 +543,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.30-6";
+const APP_VER = "2026.07.30-7";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -660,6 +667,10 @@ function lampIcon(f){
 }
 
 function render(){
+  if(typeof lastLL!=="undefined" && lastLL && typeof hudHotText==="function"){
+    const el=document.getElementById("hudHot");
+    if(el && document.getElementById("hud").style.display==="block") el.textContent=hudHotText(lastLL);
+  }
   markerLayer.clearLayers();
   if(typeof drawWardRank==="function") drawWardRank();
   if(typeof drawBig==="function") drawBig();
@@ -731,6 +742,47 @@ function showRoute(dlat,dlng){
   },{enableHighAccuracy:true, timeout:12000, maximumAge:10000});
 }
 document.getElementById("routeClose").onclick=clearRoute;
+
+// ===== 走行中HUD(現在いる通り名 + 近くのアツいエリア) =====
+let hudLL=null, hudRoadAt=0, hudHotAt=0, hudRoadName="";
+async function hudRoad(ll){
+  try{
+    const url=`https://router.project-osrm.org/nearest/v1/driving/${ll[1]},${ll[0]}?number=1`;
+    const j=await fetchT(url,{},8000).then(r=>r.json());
+    const w=j.waypoints && j.waypoints[0];
+    if(w && w.name) return w.name;
+  }catch(e){}
+  return "";
+}
+function hudHotText(ll){
+  try{
+    const {cands}=buildAdvice(ll);
+    if(!cands || !cands.length) return "この時間帯の実績が近くにありません";
+    return "🔥 " + cands.slice(0,2).map(c=>
+      `${c.p} ${bearingText(ll,c.ll)}${c.dist.toFixed(1)}km ${yen(Math.round(c.avg))}`).join("　/　");
+  }catch(e){ return ""; }
+}
+async function updateHUD(ll, force){
+  if(!ll) return;
+  const box=document.getElementById("hud");
+  box.style.display="block";
+  const now=Date.now();
+  const moved = !hudLL || haversineKm(hudLL, ll)*1000 > 120; // 120m以上動いたら更新
+  // 通り名: 動いたとき、または15秒経過で更新
+  if(force || moved || now-hudRoadAt>15000){
+    hudRoadAt=now;
+    const n=await hudRoad(ll);
+    if(n && n!==hudRoadName){ hudRoadName=n; }
+    document.getElementById("hudRoad").textContent="📍 "+(hudRoadName||"取得中…");
+  }
+  // アツいエリア: 300m以上動いたとき、または60秒経過で更新
+  if(force || !hudLL || haversineKm(hudLL,ll)*1000>300 || now-hudHotAt>60000){
+    hudHotAt=now;
+    document.getElementById("hudHot").textContent=hudHotText(ll);
+  }
+  if(moved) hudLL=ll;
+}
+document.getElementById("hud").onclick=()=>{ if(lastLL) showAdvice(lastLL); };
 
 // ===== 立ち回りアドバイス(現在地×現在時刻×全期間の実績から算出) =====
 function haversineKm(a,b){
@@ -2642,6 +2694,7 @@ btnGps.onclick=()=>{
     }
     if(firstFix){ map.setView(ll,15); firstFix=false; }
     else if(follow){ map.setView(ll, map.getZoom(), {animate:false}); } // 常に自分が中心
+    updateHUD(ll);
   },err=>{
     if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
     gpsSilent=false;
