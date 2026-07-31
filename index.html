@@ -322,6 +322,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnDiary">📓 日誌</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
+    <button class="btn" id="btnToilet">🚻 トイレ</button>
     <button class="btn" id="btnAppMode">📲 アプリ営業</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -535,7 +536,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.30-5";
+const APP_VER = "2026.07.30-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1062,6 +1063,78 @@ async function loadStands(){
   }
   throw lastErr||new Error("全サーバーに接続できませんでした");
 }
+// ===== 公衆トイレ(OpenStreetMap) =====
+let toiletData=null, toiletLayer=null, toiletOn=false, toiletLoading=false;
+async function loadToilets(){
+  try{
+    const c=JSON.parse(localStorage.getItem("toilets-v1"));
+    if(c && c.pts && c.pts.length) return c.pts;
+  }catch(e){}
+  const q='[out:json][timeout:25];(node["amenity"="toilets"](35.50,139.53,35.85,139.95);way["amenity"="toilets"](35.50,139.53,35.85,139.95););out center tags;';
+  const servers=[
+    "https://overpass.osm.jp/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter"
+  ];
+  let lastErr=null;
+  for(const url of servers){
+    try{
+      const res=await fetchT(url,{method:"POST",
+        headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(q)}, 40000);
+      if(!res.ok){ lastErr=new Error("HTTP "+res.status); continue; }
+      const j=await res.json();
+      const pts=(j.elements||[]).map(e=>{
+        const la=e.lat!=null?e.lat:(e.center&&e.center.lat), lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
+        if(la==null||lo==null) return null;
+        const t=e.tags||{};
+        return [+la.toFixed(5), +lo.toFixed(5), t.name||"", t.opening_hours||"", t.wheelchair==="yes"?1:0];
+      }).filter(Boolean);
+      if(!pts.length){ lastErr=new Error("データが空でした"); continue; }
+      localStorage.setItem("toilets-v1", JSON.stringify({pts, at:Date.now()}));
+      return pts;
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr||new Error("全サーバーに接続できませんでした");
+}
+function drawToilets(){
+  if(toiletLayer){ map.removeLayer(toiletLayer); toiletLayer=null; }
+  if(!toiletOn || !toiletData) return;
+  if(map.getZoom()<13) return; // 広域では表示しない(点が多すぎるため)
+  const b=map.getBounds();
+  const cv=L.canvas({padding:0.2});
+  const ms=toiletData.filter(p=>b.contains([p[0],p[1]])).slice(0,800).map(p=>{
+    const m=L.circleMarker([p[0],p[1]],{renderer:cv, radius:5,
+      color:"#ffffff", weight:1.4, fillColor:"#26a69a", fillOpacity:.95});
+    const tip="🚻 "+(p[2]||"公衆トイレ")
+      +(p[3]?"<br>"+p[3]:"")+(p[4]?"<br>車いす対応":"");
+    return m.bindTooltip(tip);
+  });
+  toiletLayer=L.layerGroup(ms).addTo(map);
+}
+map.on("moveend zoomend",()=>{ if(toiletOn) drawToilets(); });
+document.getElementById("btnToilet").onclick=async e=>{
+  if(toiletOn){ toiletOn=false; e.target.classList.remove("on"); drawToilets(); return; }
+  if(toiletLoading) return;
+  if(!toiletData){
+    toiletLoading=true;
+    const h=document.getElementById("hint");
+    h.textContent="トイレの位置を取得中…"; h.classList.add("show");
+    try{ toiletData=await loadToilets(); }
+    catch(err){
+      h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+      toiletLoading=false;
+      alert("トイレの位置を取得できませんでした。電波状況を確認して、もう一度お試しください。\n("+err.message+")");
+      return;
+    }
+    h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択";
+    toiletLoading=false;
+  }
+  toiletOn=true; e.target.classList.add("on");
+  if(map.getZoom()<13){ map.setZoom(14); }
+  drawToilets();
+};
+
 document.getElementById("btnStands").onclick=async ()=>{
   const b=document.getElementById("btnStands");
   if(standsOn){ // オフにする
