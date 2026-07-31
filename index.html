@@ -124,28 +124,28 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 <body>
 <div id="map"></div>
 
-<header>
-  <div class="stats">
-    <div class="stat"><b id="stCount">0</b><small>該当件数</small></div>
-    <div class="stat"><b id="stSum">¥0</b><small>合計営収</small></div>
-    <div class="stat"><b id="stAvg">¥0</b><small>平均単価</small></div>
-  </div>
-</header>
 
-<div id="routeInfo" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1200;
+
+<div id="routeInfo" style="display:none;position:fixed;top:calc(70px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:1200;
   align-items:center;gap:10px;background:rgba(19,26,42,.95);border:1px solid #42a5f5;border-radius:20px;padding:8px 14px;font-size:13px;color:var(--text);white-space:nowrap;">
   <span id="routeText">経路を計算中…</span>
   <span id="routeClose" style="cursor:pointer;color:var(--muted);font-weight:700;padding:0 2px;">✕</span>
 </div>
 
-<div id="hud" style="display:none;position:fixed;left:64px;right:8px;top:calc(58px + env(safe-area-inset-top));z-index:880;">
-  <div style="background:rgba(19,26,42,.93);border:1px solid var(--line);border-radius:11px;padding:6px 10px;">
-    <div id="hudRoad" style="font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 —</div>
-    <div id="hudHot" style="font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;"></div>
+<div id="hud" style="position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:880;">
+  <div style="background:rgba(13,19,32,.93);border:1px solid var(--line);border-radius:12px;padding:6px 11px;">
+    <div style="display:flex;align-items:baseline;gap:9px;">
+      <div id="hudRoad" style="font-size:15px;font-weight:800;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📍 —</div>
+      <div style="white-space:nowrap;font-size:10px;color:var(--muted);">
+        <b id="stCount" style="color:var(--amber);font-size:15px;font-variant-numeric:tabular-nums;">0</b>件
+        <b id="stAvg" style="color:var(--amber);font-size:15px;font-variant-numeric:tabular-nums;margin-left:4px;">¥0</b>
+      </div>
+    </div>
+    <div id="hudHot" style="font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">🔥 現在地を取得すると表示されます</div>
   </div>
 </div>
 
-<div id="zoomBtns" style="position:fixed;left:10px;top:calc(46px + env(safe-area-inset-top));z-index:900;display:flex;flex-direction:column;gap:8px;">
+<div id="zoomBtns" style="position:fixed;left:10px;top:calc(96px + env(safe-area-inset-top));z-index:900;display:flex;flex-direction:column;gap:8px;">
   <button id="btnCenter" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:20px;">◎</button>
   <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
   <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
@@ -252,7 +252,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
-<div id="heatLegend" style="display:none;position:fixed;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
+<div id="heatLegend" style="display:none;position:fixed;top:calc(70px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
   background:rgba(19,26,42,.85);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:9px;color:var(--muted);">
   <span>低</span>
   <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
@@ -543,7 +543,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.30-7";
+const APP_VER = "2026.07.30-8";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -669,7 +669,7 @@ function lampIcon(f){
 function render(){
   if(typeof lastLL!=="undefined" && lastLL && typeof hudHotText==="function"){
     const el=document.getElementById("hudHot");
-    if(el && document.getElementById("hud").style.display==="block") el.textContent=hudHotText(lastLL);
+    if(el) el.textContent=hudHotText(lastLL);
   }
   markerLayer.clearLayers();
   if(typeof drawWardRank==="function") drawWardRank();
@@ -687,7 +687,6 @@ function render(){
   drawHeat(list);
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
-  document.getElementById("stSum").textContent = yen(sum);
   document.getElementById("stAvg").textContent = list.length ? yen(Math.round(sum/list.length)) : "¥0";
   renderTicks();
   renderRank(list);
@@ -764,8 +763,6 @@ function hudHotText(ll){
 }
 async function updateHUD(ll, force){
   if(!ll) return;
-  const box=document.getElementById("hud");
-  box.style.display="block";
   const now=Date.now();
   const moved = !hudLL || haversineKm(hudLL, ll)*1000 > 120; // 120m以上動いたら更新
   // 通り名: 動いたとき、または15秒経過で更新
