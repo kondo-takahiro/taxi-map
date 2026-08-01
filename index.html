@@ -543,7 +543,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.01-2";
+const APP_VER = "2026.08.01-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1696,6 +1696,24 @@ function barRow(label, value, max, fmt){
     <span style="width:78px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;flex-shrink:0;">${fmt}</span>
   </div>`;
 }
+const TABMARK="@@TAB@@";
+let reviewTab="基本";
+const REVIEW_TABS=["基本","時間","エリア","効率"];
+// マーカーで区切られたHTMLをタブごとに束ね、タブバー付きで返す
+function renderReviewTabs(raw){
+  const parts={基本:"",時間:"",エリア:"",効率:""};
+  let cur="基本";
+  raw.split(TABMARK).forEach((chunk,i)=>{
+    if(i===0){ parts[cur]+=chunk; return; }
+    const name=REVIEW_TABS.find(t=>chunk.startsWith(t));
+    if(name){ cur=name; parts[cur]+=chunk.slice(name.length); }
+    else parts[cur]+=chunk;
+  });
+  const bar=`<div style="display:flex;gap:5px;margin-bottom:10px;position:sticky;top:0;background:rgba(19,26,42,.97);padding-bottom:6px;z-index:2;">`
+    + REVIEW_TABS.map(t=>`<button class="chip rv-tab${t===reviewTab?" on":""}" data-rv="${t}" style="flex:1;padding:7px 0;font-size:12px;">${t}</button>`).join("")
+    + `</div>`;
+  return bar + `<div>${parts[reviewTab]||'<div style="color:var(--muted);font-size:12px;padding:10px 0;">このタブに表示できるデータがまだありません。</div>'}</div>`;
+}
 function sectionTitle(t){ return `<div style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber);">${t}</div>`; }
 
 // ===== 月度(各月16日〜翌月15日など)の設定 =====
@@ -1799,6 +1817,7 @@ function renderReview(){
   // 曜日 × クール のクロス表(1営業日あたりの平均)
   const CQ=[["第1",5,13],["第2",13,18],["第3",18,22],["青タン",22,30]];
   const CQT=[35000,30000,20000,25000];
+  html+=TABMARK+"時間";
   html+=sectionTitle("曜日 × クール別の1日平均"+histNote);
   html+=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:100%;">
@@ -1839,6 +1858,7 @@ function renderReview(){
 
   // アプリ/流し
   const nApp=mine.filter(r=>(r.m||"app")==="app").length, nSt=mine.length-nApp;
+  html+=TABMARK+"基本";
   html+=sectionTitle("配車の内訳");
   html+=barRow("アプリ", nApp, mine.length, nApp+"回("+Math.round(nApp/mine.length*100)+"%)");
   html+=barRow("流し", nSt, mine.length, nSt+"回("+Math.round(nSt/mine.length*100)+"%)");
@@ -1852,6 +1872,7 @@ function renderReview(){
       a.n++; a.max=Math.max(a.max,r.f); a.hs+=shiftHour(r.t); bm.set(r.p,a);
     });
     const brows=[...bm.entries()].sort((x,y)=>y[1].n-x[1].n || y[1].max-x[1].max).slice(0,5);
+    html+=TABMARK+"エリア";
     html+=sectionTitle("アプリの大物(¥6,000以上が出た乗車地)");
     brows.forEach(([p,a])=>{
       html+=barRow(p.length>7?p.slice(0,7)+"…":p, a.max, brows[0][1].max,
@@ -1875,6 +1896,7 @@ function renderReview(){
     .sort((x,y)=>y.perH-x.perH).slice(0,5);
   if(effRows.length){
     const eMax=effRows[0].perH;
+    html+=TABMARK+"効率";
     html+=sectionTitle("時間効率の良い乗車地(推定¥/時)");
     effRows.forEach(x=>{
       html+=barRow(x.p.length>7?x.p.slice(0,7)+"…":x.p, x.perH, eMax,
@@ -1888,6 +1910,7 @@ function renderReview(){
             [22,23,"22時台"],[23,24,"23時台"],[24,25,"0時台"],[25,29,"1-2時台"]];
   const anyBig=mine.some(r=>r.f>=10000);
   if(anyBig){
+    html+=TABMARK+"エリア";
     html+=sectionTitle("万収ヒット率(時刻×乗車地)");
     html+=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">¥10,000以上が出た確率。2回以上乗せた場所のみ。平均単価では見えない「一発の出やすさ」です。</div>`;
     HB.forEach(([a,b,label])=>{
@@ -1938,6 +1961,7 @@ function renderReview(){
     const rowsE=[...emp.entries()].filter(([,a])=>a.n>=3)
       .map(([p,a])=>({p, avg:a.km/a.n, n:a.n})).sort((x,y)=>y.avg-x.avg).slice(0,5);
     if(rowsE.length){
+      html+=TABMARK+"効率";
       html+=sectionTitle("空走の多い降車先(実車率のロス源)");
       html+=`<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">降ろした後、次の乗車まで平均${(empTotal/empN).toFixed(1)}km空車移動(直線距離の目安)。長い場所ほど「行った先営業」か回避を検討。</div>`;
       const eM=rowsE[0].avg;
@@ -1964,6 +1988,7 @@ function renderReview(){
     });
     if(rN&&dN){
       const wMax=Math.max(rSum/rN,dSum/dN);
+      html+=TABMARK+"効率";
       html+=sectionTitle("雨の日と晴れの日(1営業日あたり平均営収)");
       html+=barRow("☔ 雨", rSum/rN, wMax, yen(Math.round(rSum/rN))+`<br><span style="color:var(--muted)">${rN}日分</span>`);
       html+=barRow("☀ 晴", dSum/dN, wMax, yen(Math.round(dSum/dN))+`<br><span style="color:var(--muted)">${dN}日分</span>`);
@@ -1972,9 +1997,106 @@ function renderReview(){
     html+=`<div style="font-size:11px;color:var(--muted);margin-top:12px;">☔ フィルターの「雨/晴」を一度タップすると、天気別の分析もここに表示されます</div>`;
   }
 
-  body.innerHTML=html;
+  // ===== 3. 単価帯の分布(基本) =====
+  html+=TABMARK+"基本";
+  html+=sectionTitle("単価帯の分布");
+  const FB=[[0,1000,"〜¥999"],[1000,2000,"¥1,000台"],[2000,3000,"¥2,000台"],[3000,5000,"¥3,000-4,999"],[5000,10000,"¥5,000-9,999"],[10000,1e9,"¥10,000以上"]];
+  const fbN=FB.map(b=>mine.filter(r=>r.f>=b[0]&&r.f<b[1]).length);
+  const fbS=FB.map(b=>mine.filter(r=>r.f>=b[0]&&r.f<b[1]).reduce((s,r)=>s+r.f,0));
+  const fbMax=Math.max(...fbN);
+  const totalSum=mine.reduce((s,r)=>s+r.f,0);
+  FB.forEach((b,i)=>{
+    html+=barRow(b[2], fbN[i], fbMax,
+      fbN[i]+"回("+Math.round(fbN[i]/mine.length*100)+"%)<br><span style=\"color:var(--muted)\">営収の"+Math.round(fbS[i]/totalSum*100)+"%</span>");
+  });
+
+  // ===== 7. 乗車間隔の分布(効率) =====
+  html+=TABMARK+"効率";
+  const seqG=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const gapsAll=[];
+  for(let i=0;i<seqG.length-1;i++){
+    if(shiftDateStr(seqG[i])!==shiftDateStr(seqG[i+1])) continue;
+    const g=(new Date(seqG[i+1].d+"T"+seqG[i+1].t)-new Date(seqG[i].d+"T"+seqG[i].t))/60000;
+    if(g>0&&g<=180) gapsAll.push(g);
+  }
+  if(gapsAll.length){
+    html+=sectionTitle("乗車間隔の分布");
+    const GB=[[0,10,"10分以内"],[10,20,"10-20分"],[20,30,"20-30分"],[30,45,"30-45分"],[45,60,"45-60分"],[60,180,"60分超"]];
+    const gN=GB.map(b=>gapsAll.filter(g=>g>=b[0]&&g<b[1]).length);
+    const gMax=Math.max(...gN);
+    GB.forEach((b,i)=>{
+      html+=barRow(b[2], gN[i], gMax, gN[i]+"回("+Math.round(gN[i]/gapsAll.length*100)+"%)");
+    });
+    const med=[...gapsAll].sort((a,b)=>a-b)[Math.floor(gapsAll.length/2)];
+    html+=`<div style="font-size:11px;color:var(--muted);margin-top:4px;">中央値 ${Math.round(med)}分・平均 ${Math.round(gapsAll.reduce((a,b)=>a+b,0)/gapsAll.length)}分(実車時間込み。短いほど回転が速い)</div>`;
+  }
+
+  // ===== 4. 連続配車の効き具合(時間) =====
+  html+=TABMARK+"時間";
+  html+=sectionTitle("連続配車の効き具合(時間帯別)");
+  html+=`<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">アプリ配車が連続した割合。研修方針では18時までよく鳴り、22-24時は切るのが有利。</div>`;
+  const CHB=[[5,9,"5-9時"],[9,13,"9-13時"],[13,18,"13-18時"],[18,22,"18-22時"],[22,24,"22-24時"],[24,29,"0-5時"]];
+  CHB.forEach(([a,b,label])=>{
+    const pool=mine.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b);
+    if(!pool.length) return;
+    const app=pool.filter(r=>(r.m||"app")==="app").length;
+    // 連続(直前もアプリ)の割合
+    let chain=0, chk=0;
+    for(let i=1;i<seqG.length;i++){
+      const r=seqG[i];
+      if(shiftHour(r.t)<a||shiftHour(r.t)>=b) continue;
+      if(shiftDateStr(seqG[i-1])!==shiftDateStr(r)) continue;
+      chk++;
+      if((r.m||"app")==="app" && (seqG[i-1].m||"app")==="app") chain++;
+    }
+    html+=barRow(label, app/pool.length*100, 100,
+      "配車"+Math.round(app/pool.length*100)+"%<br><span style=\"color:var(--muted)\">連続"+(chk?Math.round(chain/chk*100):0)+"%・"+pool.length+"件</span>");
+  });
+
+  // ===== 2. 降車先ランキング(エリア) =====
+  html+=TABMARK+"エリア";
+  const dstAgg=new Map();
+  mine.forEach(r=>{
+    if(!r.dst) return;
+    const base=r.dst.replace(/[0-9]+$/,"");
+    const a=dstAgg.get(base)||{n:0,sum:0};
+    a.n++; a.sum+=r.f; dstAgg.set(base,a);
+  });
+  const dstTop=[...dstAgg.entries()].map(([p,a])=>({p,n:a.n,avg:a.sum/a.n}))
+    .sort((x,y)=>y.n-x.n).slice(0,8);
+  if(dstTop.length){
+    html+=sectionTitle("よく行く降車先");
+    const dMax2=dstTop[0].n;
+    dstTop.forEach(x=>{
+      const em=emp.get(x.p);
+      const empTxt = em&&em.n>=3 ? "・次まで"+(em.km/em.n).toFixed(1)+"km" : "";
+      html+=barRow(x.p.length>8?x.p.slice(0,8)+"…":x.p, x.n, dMax2,
+        x.n+"回<br><span style=\"color:var(--muted)\">平均"+yen(Math.round(x.avg))+empTxt+"</span>");
+    });
+  }
+
+  // ===== 9. 曜日 × エリアのクロス(エリア) =====
+  html+=sectionTitle("曜日別のベストエリア");
+  [1,2,3,4,5,6,0].forEach(dw=>{
+    const rs=mine.filter(r=>shiftDow(r)===dw);
+    if(!rs.length) return;
+    const agg=new Map();
+    rs.forEach(r=>{ const a=agg.get(r.p)||{s:0,n:0}; a.s+=r.f; a.n++; agg.set(r.p,a); });
+    const top=[...agg.entries()].map(([p,a])=>({p,avg:a.s/a.n,n:a.n,sc:(a.s/a.n)*Math.log2(1+a.n)}))
+      .sort((x,y)=>y.sc-x.sc).slice(0,3);
+    html+=`<div style="display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:12px;">
+      <span style="width:22px;font-weight:700;color:var(--amber);">${["日","月","火","水","木","金","土"][dw]}</span>
+      <span style="flex:1;color:var(--muted);line-height:1.6;">${top.map(t=>`${t.p} <span style="color:var(--text);">${yen(Math.round(t.avg))}</span>(${t.n})`).join("　")}</span>
+    </div>`;
+  });
+
+  body.innerHTML=renderReviewTabs(html);
   const ec=document.getElementById("editCutoff");
   if(ec) ec.onclick=editMonthCfg;
+  document.querySelectorAll(".rv-tab").forEach(b=>b.onclick=()=>{
+    reviewTab=b.dataset.rv; renderReview();
+    document.getElementById("reviewPanel").scrollTop=0;
+  });
 }
 document.getElementById("btnReview").onclick=async ()=>{
   if(!rainMap) loadWeather().then(()=>{ if(document.getElementById("reviewPanel").style.display==="block") renderReview(); });
