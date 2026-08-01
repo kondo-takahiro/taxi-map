@@ -543,7 +543,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.07.30-8";
+const APP_VER = "2026.08.01-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1796,6 +1796,38 @@ function renderReview(){
   const bands=[[5,13,"朝 5-13時"],[13,18,"昼 13-18時"],[18,22,"夜 18-22時"],[22,29,"深夜 22-5時"]];
   const bandAvg=bands.map(([a,b])=>histBase.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(totalDays||1));
   const bMax=Math.max(...bandAvg);
+  // 曜日 × クール のクロス表(1営業日あたりの平均)
+  const CQ=[["第1",5,13],["第2",13,18],["第3",18,22],["青タン",22,30]];
+  const CQT=[35000,30000,20000,25000];
+  html+=sectionTitle("曜日 × クール別の1日平均"+histNote);
+  html+=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:100%;">
+    <tr><th style="text-align:left;padding:3px 6px;color:var(--muted);font-weight:400;">曜日</th>`
+    + CQ.map(c=>`<th style="padding:3px 6px;color:var(--muted);font-weight:400;text-align:right;">${c[0]}</th>`).join("")
+    + `<th style="padding:3px 6px;color:var(--muted);font-weight:400;text-align:right;">計</th><th style="padding:3px 6px;color:var(--muted);font-weight:400;text-align:right;">日数</th></tr>`;
+  const dowNames2=["日","月","火","水","木","金","土"];
+  [1,2,3,4,5,6,0].forEach(dw=>{
+    const rs=histBase.filter(r=>shiftDow(r)===dw);
+    if(!rs.length) return;
+    const nd=new Set(rs.map(r=>shiftDateStr(r))).size;
+    const vals=CQ.map(c=>rs.filter(r=>shiftHour(r.t)>=c[1]&&shiftHour(r.t)<c[2]).reduce((s,r)=>s+r.f,0)/nd);
+    const tot=vals.reduce((a,b)=>a+b,0);
+    html+=`<tr style="border-top:1px solid var(--line);">
+      <td style="padding:5px 6px;font-weight:700;">${dowNames2[dw]}</td>`
+      + vals.map((v,i)=>{
+          const ratio=v/CQT[i];
+          const col = ratio>=1 ? "#7dd87d" : ratio>=0.75 ? "var(--text)" : "#f08080";
+          return `<td style="padding:5px 6px;text-align:right;color:${col};font-variant-numeric:tabular-nums;">${(v/1000).toFixed(1)}</td>`;
+        }).join("")
+      + `<td style="padding:5px 6px;text-align:right;font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums;">${(tot/1000).toFixed(1)}</td>
+         <td style="padding:5px 6px;text-align:right;color:var(--muted);">${nd}</td></tr>`;
+  });
+  html+=`<tr style="border-top:1px solid var(--amber);">
+      <td style="padding:5px 6px;color:var(--amber);font-size:10px;">目標</td>`
+    + CQT.map(t=>`<td style="padding:5px 6px;text-align:right;color:var(--amber);font-size:10px;">${(t/1000).toFixed(1)}</td>`).join("")
+    + `<td style="padding:5px 6px;text-align:right;color:var(--amber);font-size:10px;">110</td><td></td></tr></table></div>`;
+  html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;">単位:千円。緑=目標以上、赤=目標の75%未満。第1=5-13時/第2=13-18時/第3=18-22時/青タン=22-5時</div>`;
+
   const curDays=new Set(curRides.map(r=>shiftDateStr(r))).size;
   const curBandAvg=bands.map(([a,b])=>curRides.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).reduce((s,r)=>s+r.f,0)/(curDays||1));
   html+=sectionTitle("時間帯別・1営業日あたりの平均営収"+histNote);
@@ -2770,7 +2802,28 @@ document.getElementById("btnCsvOut").onclick=()=>{
   a.download="rides.csv"; a.click();
 };
 // ===== 取り込み共通処理(CSV/タブ区切り、重複は自動スキップ) =====
+// KPI行(実車率・休憩)の取り込み  形式: KPI,営業日,実車率,休憩
+function importKPI(text){
+  let kpi={}, brk={};
+  try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+  try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+  let n=0;
+  text.split(/\r?\n/).forEach(l=>{
+    const m=l.trim().match(/^KPI\s*,\s*(\d{4}-\d{2}-\d{2})\s*,\s*([0-9.]*)\s*,?\s*(.*)$/i);
+    if(!m) return;
+    const d=m[1], rate=parseFloat(m[2]), br=(m[3]||"").trim().replace(/^["']|["']$/g,"");
+    if(isFinite(rate) && rate>0 && rate<100) kpi[d]=rate;
+    if(br) brk[d]=br;
+    n++;
+  });
+  if(n){
+    localStorage.setItem("kpi-v1", JSON.stringify(kpi));
+    localStorage.setItem("break-v1", JSON.stringify(brk));
+  }
+  return n;
+}
 function importText(text, silent){
+  const nk=importKPI(text);
   // 改行が失われている場合に備え、日付(YYYY-MM-DD)の直前で強制的に区切る
   const norm = text.replace(/^\uFEFF/,"")
     .replace(/\s+(?="?\d{4}-\d{2}-\d{2}"?[,\t])/g,"\n");
@@ -2805,6 +2858,7 @@ function importText(text, silent){
     let msg=added+"件を読み込みました";
     if(dup) msg+="\n(重複のため"+dup+"件をスキップ)";
     if(bad) msg+="\n(形式エラーで"+bad+"件をスキップ)";
+    if(nk) msg+="\n実車率・休憩を"+nk+"日分記録しました";
     alert(msg);
   }
   return added;
