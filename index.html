@@ -257,10 +257,14 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
   <span>高</span></span>
   <span id="legendLabel" style="font-size:8px;opacity:.6;">単価</span>
-  <span id="quadLegend" style="display:none;gap:7px;font-size:8px;margin-left:6px;">
-    <span><span style="display:inline-block;width:8px;height:8px;background:#e53935;border-radius:2px;"></span> 高単価×多</span>
-    <span><span style="display:inline-block;width:8px;height:8px;background:#42a5f5;border-radius:2px;"></span> よく鳴る</span>
-    <span><span style="display:inline-block;width:8px;height:8px;background:#ab47bc;border-radius:2px;"></span> 高単価</span>
+  <span id="quadLegend" style="display:none;align-items:center;gap:5px;font-size:8px;margin-left:4px;">
+    <span>単価</span>
+    <span style="width:46px;height:6px;border-radius:3px;display:inline-block;
+      background:linear-gradient(90deg,hsl(210,70%,60%),hsl(150,70%,58%),hsl(60,80%,55%),hsl(0,85%,52%));"></span>
+    <span style="margin-left:3px;">回数</span>
+    <span style="width:40px;height:6px;border-radius:3px;display:inline-block;
+      background:linear-gradient(90deg,hsl(20,45%,74%),hsl(20,95%,44%));"></span>
+    <span style="opacity:.75;">濃いほど多い</span>
   </span>
 </div>
 
@@ -341,6 +345,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
     <button class="btn" id="btnMetric">指標: 単価</button>
+    <button class="btn" id="btnPredict">🔮 推定</button>
     <button class="btn" id="btnGps">現在地</button>
   </div>
   <div class="row">
@@ -520,35 +525,47 @@ function hitTierColor(rate){
   if(rate>0)     return "#aed581";
   return "#81c784";
 }
-// 回数×単価の4象限(しきい値は表示中データから算出)
-let quadTh={fare:3000, cnt:3};
+// 回数×単価: 色相=単価(青→赤)、濃さ=回数 の連続グラデーション
+let quadTh={lo:1000, hi:6000, nMax:8};
 function updateQuadTh(list){
   if(!list.length) return;
-  quadTh.fare = list.reduce((s,r)=>s+r.f,0)/list.length; // 表示中の平均単価
-  quadTh.cnt = 3;
+  const fares=list.map(r=>r.f).sort((a,b)=>a-b);
+  quadTh.lo = fares[Math.floor(fares.length*0.15)] || 1000;
+  quadTh.hi = fares[Math.floor(fares.length*0.90)] || 6000;
+  if(quadTh.hi<=quadTh.lo) quadTh.hi=quadTh.lo+1000;
 }
-function quadOf(a){
-  const hiF = (a.sum/a.n) >= quadTh.fare;
-  const hiN = a.n >= quadTh.cnt;
-  return hiF ? (hiN?"both":"fare") : (hiN?"count":"low");
+function setQuadNMax(vals){ // 表示中の最多件数(上位10%点)を濃さの上限に
+  const ns=vals.slice().sort((a,b)=>a-b);
+  quadTh.nMax = Math.max(3, ns[Math.floor(ns.length*0.9)] || 3);
+}
+function hsl(h,s,l){ return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`; }
+// 単価→色相(210=青 → 0=赤)、回数→彩度と明度
+function quadColor(a){
+  const avg=a.sum/a.n;
+  let t=(avg-quadTh.lo)/(quadTh.hi-quadTh.lo);
+  t=Math.max(0,Math.min(1,t));
+  const hue = 210 - 210*Math.pow(t,0.85);          // 青→水色→黄→赤
+  const d = Math.min(1, Math.log2(1+a.n)/Math.log2(1+quadTh.nMax)); // 回数の効き(対数)
+  const sat = 45 + 50*d;    // 回数が多いほど鮮やか
+  const lig = 74 - 30*d;    // 回数が多いほど濃い
+  return hsl(hue, sat, lig);
 }
 const QUAD_COL={both:"#e53935", fare:"#ab47bc", count:"#42a5f5", low:"#78909c"};
 const QUAD_NAME={both:"高単価×よく鳴る", fare:"高単価(回数少)", count:"よく鳴る(単価低め)", low:"どちらも低め"};
 // 指標に応じた色(件数が少ないものは薄く=まぐれと区別)
 function metricColor(a){
   if(metric==="hit") return hitTierColor(a.big/a.n);
-  if(metric==="quad") return QUAD_COL[quadOf(a)];
+  if(metric==="quad") return quadColor(a);
   return fareTierColor(a.sum/a.n);
 }
 function metricOpacity(a, base){
-  if(metric==="quad") return a.n>=4 ? base : base*0.6;
+  if(metric==="quad") return base;
   if(metric!=="hit") return base;
   return a.n>=5 ? base : (a.n>=3 ? base*0.72 : base*0.45);
 }
 function metricTip(name,a){
   if(metric==="quad"){
-    const q=quadOf(a);
-    return `${name}<br><b style="color:${QUAD_COL[q]}">${QUAD_NAME[q]}</b><br>平均 ${yen(Math.round(a.sum/a.n))} / ${a.n}件`;
+    return `${name}<br>平均 <b style="color:${quadColor(a)}">${yen(Math.round(a.sum/a.n))}</b> / ${a.n}件`;
   }
   if(metric==="hit"){
     return `${name}<br>万収 ${a.big}本 / ${a.n}件 = <b>${Math.round(a.big/a.n*100)}%</b>`
@@ -557,6 +574,21 @@ function metricTip(name,a){
   return `${name}<br>平均 ${yen(Math.round(a.sum/a.n))} / ${a.n}件`;
 }
 // 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
+// 町丁目の重心(計算結果をキャッシュ)
+let predictOn=false;
+const _cenCache=new Map();
+function chomeCentroid(name, f){
+  if(_cenCache.has(name)) return _cenCache.get(name);
+  try{
+    const g=f.geometry;
+    const ring = g.type==="Polygon" ? g.coordinates[0] : g.coordinates[0][0];
+    let la=0, lo=0;
+    ring.forEach(c=>{ lo+=c[0]; la+=c[1]; });
+    const c=[la/ring.length, lo/ring.length];
+    _cenCache.set(name,c);
+    return c;
+  }catch(e){ _cenCache.set(name,null); return null; }
+}
 function fareTierColor(avg){
   if(avg>=8000) return "#b71c1c";
   if(avg>=5000) return "#e53935";
@@ -567,7 +599,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.05-1";
+const APP_VER = "2026.08.05-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -606,6 +638,7 @@ function drawHeat(list){
     byAddr.set(r.p,a);
   });
   updateQuadTh(list);
+  if(metric==="quad") setQuadNMax([...byAddr.values()].map(a=>a.n));
   byAddr.forEach((a,name)=>{
     if(metric==="hit" && a.n<2) return; // 1件だけの場所は率が意味を持たない
     const col=metricColor(a);
@@ -624,6 +657,42 @@ function drawHeat(list){
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }
   });
+  // 実績のない町丁目を周辺から推定して塗る
+  if(predictOn && chomeIndex){
+    const known=[];
+    byAddr.forEach((a,name)=>{
+      if(a.n<1) return;
+      known.push({ll:[a.latS/a.n, a.lngS/a.n], a});
+    });
+    if(known.length>=4){
+      const b=map.getBounds().pad(0.05);
+      let drawn=0;
+      chomeIndex.forEach((f,name)=>{
+        if(drawn>900) return;
+        if(byAddr.has(name)) return;               // 実績がある場所は対象外
+        const c=chomeCentroid(name,f);
+        if(!c || !b.contains(c)) return;           // 画面内のみ
+        // 近い順に最大6件、2.5km以内の実績から距離の重み付き平均
+        const near=known.map(k=>({k, d:haversineKm(c,k.ll)}))
+          .filter(x=>x.d<=2.5).sort((x,y)=>x.d-y.d).slice(0,6);
+        if(near.length<3) return;                  // 根拠が薄い場所は塗らない
+        let ws=0, sum=0, n=0, big=0;
+        near.forEach(x=>{
+          const w=1/Math.pow(Math.max(x.d,0.15),2);
+          ws+=w; sum+=w*(x.k.a.sum/x.k.a.n); n+=w*x.k.a.n; big+=w*x.k.a.big;
+        });
+        const est={sum:(sum/ws), n:1, big:(big/ws)/Math.max(1,(n/ws)), latS:c[0], lngS:c[1]};
+        est.sum=(sum/ws); est.n=1; est.big=(big/ws)/Math.max(1,(n/ws));
+        const col=metricColor({sum:est.sum, n:1, big:est.big*1});
+        L.geoJSON(f,{renderer:heatRenderer,
+          style:{color:"#ffffff",weight:0.6,opacity:.35,fillColor:col,fillOpacity:.3,dashArray:"3 4"}})
+          .bindTooltip(`${name}<br><span style="opacity:.8">推定 ${yen(Math.round(est.sum))}</span><br><span style="font-size:10px;opacity:.7">周辺${near.length}カ所の実績から算出(実績なし)</span>`,
+            {direction:"top",sticky:true}).addTo(heatLayer);
+        drawn++;
+      });
+    }
+  }
+
   // 23区+武蔵野市+三鷹市の境界線を重ねる(薄めの点線)
   if(wardsData){
     L.geoJSON(wardsData,{renderer:heatRenderer, interactive:false,
@@ -2714,6 +2783,16 @@ document.getElementById("btnHeat").onclick=e=>{
 };
 // ===== 万収スポット(¥10,000以上が出た乗車地) =====
 let bigLayer=null, bigOn=false;
+document.getElementById("btnPredict").onclick=e=>{
+  predictOn=!predictOn;
+  e.target.classList.toggle("on",predictOn);
+  if(predictOn && !heatOn){ // 推定はヒートマップ上で表示
+    heatOn=true; document.getElementById("btnHeat").classList.add("on");
+  }
+  if(predictOn) ensureChome();
+  render();
+};
+map.on("moveend",()=>{ if(predictOn && heatOn) render(); });
 document.getElementById("btnMetric").onclick=e=>{
   metric = metric==="fare" ? "hit" : metric==="hit" ? "quad" : "fare";
   const lbl = metric==="hit" ? "万収率" : metric==="quad" ? "回数×単価" : "単価";
@@ -2800,6 +2879,7 @@ function drawWardRank(){
       for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; break; } }
     });
   }
+  if(metric==="quad") setQuadNMax([...agg.values()].filter(a=>a.n>0).map(a=>a.n));
   const ranked=[...agg.entries()].filter(([,a])=>a.n>0 && (metric!=="hit"||a.n>=2))
     .map(([w,a])=>({w, avg:a.sum/a.n, rate:a.big/a.n, n:a.n, big:a.big}))
     .sort((x,y)=> metric==="hit" ? (y.rate-x.rate)||(y.n-x.n)
