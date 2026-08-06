@@ -253,7 +253,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
-<div id="heatLegend" style="display:none;position:fixed;top:calc(70px + env(safe-area-inset-top));left:10px;z-index:900;align-items:center;gap:5px;
+<div id="heatLegend" style="display:none;position:fixed;top:calc(70px + env(safe-area-inset-top));right:10px;max-width:calc(100vw - 84px);flex-wrap:wrap;justify-content:flex-end;z-index:900;align-items:center;gap:5px;
   background:rgba(19,26,42,.85);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:9px;color:var(--muted);"><span class="legend-bar" style="display:inline-flex;align-items:center;gap:5px;"><span>低</span>
   <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#81c784,#aed581,#fdd835,#fb8c00,#e53935,#b71c1c);"></span>
   <span>高</span></span>
@@ -613,7 +613,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.06-4";
+const APP_VER = "2026.08.06-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -881,16 +881,31 @@ function bigSpotsFor(win, cur){
     .sort((x,y)=> cur ? (x.dist-y.dist) : (y.big-x.big))
     .slice(0,3);
 }
+// HUDの高さに合わせて、下に並ぶ要素の位置を自動調整
+function layoutUnderHUD(){
+  const hud=document.getElementById("hud");
+  if(!hud) return;
+  const top = hud.getBoundingClientRect().bottom + 8;
+  const lg=document.getElementById("heatLegend");
+  const zb=document.getElementById("zoomBtns");
+  const ri=document.getElementById("routeInfo");
+  if(lg) lg.style.top = top+"px";
+  if(zb) zb.style.top = top+"px";
+  if(ri) ri.style.top = top+"px";
+}
+window.addEventListener("resize", layoutUnderHUD);
 function updateBigWindow(){
   const el=document.getElementById("bigWin");
   if(!el) return;
   const w=bigWindowNow();
   if(!w){
     el.style.borderColor="var(--line)";
+    setTimeout(layoutUnderHUD,0);
     el.innerHTML=`<span style="color:var(--muted);font-size:11px;">🔄 回転の時間(12-19時は万収の実績なし)　近距離を数でつなぐ</span>`;
     return;
   }
   const spots=bigSpotsFor(w, lastLL);
+  setTimeout(layoutUnderHUD,0);
   el.style.borderColor="#ffd54f";
   el.innerHTML=`<span style="color:#ffd54f;font-weight:800;font-size:12px;">⭐ ${w.name}</span>`
     + `<span style="font-size:11px;color:var(--muted);margin-left:6px;">${w.hint}</span>`
@@ -937,6 +952,7 @@ async function updateHUD(ll, force){
   }
   if(moved) hudLL=ll;
   updateBigWindow();
+  layoutUnderHUD();
 }
 document.getElementById("hud").onclick=()=>{ if(lastLL) showAdvice(lastLL); };
 
@@ -3347,6 +3363,7 @@ document.getElementById("btnAppMode").onclick=()=>{
   document.querySelectorAll(".chip.dow").forEach(c=>
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
   updateBigWindow();
+  setTimeout(layoutUnderHUD,60);
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
