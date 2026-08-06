@@ -142,6 +142,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
       </div>
     </div>
     <div id="hudHot" style="font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">🔥 現在地を取得すると表示されます</div>
+    <div id="bigWin" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;"></div>
   </div>
 </div>
 
@@ -599,7 +600,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.05-3";
+const APP_VER = "2026.08.06-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -836,6 +837,56 @@ function showRoute(dlat,dlng){
 }
 document.getElementById("routeClose").onclick=clearRoute;
 
+// ===== 万収ウィンドウ(大物が出る時間帯かどうか) =====
+// 実績: 12-19時は万収ゼロ。朝/夜/深夜の3つの窓に集中し、同じ場所への張り付きで当たっている
+const BIG_WINDOWS=[
+  {lo:5,  hi:12, name:"朝の窓", hint:"出庫直後〜午前。郊外ロングが出やすい"},
+  {lo:19, hi:23, name:"夜の窓", hint:"終演・会食後。都心から郊外へ"},
+  {lo:23, hi:29, name:"深夜の窓", hint:"最大の山。県外・多摩方面"}
+];
+function bigWindowNow(){
+  const h=new Date().getHours(), sh=h<5?h+24:h;
+  return BIG_WINDOWS.find(w=>sh>=w.lo&&sh<w.hi) || null;
+}
+// その窓で万収が出た乗車地(近い順)
+function bigSpotsFor(win, cur){
+  if(!win) return [];
+  const agg=new Map();
+  myRides().forEach(r=>{
+    const s=shiftHour(r.t);
+    if(s<win.lo||s>=win.hi) return;
+    const a=agg.get(r.p)||{n:0,big:0,la:0,lo:0,max:0};
+    a.n++; a.la+=r.lat; a.lo+=r.lng;
+    if(r.f>=10000){ a.big++; a.max=Math.max(a.max,r.f); }
+    agg.set(r.p,a);
+  });
+  return [...agg.entries()].filter(([,a])=>a.big>0)
+    .map(([p,a])=>{
+      const ll=[a.la/a.n, a.lo/a.n];
+      return {p, big:a.big, n:a.n, max:a.max, ll, dist: cur?haversineKm(cur,ll):null};
+    })
+    .sort((x,y)=> cur ? (x.dist-y.dist) : (y.big-x.big))
+    .slice(0,3);
+}
+function updateBigWindow(){
+  const el=document.getElementById("bigWin");
+  if(!el) return;
+  const w=bigWindowNow();
+  if(!w){
+    el.style.borderColor="var(--line)";
+    el.innerHTML=`<span style="color:var(--muted);font-size:11px;">🔄 回転の時間(12-19時は万収の実績なし)　近距離を数でつなぐ</span>`;
+    return;
+  }
+  const spots=bigSpotsFor(w, lastLL);
+  el.style.borderColor="#ffd54f";
+  el.innerHTML=`<span style="color:#ffd54f;font-weight:800;font-size:12px;">⭐ ${w.name}</span>`
+    + `<span style="font-size:11px;color:var(--muted);margin-left:6px;">${w.hint}</span>`
+    + (spots.length? `<div style="font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">`
+        + spots.map(s=>`<b>${s.p}</b>${s.dist!=null?`<span style="color:var(--muted)"> ${s.dist.toFixed(1)}km</span>`:""}<span style="color:#ffd54f"> ${s.big}本</span>`).join("　")
+        + `</div>` : "");
+}
+setInterval(updateBigWindow, 60000);
+
 // ===== 走行中HUD(現在いる通り名 + 近くのアツいエリア) =====
 let hudLL=null, hudRoadAt=0, hudHotAt=0, hudRoadName="";
 async function hudRoad(ll){
@@ -872,6 +923,7 @@ async function updateHUD(ll, force){
     document.getElementById("hudHot").textContent=hudHotText(ll);
   }
   if(moved) hudLL=ll;
+  updateBigWindow();
 }
 document.getElementById("hud").onclick=()=>{ if(lastLL) showAdvice(lastLL); };
 
@@ -3209,6 +3261,7 @@ document.getElementById("btnAppMode").onclick=()=>{
   dowSet = new Set(initDows.map(Number));
   document.querySelectorAll(".chip.dow").forEach(c=>
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
+  updateBigWindow();
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
