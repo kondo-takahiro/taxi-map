@@ -48,7 +48,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   .wardBest{background:rgba(19,26,42,.92)!important;color:var(--amber)!important;border:1px solid var(--amber)!important;font-weight:700;font-size:12px;}
   .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;padding:0 14px calc(18px + env(safe-area-inset-bottom));
+    border-radius:16px 16px 0 0;padding:0 14px calc(66px + env(safe-area-inset-bottom));
     }
   .panel-handle{display:flex;flex-direction:column;align-items:center;gap:3px;
     padding:12px 0 10px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}
@@ -164,8 +164,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div style="font-size:10px;color:var(--muted);margin-top:6px;">タップでその場所へジャンプ・運転中の注視は控えてください</div>
 </div>
 
-<div id="briefPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
-  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;max-height:62svh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+<div id="briefPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
     <b style="font-size:14px;">📋 今日の営業ブリーフィング</b>
     <span style="flex:1"></span>
@@ -192,24 +192,24 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="adviceNote" style="font-size:10px;color:var(--muted);margin-top:6px;"></div>
 </div>
 
-<div id="reviewPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
-  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-    <b style="font-size:14px;">📊 実績の振り返り</b>
+<div id="reviewPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;position:sticky;top:0;background:var(--bg);padding:2px 0 6px;z-index:3;">
+    <b style="font-size:16px;">📊 分析</b>
     <span style="flex:1"></span>
-    <span id="reviewClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+    <span id="reviewClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
   </div>
   <button class="btn" id="reviewCoach" style="width:100%;padding:10px;margin-bottom:8px;">🤖 AIコーチングを受ける</button>
   <div id="coachOut" style="display:none;margin-bottom:10px;padding:11px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>
   <div id="reviewBody"></div>
 </div>
 
-<div id="diaryPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
-  background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-    <b style="font-size:14px;">📓 営業日誌</b>
+<div id="diaryPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;position:sticky;top:0;background:var(--bg);padding:2px 0 6px;z-index:3;">
+    <b style="font-size:16px;">📓 営業日誌</b>
     <span style="flex:1"></span>
-    <span id="diaryClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+    <span id="diaryClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
   </div>
   <div style="display:flex;gap:6px;margin-bottom:10px;">
     <button class="chip on diary-tab" data-t="y">前回</button>
@@ -276,6 +276,19 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   ファイルをダウンロードし、<b>SafariやChromeなどのブラウザで直接開いて</b>ください。ネット接続も必要です。
 </div>
 
+<nav id="tabBar" style="position:fixed;left:0;right:0;bottom:0;z-index:1600;display:flex;
+  background:rgba(13,19,32,.97);border-top:1px solid var(--line);
+  padding:6px 0 calc(4px + env(safe-area-inset-bottom));">
+  <button class="tab-btn on" data-tab="map" style="flex:1;background:none;border:none;color:var(--amber);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+    <span style="font-size:18px;line-height:1;">🗺</span>地図</button>
+  <button class="tab-btn" data-tab="diary" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+    <span style="font-size:18px;line-height:1;">📓</span>日誌</button>
+  <button class="tab-btn" data-tab="review" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+    <span style="font-size:18px;line-height:1;">📊</span>分析</button>
+  <button class="tab-btn" data-tab="brief" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+    <span style="font-size:18px;line-height:1;">📋</span>今日</button>
+</nav>
+
 <div class="panel" id="panel">
   <div class="panel-handle" id="panelHandle">
     <div class="grip"></div>
@@ -334,7 +347,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div class="row">
     <button class="btn" id="btnBrief">📋 今日の情報</button>
     <button class="btn" id="btnAdvice">💡 立ち回り</button>
-    <button class="btn" id="btnReview">📊 振り返り</button>
+    <button class="btn" id="btnReview">📊 分析</button>
     <button class="btn" id="btnDiary">📓 日誌</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
@@ -600,7 +613,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.06-1";
+const APP_VER = "2026.08.06-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1222,7 +1235,7 @@ ${COACH_TIPS}
     document.getElementById("briefBody").textContent="取得に失敗しました: "+err.message;
   }
 }
-document.getElementById("btnBrief").onclick=()=>buildBrief(false);
+document.getElementById("btnBrief").onclick=()=>showTab("brief");
 document.getElementById("briefReload").onclick=()=>buildBrief(true);
 document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
 
@@ -1844,10 +1857,10 @@ function barRow(label, value, max, fmt){
 }
 const TABMARK="@@TAB@@";
 let reviewTab="基本";
-const REVIEW_TABS=["基本","時間","エリア","効率"];
+const REVIEW_TABS=["基本","時間","エリア","効率","曜日別"];
 // マーカーで区切られたHTMLをタブごとに束ね、タブバー付きで返す
 function renderReviewTabs(raw){
-  const parts={基本:"",時間:"",エリア:"",効率:""};
+  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:""};
   let cur="基本";
   raw.split(TABMARK).forEach((chunk,i)=>{
     if(i===0){ parts[cur]+=chunk; return; }
@@ -1856,8 +1869,9 @@ function renderReviewTabs(raw){
     else parts[cur]+=chunk;
   });
   const bar=`<div style="display:flex;gap:5px;margin-bottom:10px;position:sticky;top:0;background:rgba(19,26,42,.97);padding-bottom:6px;z-index:2;">`
-    + REVIEW_TABS.map(t=>`<button class="chip rv-tab${t===reviewTab?" on":""}" data-rv="${t}" style="flex:1;padding:7px 0;font-size:12px;">${t}</button>`).join("")
+    + REVIEW_TABS.map(t=>`<button class="chip rv-tab${t===reviewTab?" on":""}" data-rv="${t}" style="flex:1;padding:7px 2px;font-size:11px;">${t}</button>`).join("")
     + `</div>`;
+  if(reviewTab==="曜日別") return bar + `<div>${(typeof renderDiaryW==="function"?renderDiaryW():"")}</div>`;
   return bar + `<div>${parts[reviewTab]||'<div style="color:var(--muted);font-size:12px;padding:10px 0;">このタブに表示できるデータがまだありません。</div>'}</div>`;
 }
 function sectionTitle(t){ return `<div style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber);">${t}</div>`; }
@@ -2243,11 +2257,11 @@ function renderReview(){
     reviewTab=b.dataset.rv; renderReview();
     document.getElementById("reviewPanel").scrollTop=0;
   });
+  body.querySelectorAll(".wd-pick").forEach(b=>b.onclick=()=>{ wdSel=+b.dataset.d; renderReview(); });
 }
-document.getElementById("btnReview").onclick=async ()=>{
+document.getElementById("btnReview").onclick=()=>{
   if(!rainMap) loadWeather().then(()=>{ if(document.getElementById("reviewPanel").style.display==="block") renderReview(); });
-  renderReview();
-  document.getElementById("reviewPanel").style.display="block";
+  showTab("review");
 };
 document.getElementById("reviewClose").onclick=()=>document.getElementById("reviewPanel").style.display="none";
 
@@ -2714,6 +2728,55 @@ function renderDiaryB(){
   });
   return h;
 }
+// ===== 曜日別・クール別の成功パターン =====
+let wdSel=null; // null=今日の曜日
+const WCOOL=[["第1クール",5,13,35000],["第2クール",13,18,30000],["第3クール",18,22,20000],["青タン",22,30,25000]];
+function renderDiaryW(){
+  const byDay=diaryByDay();
+  if(wdSel===null){ const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1); wdSel=t.getDay(); }
+  let h=`<div style="display:flex;gap:4px;margin-bottom:10px;">`
+    + [1,2,3,4,5,6,0].map(d=>`<button class="chip wd-pick${d===wdSel?" on":""}" data-d="${d}" style="flex:1;padding:6px 0;font-size:12px;">${D_DN[d]}</button>`).join("")
+    + `</div>`;
+  const ds=[...byDay.keys()].filter(d=>dDow(d)===wdSel).sort();
+  if(!ds.length) return h+`<div style="color:var(--muted);font-size:13px;padding:10px 0;">${D_DN[wdSel]}曜の乗務記録がまだありません。</div>`;
+  const tot=d=>dTotal(byDay.get(d));
+  const best=ds.reduce((a,b)=>tot(a)>=tot(b)?a:b);
+  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${D_DN[wdSel]}曜 ${ds.length}日分・1日平均 <b style="color:var(--text)">${yen(Math.round(ds.reduce((s,d)=>s+tot(d),0)/ds.length))}</b>
+    ・ベスト <b style="color:var(--amber)">${yen(tot(best))}</b>(${best.slice(5).replace("-","/")})</div>`;
+  WCOOL.forEach(([cn,lo,hi,tg])=>{
+    const vals=ds.map(d=>({d, v:byDay.get(d).filter(r=>shiftHour(r.t)>=lo&&shiftHour(r.t)<hi).reduce((s,r)=>s+r.f,0)}))
+      .sort((x,y)=>y.v-x.v);
+    const avg=vals.reduce((s,x)=>s+x.v,0)/vals.length;
+    const top=vals[0];
+    const rs=byDay.get(top.d).filter(r=>shiftHour(r.t)>=lo&&shiftHour(r.t)<hi).sort((a,b)=>a.t.localeCompare(b.t));
+    const ratio=avg/tg;
+    const col=ratio>=1?"#7dd87d":ratio>=0.75?"var(--text)":"#f08080";
+    h+=`<div style="border-top:1px solid var(--line);padding:8px 0;">
+      <div style="display:flex;align-items:baseline;gap:8px;">
+        <b style="font-size:13px;color:var(--amber);">${cn}</b>
+        <span style="font-size:12px;color:${col};">平均${yen(Math.round(avg))}</span>
+        <span style="font-size:11px;color:var(--muted);">目標${yen(tg)}</span>
+        <span style="flex:1"></span>
+        <span style="font-size:12px;">最高<b>${yen(top.v)}</b><span style="color:var(--muted);font-size:11px;"> ${top.d.slice(5).replace("-","/")}</span></span>
+      </div>`;
+    if(rs.length){
+      h+=`<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.65;">最高日の動き:<br>`
+        + rs.map(r=>`<span style="color:var(--text);">${r.t.slice(0,5)}</span> ${r.p}<span style="color:${r.f>=10000?"#ffd54f":"var(--muted)"};">${r.f>=10000?" ⭐":""}${yen(r.f)}</span>`).join(" → ")
+        + `</div>`;
+    }
+    // その曜日・そのクールで強い乗車地
+    const agg=new Map();
+    ds.forEach(d=>byDay.get(d).filter(r=>shiftHour(r.t)>=lo&&shiftHour(r.t)<hi)
+      .forEach(r=>{ const a=agg.get(r.p)||{s:0,n:0,b:0}; a.s+=r.f; a.n++; if(r.f>=10000)a.b++; agg.set(r.p,a); }));
+    const spots=[...agg.entries()].map(([p,a])=>({p,avg:a.s/a.n,n:a.n,b:a.b,sc:(a.s/a.n)*Math.log2(1+a.n)}))
+      .sort((x,y)=>y.sc-x.sc).slice(0,3);
+    if(spots.length) h+=`<div style="font-size:11px;margin-top:4px;">狙い目: `
+      + spots.map(s=>`<b>${s.p}</b> <span style="color:var(--muted)">${yen(Math.round(s.avg))}×${s.n}回${s.b?`<span style="color:#ffd54f"> ⭐${s.b}</span>`:""}</span>`).join("　") + `</div>`;
+    h+=`</div>`;
+  });
+  return h;
+}
+
 let calBase=null; // 表示中の月(1日固定)
 function renderDiaryC(){
   const byDay=diaryByDay();
@@ -2755,7 +2818,11 @@ function renderDiaryC(){
 }
 function renderDiary(tab){
   const body=document.getElementById("diaryBody");
-  body.innerHTML = tab==="y"?renderDiaryY() : tab==="t"?renderDiaryT() : tab==="b"?renderDiaryB() : renderDiaryC();
+  body.innerHTML = tab==="y"?renderDiaryY() : tab==="t"?renderDiaryT() : tab==="b"?renderDiaryB()
+    : tab==="w"?renderDiaryW() : renderDiaryC();
+  if(tab==="w"){
+    body.querySelectorAll(".wd-pick").forEach(b=>b.onclick=()=>{ wdSel=+b.dataset.d; renderDiary("w"); });
+  }
   if(tab==="c"){
     document.getElementById("calPrev").onclick=()=>{ calBase.setMonth(calBase.getMonth()-1); renderDiary("c"); };
     document.getElementById("calNext").onclick=()=>{ calBase.setMonth(calBase.getMonth()+1); renderDiary("c"); };
@@ -2819,11 +2886,29 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
     c.classList.add("on"); renderDiary(c.dataset.t);
   };
 });
-document.getElementById("btnDiary").onclick=()=>{
-  document.getElementById("diaryPanel").style.display="block";
-  const on=document.querySelector(".diary-tab.on");
-  renderDiary(on?on.dataset.t:"y");
-};
+// ===== 下部タブによる画面切替 =====
+function showTab(name){
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel"};
+  Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
+  document.getElementById("panel").style.display = name==="map" ? "" : "none";
+  document.querySelectorAll(".tab-btn").forEach(b=>{
+    const on=b.dataset.tab===name;
+    b.classList.toggle("on",on);
+    b.style.color = on ? "var(--amber)" : "var(--muted)";
+  });
+  if(name==="map"){ setTimeout(()=>map.invalidateSize(),50); return; }
+  const el=document.getElementById(panels[name]);
+  if(el) el.style.display="block";
+  if(name==="diary"){ const on=document.querySelector(".diary-tab.on"); renderDiary(on?on.dataset.t:"y"); }
+  if(name==="review") renderReview();
+  if(name==="brief") buildBrief(false);
+}
+document.querySelectorAll(".tab-btn").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+["diaryClose","reviewClose","briefClose"].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.onclick=()=>showTab("map");
+});
+document.getElementById("btnDiary").onclick=()=>showTab("diary");
 document.getElementById("diaryClose").onclick=()=>document.getElementById("diaryPanel").style.display="none";
 document.getElementById("replayClose").onclick=clearReplay;
 
