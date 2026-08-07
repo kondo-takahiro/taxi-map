@@ -613,7 +613,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.07-1";
+const APP_VER = "2026.08.07-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1091,7 +1091,7 @@ document.getElementById("btnAdvice").onclick=()=>{
 document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
 
 // ===== 今日の営業ブリーフィング(天気予報+主要会場イベント+自分の実績) =====
-const VENUE_LL={"東京ドーム":[35.7056,139.7519],"明治神宮球場":[35.6745,139.7169],"有明アリーナ":[35.6445,139.7920],"東京ガーデンシアター":[35.6420,139.7913],"日本武道館":[35.6934,139.7497],"国立競技場":[35.6779,139.7145],"代々木第一体育館":[35.6668,139.6994],"両国国技館":[35.6970,139.7936],"東京国際フォーラム":[35.6767,139.7639],"東京ビッグサイト":[35.6298,139.7947],"豊洲PIT":[35.6455,139.7842],"Zepp DiverCity":[35.6251,139.7756],"LINE CUBE SHIBUYA":[35.6620,139.7005],"NHKホール":[35.6633,139.6994],"サントリーホール":[35.6663,139.7407],"歌舞伎座":[35.6697,139.7679]};
+const VENUE_LL={"東京ドーム":[35.7056,139.7519],"後楽園ホール":[35.7056,139.7519],"ベルーナドーム":[35.7690,139.4195],"武蔵野の森":[35.6620,139.5290],"Kアリーナ":[35.4650,139.6270],"さいたまスーパーアリーナ":[35.8950,139.6310],"横浜アリーナ":[35.5110,139.6180],"東京体育館":[35.6805,139.7130],"日比谷公園":[35.6740,139.7560],"上野公園":[35.7150,139.7740],"お台場":[35.6270,139.7760],"明治神宮球場":[35.6745,139.7169],"有明アリーナ":[35.6445,139.7920],"東京ガーデンシアター":[35.6420,139.7913],"日本武道館":[35.6934,139.7497],"国立競技場":[35.6779,139.7145],"代々木第一体育館":[35.6668,139.6994],"両国国技館":[35.6970,139.7936],"東京国際フォーラム":[35.6767,139.7639],"東京ビッグサイト":[35.6298,139.7947],"豊洲PIT":[35.6455,139.7842],"Zepp DiverCity":[35.6251,139.7756],"LINE CUBE SHIBUYA":[35.6620,139.7005],"NHKホール":[35.6633,139.6994],"サントリーホール":[35.6663,139.7407],"歌舞伎座":[35.6697,139.7679]};
 let eventLayer=null;
 window._evRoute=(lat,lng)=>{ map.closePopup(); showRoute(lat,lng); };
 let lastEvents=[];
@@ -1104,6 +1104,29 @@ function evTime(s){
   d.setHours(h, +m[2]);
   if(h<5) d.setDate(d.getDate()+1);   // 0〜4時は翌日
   return d;
+}
+// EVENTS行が無い場合、本文から会場名と時刻を拾ってイベント化する
+function parseEventsFromText(text){
+  const out=[];
+  (text||"").split(/\r?\n/).forEach(line=>{
+    const l=line.trim();
+    if(!l) return;
+    if(/[::]\s*(なし|無し|不明|開催なし)\s*$/.test(l)) return;   // 開催なしは除外
+    // 収録済み会場名が含まれる行を拾う
+    let venue=null;
+    for(const k in VENUE_LL){ if(l.includes(k)){ venue=k; break; } }
+    if(!venue) return;
+    // 時刻を最大2つ拾う(開始・終演)
+    const times=(l.match(/\d{1,2}[::]\d{2}/g)||[]).map(t=>t.replace("：",":"));
+    if(!times.length) return;                                      // 時刻が無ければ扱わない
+    const s=times[0], f=times.length>1?times[1]:"";
+    // 内容: 会場名と時刻を除いた部分
+    const e=l.replace(/^[-・•●]\s*/,"").replace(venue,"").replace(/\d{1,2}[::]\d{2}/g,"")
+             .replace(/[（(].*?[）)]/g,"").replace(/^[^\wぁ-んァ-ヶ一-龠]+/,"").replace(/[〜~\s]{2,}/g," ").trim();
+    if(out.some(x=>x.n===venue)) return;                           // 会場の重複を防ぐ
+    out.push({n:venue, e:e||"開催あり", s, f, lat:VENUE_LL[venue][0], lng:VENUE_LL[venue][1]});
+  });
+  return out;
 }
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
@@ -1280,6 +1303,7 @@ ${COACH_TIPS}
       try{ events=JSON.parse(em[1]); }catch(e){}
       text=text.replace(em[0],"").trim();
     }
+    if(!events.length) events=parseEventsFromText(text);   // 出力が無ければ本文から拾う
     document.getElementById("briefBody").innerHTML=briefFormat(text);
     showEventMarkers(events);
     localStorage.setItem(cacheKey, JSON.stringify({wx, text, events}));
