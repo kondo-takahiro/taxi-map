@@ -613,7 +613,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.06-6";
+const APP_VER = "2026.08.07-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1094,22 +1094,58 @@ document.getElementById("adviceClose").onclick=()=>document.getElementById("advi
 const VENUE_LL={"東京ドーム":[35.7056,139.7519],"明治神宮球場":[35.6745,139.7169],"有明アリーナ":[35.6445,139.7920],"東京ガーデンシアター":[35.6420,139.7913],"日本武道館":[35.6934,139.7497],"国立競技場":[35.6779,139.7145],"代々木第一体育館":[35.6668,139.6994],"両国国技館":[35.6970,139.7936],"東京国際フォーラム":[35.6767,139.7639],"東京ビッグサイト":[35.6298,139.7947],"豊洲PIT":[35.6455,139.7842],"Zepp DiverCity":[35.6251,139.7756],"LINE CUBE SHIBUYA":[35.6620,139.7005],"NHKホール":[35.6633,139.6994],"サントリーホール":[35.6663,139.7407],"歌舞伎座":[35.6697,139.7679]};
 let eventLayer=null;
 window._evRoute=(lat,lng)=>{ map.closePopup(); showRoute(lat,lng); };
+let lastEvents=[];
+// "21:20" → 今日の日時(深夜は翌日扱い)
+function evTime(s){
+  const m=(s||"").match(/(\d{1,2})[::](\d{2})/);
+  if(!m) return null;
+  const d=new Date(); d.setSeconds(0,0);
+  let h=+m[1];
+  d.setHours(h, +m[2]);
+  if(h<5) d.setDate(d.getDate()+1);   // 0〜4時は翌日
+  return d;
+}
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
+  lastEvents = events||[];
   if(!events || !events.length) return;
+  const now=new Date();
   const ms=[];
   events.forEach(ev=>{
     let ll=null;
     for(const k in VENUE_LL){ if((ev.n||"").includes(k)){ ll=VENUE_LL[k]; break; } }
     if(!ll && isFinite(ev.lat) && isFinite(ev.lng) && ev.lat>35.4 && ev.lat<36.0) ll=[+ev.lat,+ev.lng];
     if(!ll) return;
-    const m=L.marker(ll,{icon:L.divIcon({html:"🎪",className:"",iconSize:[26,26],iconAnchor:[13,13]})});
-    m.bindPopup(`<b>${ev.n||""}</b><br>${ev.e||""}<br>${ev.s||"?"}〜${ev.f||"?"}<br>`
-      +`<button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この地図で経路</button>`);
+    const fin=evTime(ev.f);
+    let state="future", mins=null, label=ev.f||ev.s||"";
+    if(fin){
+      mins=Math.round((fin-now)/60000);
+      if(mins<-90) state="done";                 // 終演から90分超
+      else if(mins<=0) state="now";              // 終演直後(需要のピーク)
+      else if(mins<=60) state="soon";            // 終演1時間前
+      label = mins>0 ? `${ev.f}終` : (mins>-90 ? "終演直後" : `${ev.f}終`);
+    }
+    const col = state==="now" ? "#ff5252" : state==="soon" ? "#ffd54f" : state==="done" ? "#78909c" : "#f5a623";
+    const op  = state==="done" ? .45 : 1;
+    const sub = mins!=null && mins>0 && mins<=180 ? `あと${mins}分` : "";
+    const m=L.marker(ll,{opacity:op, zIndexOffset: state==="now"?1000:(state==="soon"?800:0),
+      icon:L.divIcon({className:"",iconSize:[74,40],iconAnchor:[37,36],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;opacity:${op};">
+        <div style="font-size:${state==="now"||state==="soon"?22:18}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">🎪</div>
+        <div style="background:rgba(19,26,42,.94);color:${col};border:1px solid ${col};border-radius:7px;
+          padding:1px 5px;font-size:9px;font-weight:800;margin-top:-2px;white-space:nowrap;">${label}${sub?" "+sub:""}</div>
+      </div>`})});
+    m.bindPopup(`<b>${ev.n||""}</b><br>${ev.e||""}<br>`
+      +`<span style="color:#8b98ad;">開始 ${ev.s||"?"} / 終演 ${ev.f||"?"}</span>`
+      +(mins!=null&&mins>0?`<br><b style="color:${col}">終演まで約${mins}分</b>`:"")
+      +(state==="now"?`<br><b style="color:#ff5252">いま終演直後・需要のピーク</b>`:"")
+      +`<br><button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この地図で経路</button>`);
     ms.push(m);
   });
   if(ms.length){ eventLayer=L.layerGroup(ms).addTo(map); }
 }
+// 5分ごとに残り時間と色を更新
+setInterval(()=>{ if(lastEvents.length) showEventMarkers(lastEvents); }, 300000);
 const VENUES=["東京ドーム(水道橋)","明治神宮球場","有明アリーナ","東京ガーデンシアター(有明)","日本武道館(九段下)","国立競技場(千駄ヶ谷)","代々木第一体育館","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
 async function fetchForecastToday(){
   const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
@@ -3364,6 +3400,11 @@ document.getElementById("btnAppMode").onclick=()=>{
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
   updateBigWindow();
   setTimeout(layoutUnderHUD,60);
+  // 今日のブリーフィングを取得済みならイベントピンを復元
+  try{
+    const c=localStorage.getItem("brief-"+new Date().toISOString().slice(0,10));
+    if(c){ const o=JSON.parse(c); if(o.events&&o.events.length) showEventMarkers(o.events); }
+  }catch(e){}
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
