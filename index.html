@@ -46,17 +46,17 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 
   /* 下部パネル */
   .wardBest{background:rgba(19,26,42,.92)!important;color:var(--amber)!important;border:1px solid var(--amber)!important;font-weight:700;font-size:12px;}
-  .panel{position:fixed;left:0;right:0;bottom:0;z-index:1000;
+  .panel{position:fixed;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom));z-index:1000;
     background:rgba(19,26,42,.96);border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;padding:0 14px calc(66px + env(safe-area-inset-bottom));
+    border-radius:16px 16px 0 0;padding:0 14px 12px;
     }
   .panel-handle{display:flex;flex-direction:column;align-items:center;gap:3px;
-    padding:12px 0 10px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}
-  .panel-handle .grip{width:52px;height:5px;border-radius:3px;background:var(--muted);opacity:.7;}
+    padding:14px 0 12px;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;}
+  .panel-handle .grip{width:64px;height:6px;border-radius:3px;background:var(--muted);opacity:.7;}
   .panel-handle span{font-size:11px;color:var(--muted);}
-  .panel-body{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:min(55svh,450px);transition:max-height .25s ease;}
+  .panel-body{overflow-y:auto;-webkit-overflow-scrolling:touch;max-height:min(52svh,430px);transition:max-height .25s ease;}
   .panel.collapsed .panel-body{max-height:0;overflow:hidden;}
-  .panel.collapsed{padding-bottom:calc(4px + env(safe-area-inset-bottom));}
+  .panel.collapsed{padding-bottom:4px;}
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .row + .row{margin-top:10px;}
   .label{font-size:11px;color:var(--muted);min-width:52px;}
@@ -259,13 +259,10 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <span>高</span></span>
   <span id="legendLabel" style="font-size:8px;opacity:.6;">単価</span>
   <span id="quadLegend" style="display:none;align-items:center;gap:5px;font-size:8px;margin-left:4px;">
-    <span>単価</span>
-    <span style="width:46px;height:6px;border-radius:3px;display:inline-block;
-      background:linear-gradient(90deg,hsl(210,70%,60%),hsl(150,70%,58%),hsl(60,80%,55%),hsl(0,85%,52%));"></span>
-    <span style="margin-left:3px;">回数</span>
-    <span style="width:40px;height:6px;border-radius:3px;display:inline-block;
-      background:linear-gradient(90deg,hsl(20,45%,74%),hsl(20,95%,44%));"></span>
-    <span style="opacity:.75;">濃いほど多い</span>
+    <span>少</span>
+    <span style="width:56px;height:6px;border-radius:3px;display:inline-block;
+      background:linear-gradient(90deg,#b3e5fc,#7fc4e8,#5c9ce6,#7e57c2,#4a148c);"></span>
+    <span>多</span>
   </span>
 </div>
 
@@ -539,47 +536,36 @@ function hitTierColor(rate){
   if(rate>0)     return "#aed581";
   return "#81c784";
 }
-// 回数×単価: 色相=単価(青→赤)、濃さ=回数 の連続グラデーション
-let quadTh={lo:1000, hi:6000, nMax:8};
-function updateQuadTh(list){
-  if(!list.length) return;
-  const fares=list.map(r=>r.f).sort((a,b)=>a-b);
-  quadTh.lo = fares[Math.floor(fares.length*0.15)] || 1000;
-  quadTh.hi = fares[Math.floor(fares.length*0.90)] || 6000;
-  if(quadTh.hi<=quadTh.lo) quadTh.hi=quadTh.lo+1000;
-}
-function setQuadNMax(vals){ // 表示中の最多件数(上位10%点)を濃さの上限に
+// 回数のヒートマップ(表示中の最多回数を基準に段階着色)
+let cntMax=6;
+function setCntMax(vals){
   const ns=vals.slice().sort((a,b)=>a-b);
-  quadTh.nMax = Math.max(3, ns[Math.floor(ns.length*0.9)] || 3);
+  cntMax = Math.max(3, ns[Math.floor(ns.length*0.92)] || 3);
 }
-function hsl(h,s,l){ return `hsl(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%)`; }
-// 単価→色相(210=青 → 0=赤)、回数→彩度と明度
-function quadColor(a){
-  const avg=a.sum/a.n;
-  let t=(avg-quadTh.lo)/(quadTh.hi-quadTh.lo);
-  t=Math.max(0,Math.min(1,t));
-  const hue = 210 - 210*Math.pow(t,0.85);          // 青→水色→黄→赤
-  const d = Math.min(1, Math.log2(1+a.n)/Math.log2(1+quadTh.nMax)); // 回数の効き(対数)
-  const sat = 45 + 50*d;    // 回数が多いほど鮮やか
-  const lig = 74 - 30*d;    // 回数が多いほど濃い
-  return hsl(hue, sat, lig);
+function updateQuadTh(){}
+function cntTierColor(n){
+  const t=Math.min(1, Math.log2(1+n)/Math.log2(1+cntMax));
+  if(t>=0.95) return "#4a148c";
+  if(t>=0.75) return "#6a1b9a";
+  if(t>=0.55) return "#7e57c2";
+  if(t>=0.38) return "#5c9ce6";
+  if(t>=0.20) return "#7fc4e8";
+  return "#b3e5fc";
 }
-const QUAD_COL={both:"#e53935", fare:"#ab47bc", count:"#42a5f5", low:"#78909c"};
-const QUAD_NAME={both:"高単価×よく鳴る", fare:"高単価(回数少)", count:"よく鳴る(単価低め)", low:"どちらも低め"};
 // 指標に応じた色(件数が少ないものは薄く=まぐれと区別)
 function metricColor(a){
   if(metric==="hit") return hitTierColor(a.big/a.n);
-  if(metric==="quad") return quadColor(a);
+  if(metric==="cnt") return cntTierColor(a.n);
   return fareTierColor(a.sum/a.n);
 }
 function metricOpacity(a, base){
-  if(metric==="quad") return base;
+  if(metric==="cnt") return base;
   if(metric!=="hit") return base;
   return a.n>=5 ? base : (a.n>=3 ? base*0.72 : base*0.45);
 }
 function metricTip(name,a){
-  if(metric==="quad"){
-    return `${name}<br>平均 <b style="color:${quadColor(a)}">${yen(Math.round(a.sum/a.n))}</b> / ${a.n}件`;
+  if(metric==="cnt"){
+    return `${name}<br><b style="color:${cntTierColor(a.n)}">${a.n}件</b> / 平均 ${yen(Math.round(a.sum/a.n))}`;
   }
   if(metric==="hit"){
     return `${name}<br>万収 ${a.big}本 / ${a.n}件 = <b>${Math.round(a.big/a.n*100)}%</b>`
@@ -613,7 +599,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.07-2";
+const APP_VER = "2026.08.07-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -652,7 +638,7 @@ function drawHeat(list){
     byAddr.set(r.p,a);
   });
   updateQuadTh(list);
-  if(metric==="quad") setQuadNMax([...byAddr.values()].map(a=>a.n));
+  if(metric==="cnt") setCntMax([...byAddr.values()].map(a=>a.n));
   byAddr.forEach((a,name)=>{
     if(metric==="hit" && a.n<2) return; // 1件だけの場所は率が意味を持たない
     const col=metricColor(a);
@@ -2012,6 +1998,69 @@ function renderReview(){
   });
   html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;">現在の設定: 各月${mcfg.d}日開始${Object.keys(mcfg.ov).length?`(変更あり: ${Object.entries(mcfg.ov).map(([k,v])=>parseInt(k.slice(5),10)+"月度="+v+"日開始").join("、")})`:""}<br>特定の月だけ変える場合は「締め日を変更」の2つ目の入力欄に <b>2026-05=17, 2026-07=15</b> のように「年-月=開始日」をカンマ区切りで入力</div>`;
 
+  // ===== 曜日別の総括表(平均・ベスト・回数・単価・万収) =====
+  html+=sectionTitle("曜日別サマリー");
+  const SUM_DN=["日","月","火","水","木","金","土"];
+  const byDaySum=new Map();
+  mine.forEach(r=>{
+    const d=shiftDateStr(r);
+    const a=byDaySum.get(d)||{sum:0,n:0,big:0,dw:shiftDow(r)};
+    a.sum+=r.f; a.n++; if(r.f>=10000) a.big++;
+    byDaySum.set(d,a);
+  });
+  const dwStat=new Map();
+  byDaySum.forEach((a,d)=>{
+    const s=dwStat.get(a.dw)||{days:0,sum:0,n:0,big:0,best:0,bestD:""};
+    s.days++; s.sum+=a.sum; s.n+=a.n; s.big+=a.big;
+    if(a.sum>s.best){ s.best=a.sum; s.bestD=d; }
+    dwStat.set(a.dw,s);
+  });
+  const ordered=[1,2,3,4,5,6,0].filter(d=>dwStat.has(d));
+  const maxAvg=Math.max(...ordered.map(d=>dwStat.get(d).sum/dwStat.get(d).days));
+  html+=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;font-size:11px;white-space:nowrap;min-width:100%;">
+    <tr style="color:var(--muted);">
+      <th style="text-align:left;padding:3px 5px;font-weight:400;">曜</th>
+      <th style="text-align:right;padding:3px 5px;font-weight:400;">平均</th>
+      <th style="text-align:right;padding:3px 5px;font-weight:400;">ベスト</th>
+      <th style="text-align:right;padding:3px 5px;font-weight:400;">回数</th>
+      <th style="text-align:right;padding:3px 5px;font-weight:400;">単価</th>
+      <th style="text-align:right;padding:3px 5px;font-weight:400;">万収</th>
+      <th style="text-align:right;padding:3px 5px;font-weight:400;">日数</th></tr>`;
+  ordered.forEach(dw=>{
+    const s=dwStat.get(dw);
+    const avg=s.sum/s.days, top=avg>=maxAvg*0.97;
+    html+=`<tr style="border-top:1px solid var(--line);${top?'background:rgba(245,166,35,.08);':''}">
+      <td style="padding:5px;font-weight:700;${top?'color:var(--amber);':''}">${SUM_DN[dw]}</td>
+      <td style="padding:5px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">${(avg/10000).toFixed(1)}万</td>
+      <td style="padding:5px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;">${(s.best/10000).toFixed(1)}万<br><span style="font-size:9px;">${s.bestD.slice(5).replace("-","/")}</span></td>
+      <td style="padding:5px;text-align:right;font-variant-numeric:tabular-nums;">${(s.n/s.days).toFixed(1)}</td>
+      <td style="padding:5px;text-align:right;font-variant-numeric:tabular-nums;">${yen(Math.round(s.sum/s.n))}</td>
+      <td style="padding:5px;text-align:right;color:${s.big/s.days>=1?"#ffd54f":"var(--muted)"};font-weight:${s.big/s.days>=1?700:400};">${(s.big/s.days).toFixed(1)}</td>
+      <td style="padding:5px;text-align:right;color:var(--muted);">${s.days}</td></tr>`;
+  });
+  html+=`</table></div>`;
+
+  // 万収の時間帯まとめ
+  const bigAll=mine.filter(r=>r.f>=10000);
+  if(bigAll.length){
+    const bands=[[5,12,"朝 5-12時"],[12,19,"昼 12-19時"],[19,23,"夜 19-23時"],[23,29,"深夜 23-5時"]];
+    html+=sectionTitle("万収が出る時間帯");
+    const bMaxN=Math.max(...bands.map(([a,b])=>bigAll.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).length));
+    bands.forEach(([a,b,label])=>{
+      const v=bigAll.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b);
+      const pool=mine.filter(r=>shiftHour(r.t)>=a&&shiftHour(r.t)<b).length;
+      html+=barRow(label, v.length, bMaxN,
+        v.length+"本<br><span style=\"color:var(--muted)\">"+pool+"件中 "+(pool?(v.length/pool*100).toFixed(1):0)+"%</span>");
+    });
+    const spots=new Map();
+    bigAll.forEach(r=>{ const a=spots.get(r.p)||{n:0,max:0}; a.n++; a.max=Math.max(a.max,r.f); spots.set(r.p,a); });
+    const st=[...spots.entries()].filter(([,a])=>a.n>=2).sort((x,y)=>y[1].n-x[1].n).slice(0,5);
+    if(st.length){
+      html+=`<div style="font-size:11px;color:var(--muted);margin-top:6px;">複数回 万収が出た場所: `
+        + st.map(([p,a])=>`<b style="color:var(--text)">${p}</b> ${a.n}本(最高${yen(a.max)})`).join("、") + `</div>`;
+    }
+  }
+
   // ===== ここから下の平均値は「前月度まで」の確定実績で計算 =====
   const tnow=new Date(); if(tnow.getHours()<5) tnow.setDate(tnow.getDate()-1);
   const curP=periodOf(tnow.getFullYear()+"-"+String(tnow.getMonth()+1).padStart(2,"0")+"-"+String(tnow.getDate()).padStart(2,"0"), mcfg);
@@ -3007,13 +3056,13 @@ document.getElementById("btnPredict").onclick=e=>{
 };
 map.on("moveend",()=>{ if(predictOn && heatOn) render(); });
 document.getElementById("btnMetric").onclick=e=>{
-  metric = metric==="fare" ? "hit" : metric==="hit" ? "quad" : "fare";
-  const lbl = metric==="hit" ? "万収率" : metric==="quad" ? "回数×単価" : "単価";
+  metric = metric==="fare" ? "cnt" : metric==="cnt" ? "hit" : "fare";
+  const lbl = metric==="hit" ? "万収率" : metric==="cnt" ? "回数" : "単価";
   e.target.textContent = "指標: "+lbl;
   e.target.classList.toggle("on", metric!=="fare");
   document.getElementById("legendLabel").textContent = lbl;
-  document.getElementById("quadLegend").style.display = metric==="quad" ? "flex" : "none";
-  document.getElementById("heatLegend").querySelector(".legend-bar").style.display = metric==="quad" ? "none" : "";
+  document.getElementById("quadLegend").style.display = metric==="cnt" ? "flex" : "none";
+  document.getElementById("heatLegend").querySelector(".legend-bar").style.display = metric==="cnt" ? "none" : "";
   render();
 };
 document.getElementById("btnBig").onclick=e=>{
@@ -3092,11 +3141,11 @@ function drawWardRank(){
       for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; break; } }
     });
   }
-  if(metric==="quad") setQuadNMax([...agg.values()].filter(a=>a.n>0).map(a=>a.n));
+  if(metric==="cnt") setCntMax([...agg.values()].filter(a=>a.n>0).map(a=>a.n));
   const ranked=[...agg.entries()].filter(([,a])=>a.n>0 && (metric!=="hit"||a.n>=2))
     .map(([w,a])=>({w, avg:a.sum/a.n, rate:a.big/a.n, n:a.n, big:a.big}))
     .sort((x,y)=> metric==="hit" ? (y.rate-x.rate)||(y.n-x.n)
-                : metric==="quad" ? (y.n*y.avg)-(x.n*x.avg)
+                : metric==="cnt" ? (y.n-x.n)
                 : y.avg-x.avg);
   const best=ranked[0];
   const layers=[];
@@ -3110,6 +3159,7 @@ function drawWardRank(){
         dashArray:isBest?null:"4 4", fillColor:has?metricColor(st):"#888", fillOpacity:has?metricOpacity(st,.6):.06}});
     const lbl = metric==="hit"
       ? `${name} 万収${st.big}/${st.n}件 ${Math.round(st.big/st.n*100)}%`
+      : metric==="cnt" ? `${name} ${st.n}件・平均${yen(Math.round(avg))}`
       : `${name} 平均${yen(Math.round(avg))}・${st.n}件`;
     if(isBest) lay.bindTooltip("👑 "+lbl,{permanent:true,direction:"center",className:"wardBest"});
     else lay.bindTooltip(has?lbl:`${name} 実績なし`,{sticky:true});
