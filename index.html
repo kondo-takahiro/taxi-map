@@ -220,6 +220,17 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="diaryBody"></div>
 </div>
 
+<div id="fcPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1500;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:16px;">📈 需要予測</b>
+    <span style="flex:1"></span>
+    <span id="fcAnchor" style="font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer;">この日を出番の基準に</span>
+    <span id="fcClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div id="fcBody"></div>
+</div>
+
 <div id="roadsPanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:90px;z-index:1100;
   background:rgba(19,26,42,.97);border:1px solid var(--line);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -599,7 +610,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.07-5";
+const APP_VER = "2026.08.09-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -2809,6 +2820,23 @@ async function showRoads(d){
   body.innerHTML=h;
   body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>showRoadStep(+el.dataset.i));
 }
+let fcDay=null;
+function showForecast(ds){
+  fcDay=ds;
+  document.getElementById("fcBody").innerHTML=renderForecast(ds);
+  document.getElementById("fcPanel").style.display="block";
+}
+document.getElementById("fcClose").onclick=()=>document.getElementById("fcPanel").style.display="none";
+document.getElementById("fcAnchor").onclick=()=>{
+  if(!fcDay) return;
+  const d=new Date(fcDay+"T12:00:00");
+  if(confirm(`${d.getMonth()+1}/${d.getDate()}(${D_DN[d.getDay()]})を「出番」の基準に設定しますか?\n※この日を公休明けの出番(サイクルの先頭)として扱います。`)){
+    localStorage.setItem("shift-anchor", fcDay);
+    nextShiftOverride=null;
+    document.getElementById("fcPanel").style.display="none";
+    renderDiary("c");
+  }
+};
 document.getElementById("roadsClose").onclick=()=>{ document.getElementById("roadsPanel").style.display="none"; document.getElementById("roadStep").style.display="none"; clearRoads(); };
 
 let replayLayer=null;
@@ -2902,6 +2930,78 @@ function renderDiaryW(){
   return h;
 }
 
+// ===== 需要予測(曜日特性・暦・実績から) =====
+const HOLIDAYS_2026=["2026-01-01","2026-01-12","2026-02-11","2026-02-23","2026-03-20","2026-04-29",
+  "2026-05-03","2026-05-04","2026-05-05","2026-05-06","2026-07-20","2026-08-11","2026-09-21",
+  "2026-09-23","2026-10-12","2026-11-03","2026-11-23"];
+const DOW_TRAIT={
+  1:{s:0,  t:"朝・昼は需要高(ビジネス・病院)。13時までは無線が強い。午後〜夜は厳しめ。月初の月曜夜はつらい"},
+  2:{s:-1, t:"不動産・美容が休みで客は全般的に少なめ。夜は表参道・六本木・中目黒・渋谷"},
+  3:{s:0,  t:"昼はサラリーマンの会議(大手町・日比谷・新橋)。ノー残業デーで接待多く、意外とロングが出やすい"},
+  4:{s:1,  t:"週末感が出てくる。午後に移動需要、夕方は買い物や飲み屋の出勤需要。繁華街も期待できる"},
+  5:{s:2,  t:"基本的に一日中忙しい。前半は細かい仕事、青タンが伸びる。車が多く渋滞注意"},
+  6:{s:1,  t:"全般的に需要があり数字を作りやすい。昼から一気にギアが上がる。深夜は繁華街以外も(北千住など足立も)"},
+  0:{s:0,  t:"タクシー台数が最少。朝は弱いが昼間はいちばんやりやすい。空港案件・外国人需要も。22〜1時はほぼダメなので青タンまでに勝負"}
+};
+function isHoliday(ds){ return HOLIDAYS_2026.includes(ds); }
+function demandForecast(ds){
+  const d=new Date(ds+"T12:00:00"), dw=d.getDay(), day=d.getDate();
+  const nx=new Date(d.getTime()+86400000);
+  const nxs=dsOf(nx);
+  const factors=[];
+  let score=0;
+  // 曜日
+  const tr=DOW_TRAIT[dw];
+  score+=tr.s;
+  factors.push({k:`${D_DN[dw]}曜`, v:tr.s, t:tr.t});
+  // 祝日・祝前日
+  if(isHoliday(ds)){ score-=1; factors.push({k:"祝日", v:-1, t:"日曜と同じ動き。ビジネス需要が消える(前日は逆に伸びる)"}); }
+  if(isHoliday(nxs) || (dw===5)){
+    if(isHoliday(nxs)){ score+=2; factors.push({k:"祝前日", v:2, t:"翌日が休みで終電を気にしない客が増える。青タンが伸びる"}); }
+  }
+  if(dw===6 && isHoliday(nxs)) { }
+  // 月初・月末・給料日
+  if(day<=5){ score-=1; factors.push({k:"月初", v:-1, t:"財布が締まりやすい時期。特に月初の月曜夜は弱い"}); }
+  else if(day>=25 && day<=31){ score+=1; factors.push({k:"給料日後・月末", v:1, t:"25日以降は懐が緩む。月末の接待・締め会も増える"}); }
+  else if(day>=10 && day<=15){ factors.push({k:"月中", v:0, t:"平常運転"}); }
+  // 季節・特殊期間
+  const m=d.getMonth()+1;
+  if(m===8 && day>=11 && day<=16){ score-=2; factors.push({k:"お盆", v:-2, t:"都心のビジネス需要が消える。帰省・行楽の長距離は狙える"}); }
+  if(m===12 && day>=15){ score+=2; factors.push({k:"忘年会シーズン", v:2, t:"年内最大の書き入れ時"}); }
+  if(m===1 && day<=3){ score-=2; factors.push({k:"正月", v:-2, t:"街に人がいない。初詣需要のみ"}); }
+  if(m===7 && day>=20 || m===8 && day<=10){ factors.push({k:"夏休み期間", v:0, t:"ビジネスは薄いが、行楽・花火・空港需要あり"}); }
+  const label = score>=3?"かなり期待":score>=2?"期待できる":score>=1?"やや良い":score===0?"平常":score>=-1?"やや弱い":"厳しめ";
+  const col   = score>=2?"#7dd87d":score>=1?"#c5e1a5":score===0?"var(--text)":score>=-1?"#ffcc80":"#f08080";
+  return {score, label, col, factors, dw};
+}
+function renderForecast(ds){
+  const f=demandForecast(ds);
+  const byDay=diaryByDay();
+  const same=[...byDay.keys()].filter(d=>dDow(d)===f.dw);
+  const d=new Date(ds+"T12:00:00");
+  let h=`<div style="font-size:13px;color:var(--muted);">${d.getMonth()+1}/${d.getDate()}(${D_DN[f.dw]})${isHoliday(ds)?" ・祝日":""}</div>
+    <div style="font-size:20px;font-weight:800;color:${f.col};margin:2px 0 8px;">${f.label}</div>`;
+  f.factors.forEach(x=>{
+    const sign=x.v>0?`+${x.v}`:x.v<0?`${x.v}`:"±0";
+    const c=x.v>0?"#7dd87d":x.v<0?"#f08080":"var(--muted)";
+    h+=`<div style="border-top:1px solid var(--line);padding:6px 0;font-size:12px;">
+      <b>${x.k}</b> <span style="color:${c};font-weight:700;">${sign}</span>
+      <div style="color:var(--muted);line-height:1.6;margin-top:1px;">${x.t}</div></div>`;
+  });
+  if(same.length){
+    const tots=same.map(x=>dTotal(byDay.get(x)));
+    const avg=Math.round(tots.reduce((a,b)=>a+b,0)/tots.length);
+    const best=Math.max(...tots);
+    const bigs=same.reduce((s,x)=>s+byDay.get(x).filter(r=>r.f>=10000).length,0)/same.length;
+    h+=`<div style="border-top:1px solid var(--amber);margin-top:8px;padding-top:8px;font-size:12px;">
+      <b style="color:var(--amber);">${D_DN[f.dw]}曜の自分の実績</b>(${same.length}日)<br>
+      <span style="color:var(--muted);">平均</span> <b>${yen(avg)}</b>　
+      <span style="color:var(--muted);">ベスト</span> <b>${yen(best)}</b>　
+      <span style="color:var(--muted);">万収</span> <b>${bigs.toFixed(1)}本/日</b></div>`;
+  }
+  return h;
+}
+
 let calBase=null; // 表示中の月(1日固定)
 function renderDiaryC(){
   const byDay=diaryByDay();
@@ -2938,7 +3038,7 @@ function renderDiaryC(){
   h+=`</div>
   <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6;">
   🟠出番 🔵明け 🔴公休。過去の🟠は実際の乗務記録(タップで動線を表示)。<br>
-  予定がずれたら、正しい出番の日をタップして基準を置き直せます。</div>`;
+  日付をタップすると需要予測が見られます(実績のある日は動線を表示)。</div>`;
   return h;
 }
 function renderDiary(tab){
@@ -2955,12 +3055,7 @@ function renderDiary(tab){
       el.onclick=()=>{
         const ds=el.dataset.ds;
         if(el.dataset.w==="1"){ replayDay(ds); return; }
-        const d=new Date(ds+"T12:00:00");
-        if(confirm(`${d.getMonth()+1}/${d.getDate()}(${D_DN[d.getDay()]})を「出番」の基準に設定しますか?\n※この日を「公休明けの出番」(サイクルの先頭)として扱います。\nカレンダーと「次の出番」がこの日を起点に並び直ります。`)){
-          localStorage.setItem("shift-anchor", ds);
-          nextShiftOverride=null;
-          renderDiary("c");
-        }
+        showForecast(ds);
       };
     });
   }
