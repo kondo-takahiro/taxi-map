@@ -220,13 +220,41 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="diaryBody"></div>
 </div>
 
+<div id="memoSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
+  <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:88svh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;margin-bottom:10px;">
+      <b id="memoTitle" style="font-size:15px;">📝 メモを追加</b>
+      <span style="flex:1"></span>
+      <span id="memoDel" style="display:none;color:#f08080;font-size:12px;cursor:pointer;margin-right:12px;">削除</span>
+      <span id="memoCancel" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;">✕</span>
+    </div>
+    <input id="memoName" placeholder="場所の名前(例: ホテル◯◯ 正面玄関)" style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:15px;margin-bottom:8px;">
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;" id="memoCats">
+      <button class="chip mcat on" data-c="🏨">🏨 ホテル</button>
+      <button class="chip mcat" data-c="✈️">✈️ 空港客</button>
+      <button class="chip mcat" data-c="🏥">🏥 病院</button>
+      <button class="chip mcat" data-c="🍽">🍽 飲食・料亭</button>
+      <button class="chip mcat" data-c="🏢">🏢 会社・ビル</button>
+      <button class="chip mcat" data-c="📍">📍 その他</button>
+    </div>
+    <textarea id="memoText" rows="3" placeholder="メモ(例: 22時以降に空港客が出る。車寄せは右手前)" style="width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px;margin-bottom:10px;resize:vertical;"></textarea>
+    <button class="btn on" id="memoSave" style="width:100%;padding:12px;font-size:15px;">保存</button>
+  </div>
+</div>
+
 <div id="fcPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1500;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <b style="font-size:16px;">📈 需要予測</b>
     <span style="flex:1"></span>
-    <span id="fcAnchor" style="font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer;">この日を出番の基準に</span>
+    <span id="fcAnchor" style="font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer;">出番の基準に</span>
     <span id="fcClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+    <button class="btn" id="fcPrev" style="padding:9px 14px;font-size:15px;">◀</button>
+    <button class="btn" id="fcToday" style="flex:1;padding:9px 0;font-size:12px;">今日</button>
+    <button class="btn" id="fcNext" style="padding:9px 14px;font-size:15px;">▶</button>
   </div>
   <div id="fcBody"></div>
 </div>
@@ -360,6 +388,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
     <button class="btn" id="btnToilet">🚻 トイレ</button>
+    <button class="btn" id="btnMemo">📝 メモ</button>
     <button class="btn" id="btnAppMode">📲 アプリ営業</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -375,6 +404,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnScan">📷 日報を読み取り</button>
     <input type="file" id="fileScan" accept="image/*,application/pdf" style="display:none">
     <button class="btn" id="btnCsvOut">CSV書き出し</button>
+    <button class="btn" id="btnMemoOut">📝 メモ書き出し</button>
     <button class="btn" id="btnPaste">貼り付け読み込み</button>
     <button class="btn" id="btnCsvIn">ファイル読み込み</button>
     <button class="btn" id="btnSync">共有データ再読み込み</button>
@@ -610,7 +640,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.09-1";
+const APP_VER = "2026.08.09-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -2592,7 +2622,8 @@ function renderDiaryY(){
   if(big.length){
     h+=sectionTitle(`この日の万収(${big.length}本)`);
     big.forEach(r=>{
-      h+=`<div style="font-size:13px;padding:3px 0;">${r.t} ${r.p} → ${r.dst||"?"} <b style="color:var(--amber)">${yen(r.f)}</b><span style="font-size:11px;color:var(--muted);"> ${(r.m||"app")==="app"?"配車":"流し"}</span></div>`;
+      h+=`<div style="font-size:13px;padding:3px 0;">${r.t} ${r.p} → ${r.dst||"?"} <b style="color:var(--amber)">${yen(r.f)}</b><span style="font-size:11px;color:var(--muted);"> ${(r.m||"app")==="app"?"配車":"流し"}</span>
+        <span class="memo-add" data-lat="${r.lat}" data-lng="${r.lng}" data-n="${r.p} → ${r.dst||""}" style="color:#8be9a8;font-size:11px;text-decoration:underline;cursor:pointer;margin-left:6px;">📝メモ</span></div>`;
     });
   }else{
     h+=sectionTitle("この日の一番(万収なし)");
@@ -2820,6 +2851,75 @@ async function showRoads(d){
   body.innerHTML=h;
   body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>showRoadStep(+el.dataset.i));
 }
+// ===== メモ(マイスポット) =====
+let memoLayer=null, memoOn=false, memoEdit=null, memoLL=null, memoCat="🏨";
+function loadMemos(){ try{ return JSON.parse(localStorage.getItem("memos-v1"))||[]; }catch(e){ return []; } }
+function saveMemos(v){ localStorage.setItem("memos-v1", JSON.stringify(v)); }
+function openMemo(ll, existing, presetName){
+  memoLL=ll; memoEdit=existing||null;
+  document.getElementById("memoTitle").textContent = existing? "📝 メモを編集" : "📝 メモを追加";
+  document.getElementById("memoName").value = existing? existing.n : (presetName||"");
+  document.getElementById("memoText").value = existing? existing.t : "";
+  memoCat = existing? existing.c : "🏨";
+  document.querySelectorAll(".mcat").forEach(b=>b.classList.toggle("on", b.dataset.c===memoCat));
+  document.getElementById("memoDel").style.display = existing? "inline" : "none";
+  document.getElementById("memoSheet").style.display="block";
+}
+document.querySelectorAll(".mcat").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".mcat").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); memoCat=b.dataset.c;
+});
+document.getElementById("memoCancel").onclick=()=>document.getElementById("memoSheet").style.display="none";
+document.getElementById("memoDel").onclick=()=>{
+  if(!memoEdit) return;
+  if(!confirm("このメモを削除しますか?")) return;
+  saveMemos(loadMemos().filter(m=>m.id!==memoEdit.id));
+  document.getElementById("memoSheet").style.display="none";
+  drawMemos();
+};
+document.getElementById("memoSave").onclick=()=>{
+  const n=document.getElementById("memoName").value.trim();
+  const t=document.getElementById("memoText").value.trim();
+  if(!n && !t){ alert("名前かメモを入力してください"); return; }
+  const list=loadMemos();
+  if(memoEdit){
+    const m=list.find(x=>x.id===memoEdit.id);
+    if(m){ m.n=n; m.t=t; m.c=memoCat; }
+  }else{
+    list.push({id:"m"+Date.now(), n, t, c:memoCat, lat:memoLL[0], lng:memoLL[1], d:new Date().toISOString().slice(0,10)});
+  }
+  saveMemos(list);
+  document.getElementById("memoSheet").style.display="none";
+  memoOn=true; document.getElementById("btnMemo").classList.add("on");
+  drawMemos();
+};
+function drawMemos(){
+  if(memoLayer){ map.removeLayer(memoLayer); memoLayer=null; }
+  if(!memoOn) return;
+  const list=loadMemos();
+  if(!list.length) return;
+  memoLayer=L.layerGroup(list.map(m=>{
+    const mk=L.marker([m.lat,m.lng],{icon:L.divIcon({className:"",iconSize:[64,38],iconAnchor:[32,34],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="font-size:19px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">${m.c}</div>
+        <div style="background:rgba(19,26,42,.92);color:#8be9a8;border:1px solid #8be9a8;border-radius:7px;
+          padding:1px 5px;font-size:9px;font-weight:700;margin-top:-2px;max-width:62px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.n||"メモ"}</div>
+      </div>`})});
+    mk.on("click",()=>openMemo([m.lat,m.lng], m));
+    return mk;
+  })).addTo(map);
+}
+document.getElementById("btnMemo").onclick=e=>{
+  memoOn=!memoOn; e.target.classList.toggle("on",memoOn); drawMemos();
+  if(memoOn){
+    const h=document.getElementById("hint");
+    h.textContent="地図を長押しでメモを追加できます"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }, 3000);
+  }
+};
+// 地図の長押しでメモ追加
+map.on("contextmenu", e=>{ openMemo([e.latlng.lat, e.latlng.lng]); });
+
 let fcDay=null;
 function showForecast(ds){
   fcDay=ds;
@@ -2827,6 +2927,15 @@ function showForecast(ds){
   document.getElementById("fcPanel").style.display="block";
 }
 document.getElementById("fcClose").onclick=()=>document.getElementById("fcPanel").style.display="none";
+function fcShift(n){
+  if(!fcDay) return;
+  const d=new Date(fcDay+"T12:00:00");
+  d.setDate(d.getDate()+n);
+  showForecast(dsOf(d));
+}
+document.getElementById("fcPrev").onclick=()=>fcShift(-1);
+document.getElementById("fcNext").onclick=()=>fcShift(1);
+document.getElementById("fcToday").onclick=()=>showForecast(dsOf(new Date()));
 document.getElementById("fcAnchor").onclick=()=>{
   if(!fcDay) return;
   const d=new Date(fcDay+"T12:00:00");
@@ -2979,7 +3088,10 @@ function renderForecast(ds){
   const byDay=diaryByDay();
   const same=[...byDay.keys()].filter(d=>dDow(d)===f.dw);
   const d=new Date(ds+"T12:00:00");
-  let h=`<div style="font-size:13px;color:var(--muted);">${d.getMonth()+1}/${d.getDate()}(${D_DN[f.dw]})${isHoliday(ds)?" ・祝日":""}</div>
+  const st=shiftTypeOf(ds);
+  const stCol = st==="出番" ? "var(--amber)" : st==="明け" ? "#7db3f0" : "#f08080";
+  let h=`<div style="font-size:13px;color:var(--muted);">${d.getMonth()+1}/${d.getDate()}(${D_DN[f.dw]})${isHoliday(ds)?" ・祝日":""}
+    <span style="color:${stCol};font-weight:700;margin-left:6px;">${st}</span></div>
     <div style="font-size:20px;font-weight:800;color:${f.col};margin:2px 0 8px;">${f.label}</div>`;
   f.factors.forEach(x=>{
     const sign=x.v>0?`+${x.v}`:x.v<0?`${x.v}`:"±0";
@@ -3062,6 +3174,10 @@ function renderDiary(tab){
   if(tab==="y"){
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
+    body.querySelectorAll(".memo-add").forEach(el=>el.onclick=()=>{
+      showTab("map");
+      openMemo([+el.dataset.lat, +el.dataset.lng], null, el.dataset.n);
+    });
     const rd=document.getElementById("diaryRoads");
     if(rd) rd.onclick=()=>{ document.getElementById("diaryPanel").style.display="none"; showRoads(lastReportDay); };
     const bk=document.getElementById("brkEdit");
@@ -3392,6 +3508,28 @@ document.getElementById("btnCsvOut").onclick=()=>{
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download="rides.csv"; a.click();
 };
+// メモ・実車率・休憩の書き出し(貼り付け読み込みでそのまま復元できる形式)
+document.getElementById("btnMemoOut").onclick=()=>{
+  const lines=[];
+  const memos=loadMemos();
+  memos.forEach(m=>{
+    lines.push(["MEMO",m.lat,m.lng,m.c,(m.n||"").replace(/[,\n]/g," "),(m.t||"").replace(/[,\n]/g," "),m.d||""].join(","));
+  });
+  let kpi={}, brk={};
+  try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+  try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+  const days=new Set([...Object.keys(kpi), ...Object.keys(brk)]);
+  [...days].sort().forEach(d=>{
+    lines.push(["KPI",d,(kpi[d]!=null?kpi[d]:""),(brk[d]||"").replace(/[,\n]/g,"/")].join(","));
+  });
+  if(!lines.length){ alert("書き出せるメモ・記録がありません。"); return; }
+  const txt="\uFEFF"+lines.join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([txt],{type:"text/csv"}));
+  a.download="memo-kpi.csv"; a.click();
+  alert(`メモ${memos.length}件・実車率/休憩${days.size}日分を書き出しました`);
+};
+
 // ===== 取り込み共通処理(CSV/タブ区切り、重複は自動スキップ) =====
 // KPI行(実車率・休憩)の取り込み  形式: KPI,営業日,実車率,休憩
 function importKPI(text){
@@ -3399,6 +3537,19 @@ function importKPI(text){
   try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
   try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
   let n=0;
+  // MEMO行: MEMO,lat,lng,カテゴリ,名前,本文,登録日
+  const memos=loadMemos();
+  let mn=0;
+  text.split(/\r?\n/).forEach(l=>{
+    const mm=l.trim().match(/^MEMO\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([^,]*)\s*,\s*([^,]*)\s*,?\s*([^,]*)\s*,?\s*(.*)$/i);
+    if(!mm) return;
+    const lat=+mm[1], lng=+mm[2];
+    if(!isFinite(lat)||!isFinite(lng)) return;
+    if(memos.some(x=>Math.abs(x.lat-lat)<1e-6 && Math.abs(x.lng-lng)<1e-6 && x.n===mm[4].trim())) return;
+    memos.push({id:"m"+Date.now()+Math.random(), n:mm[4].trim(), t:(mm[5]||"").trim(), c:(mm[3]||"📍").trim(), lat, lng, d:(mm[6]||"").trim()});
+    mn++;
+  });
+  if(mn){ saveMemos(memos); if(typeof drawMemos==="function") drawMemos(); }
   text.split(/\r?\n/).forEach(l=>{
     const m=l.trim().match(/^KPI\s*,\s*(\d{4}-\d{2}-\d{2})\s*,\s*([0-9.]*)\s*,?\s*(.*)$/i);
     if(!m) return;
@@ -3411,7 +3562,7 @@ function importKPI(text){
     localStorage.setItem("kpi-v1", JSON.stringify(kpi));
     localStorage.setItem("break-v1", JSON.stringify(brk));
   }
-  return n;
+  return n+mn;
 }
 function importText(text, silent){
   const nk=importKPI(text);
@@ -3449,7 +3600,7 @@ function importText(text, silent){
     let msg=added+"件を読み込みました";
     if(dup) msg+="\n(重複のため"+dup+"件をスキップ)";
     if(bad) msg+="\n(形式エラーで"+bad+"件をスキップ)";
-    if(nk) msg+="\n実車率・休憩を"+nk+"日分記録しました";
+    if(nk) msg+="\nメモ・実車率・休憩を"+nk+"件記録しました";
     alert(msg);
   }
   return added;
