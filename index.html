@@ -640,7 +640,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.11-1";
+const APP_VER = "2026.08.11-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1960,10 +1960,10 @@ function barRow(label, value, max, fmt){
 }
 const TABMARK="@@TAB@@";
 let reviewTab="基本";
-const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン"];
+const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン","大物"];
 // マーカーで区切られたHTMLをタブごとに束ね、タブバー付きで返す
 function renderReviewTabs(raw){
-  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:""};
+  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:""};
   let cur="基本";
   raw.split(TABMARK).forEach((chunk,i)=>{
     if(i===0){ parts[cur]+=chunk; return; }
@@ -1976,8 +1976,99 @@ function renderReviewTabs(raw){
     + `</div>`;
   if(reviewTab==="曜日別") return bar + `<div>${(typeof renderDiaryW==="function"?renderDiaryW():"")}</div>`;
   if(reviewTab==="青タン") return bar + `<div>${(typeof renderNightTab==="function"?renderNightTab():"")}</div>`;
+  if(reviewTab==="大物") return bar + `<div>${(typeof renderBigTab==="function"?renderBigTab():"")}</div>`;
   return bar + `<div>${parts[reviewTab]||'<div style="color:var(--muted);font-size:12px;padding:10px 0;">このタブに表示できるデータがまだありません。</div>'}</div>`;
 }
+// ===== 大物(空港・万収)分析 =====
+const AREA_KEYS=[["千葉",["市川","船橋","千葉","浦安","流山","松戸","柏"]],["埼玉",["川口","草加","三郷","越谷","狭山","蕨","八潮","さいたま"]],
+  ["多摩",["府中","東村山","三鷹","武蔵野","町田","羽村","調布","西東京","小平","立川","国分寺"]],["神奈川",["横浜","川崎","相模"]]];
+function areaOf(dst){
+  if(!dst) return "不明";
+  if(/空港/.test(dst)) return "空港";
+  for(const [n,ks] of AREA_KEYS){ if(ks.some(k=>dst.includes(k))) return n; }
+  return "都内";
+}
+function renderBigTab(){
+  const mine=myRides();
+  const days=new Set(mine.map(r=>shiftDateStr(r))).size||1;
+  const air=mine.filter(r=>/空港/.test(r.dst||""));
+  const big=mine.filter(r=>r.f>=10000);
+  if(!big.length && !air.length) return `<div style="color:var(--muted);font-size:13px;padding:10px 0;">大物の実績がまだありません。</div>`;
+  let h=`<div style="display:flex;gap:10px;margin-bottom:10px;">
+    <div style="flex:1;background:var(--panel2);border-radius:10px;padding:9px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);">万収</div>
+      <div style="font-size:18px;font-weight:800;color:#ffd54f;">${big.length}本</div>
+      <div style="font-size:10px;color:var(--muted);">${(big.length/days).toFixed(1)}本/日</div></div>
+    <div style="flex:1;background:var(--panel2);border-radius:10px;padding:9px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);">万収の平均</div>
+      <div style="font-size:18px;font-weight:800;">${big.length?yen(Math.round(big.reduce((s,r)=>s+r.f,0)/big.length)):"—"}</div></div>
+    <div style="flex:1;background:var(--panel2);border-radius:10px;padding:9px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);">空港行き</div>
+      <div style="font-size:18px;font-weight:800;color:#4fc3f7;">${air.length}本</div>
+      <div style="font-size:10px;color:var(--muted);">${air.length?yen(Math.round(air.reduce((s,r)=>s+r.f,0)/air.length)):"—"}</div></div>
+  </div>`;
+
+  // 空港行き
+  h+=sectionTitle("✈️ 空港行きが出た場所と時刻");
+  if(!air.length){ h+=`<div style="font-size:12px;color:var(--muted);">まだ実績がありません。</div>`; }
+  else{
+    const hrs=air.map(r=>shiftHour(r.t));
+    h+=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">発生時間帯: ${Math.min(...hrs)%24}時〜${Math.max(...hrs)%24}時に集中。深夜帯の実績なし</div>`;
+    air.sort((a,b)=>shiftHour(a.t)-shiftHour(b.t)).forEach(r=>{
+      h+=`<div style="display:flex;gap:8px;align-items:baseline;border-top:1px solid var(--line);padding:6px 0;font-size:12px;">
+        <span style="width:38px;color:var(--amber);font-weight:700;">${r.t.slice(0,5)}</span>
+        <span style="flex:1;">${r.p} <span style="color:var(--muted);font-size:11px;">→ ${r.dst}</span></span>
+        <span style="font-weight:700;">${yen(r.f)}</span>
+        <span style="font-size:10px;color:var(--muted);">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`;
+    });
+    const ag=new Map();
+    air.forEach(r=>{ const b=r.p.replace(/[0-9]+$/,""); ag.set(b,(ag.get(b)||0)+1); });
+    h+=`<div style="font-size:11px;color:var(--muted);margin-top:6px;">発地の傾向: `
+      + [...ag.entries()].sort((a,b)=>b[1]-a[1]).map(([p,n])=>`<b style="color:var(--text)">${p}</b>${n>1?`×${n}`:""}`).join("、")+`</div>`;
+  }
+
+  // 万収の行き先方面
+  h+=sectionTitle("⭐ 万収の行き先(方面別)");
+  const byArea=new Map();
+  big.forEach(r=>{ const a=areaOf(r.dst); const x=byArea.get(a)||{n:0,s:0,ex:[]}; x.n++; x.s+=r.f; x.ex.push(r); byArea.set(a,x); });
+  const areas=[...byArea.entries()].sort((a,b)=>b[1].s/b[1].n - a[1].s/a[1].n);
+  const aMax=Math.max(...areas.map(([,x])=>x.s/x.n));
+  areas.forEach(([a,x])=>{
+    const ex=x.ex.sort((p,q)=>q.f-p.f)[0];
+    h+=barRow(a, x.s/x.n, aMax,
+      yen(Math.round(x.s/x.n))+`<br><span style="color:var(--muted)">${x.n}本・最高${yen(ex.f)}</span>`);
+  });
+  const out=big.filter(r=>areaOf(r.dst)!=="都内").length;
+  h+=`<div style="font-size:11px;color:var(--muted);margin-top:4px;">都外行きが ${out}/${big.length}本(${Math.round(out/big.length*100)}%)。単価は都外のほうが高い</div>`;
+
+  // 万収が出た乗車地(発地)
+  h+=sectionTitle("⭐ 万収が出た乗車地");
+  const bySpot=new Map();
+  big.forEach(r=>{ const x=bySpot.get(r.p)||{n:0,max:0,items:[]}; x.n++; x.max=Math.max(x.max,r.f); x.items.push(r); bySpot.set(r.p,x); });
+  const spots=[...bySpot.entries()].sort((a,b)=>b[1].n-a[1].n || b[1].max-a[1].max).slice(0,8);
+  const sMax=spots[0][1].n;
+  spots.forEach(([p,x])=>{
+    const hrs=[...new Set(x.items.map(r=>shiftHour(r.t)%24+"時"))].join("/");
+    h+=barRow(p.length>8?p.slice(0,8)+"…":p, x.n, sMax,
+      x.n+"本<br><span style=\"color:var(--muted)\">最高"+yen(x.max)+"・"+hrs+"</span>");
+  });
+
+  // 時間帯×方面
+  h+=sectionTitle("時間帯別の大物の性格");
+  [[5,12,"朝 5-12時"],[12,19,"昼 12-19時"],[19,23,"夜 19-23時"],[23,29,"深夜 23-5時"]].forEach(([lo,hi,label])=>{
+    const v=big.filter(r=>shiftHour(r.t)>=lo&&shiftHour(r.t)<hi);
+    const a2=air.filter(r=>shiftHour(r.t)>=lo&&shiftHour(r.t)<hi);
+    const ar=new Map();
+    v.forEach(r=>{ const k=areaOf(r.dst); ar.set(k,(ar.get(k)||0)+1); });
+    h+=`<div style="border-top:1px solid var(--line);padding:7px 0;font-size:12px;">
+      <b>${label}</b> <span style="color:#ffd54f;">万収${v.length}本</span>
+      ${a2.length?`<span style="color:#4fc3f7;"> 空港${a2.length}本</span>`:""}
+      ${v.length?`<div style="font-size:11px;color:var(--muted);margin-top:2px;">行き先: ${[...ar.entries()].sort((x,y)=>y[1]-x[1]).map(([k,n])=>`${k}${n}`).join("、")}</div>`:`<div style="font-size:11px;color:var(--muted);margin-top:2px;">実績なし</div>`}
+    </div>`;
+  });
+  return h;
+}
+
 // ===== 青タン分析 =====
 function renderNightTab(){
   const mine=myRides();
