@@ -640,7 +640,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.11-2";
+const APP_VER = "2026.08.14-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1960,10 +1960,10 @@ function barRow(label, value, max, fmt){
 }
 const TABMARK="@@TAB@@";
 let reviewTab="基本";
-const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン","大物"];
+const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン","大物","天気"];
 // マーカーで区切られたHTMLをタブごとに束ね、タブバー付きで返す
 function renderReviewTabs(raw){
-  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:""};
+  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:"",天気:""};
   let cur="基本";
   raw.split(TABMARK).forEach((chunk,i)=>{
     if(i===0){ parts[cur]+=chunk; return; }
@@ -1977,8 +1977,107 @@ function renderReviewTabs(raw){
   if(reviewTab==="曜日別") return bar + `<div>${(typeof renderDiaryW==="function"?renderDiaryW():"")}</div>`;
   if(reviewTab==="青タン") return bar + `<div>${(typeof renderNightTab==="function"?renderNightTab():"")}</div>`;
   if(reviewTab==="大物") return bar + `<div>${(typeof renderBigTab==="function"?renderBigTab():"")}</div>`;
+  if(reviewTab==="天気") return bar + `<div>${(typeof renderWxTab==="function"?renderWxTab():"")}</div>`;
   return bar + `<div>${parts[reviewTab]||'<div style="color:var(--muted);font-size:12px;padding:10px 0;">このタブに表示できるデータがまだありません。</div>'}</div>`;
 }
+// ===== 天気別の分析(雨 vs 晴) =====
+function renderWxTab(){
+  if(!rainMap){
+    loadWeather().then(()=>{ if(reviewTab==="天気") renderReview(); });
+    return `<div style="color:var(--muted);font-size:13px;padding:10px 0;">天気データを取得中…<br>取得できない場合は、フィルターの「☔雨」を一度タップしてください。</div>`;
+  }
+  const mine=myRides();
+  const byDay=diaryByDay();
+  const days=[...byDay.keys()].sort();
+  const wxOfDay=d=>{ const mm=rainMap[d]; return mm==null?null:(mm>=1?"rain":"dry"); };
+  const rainD=days.filter(d=>wxOfDay(d)==="rain"), dryD=days.filter(d=>wxOfDay(d)==="dry");
+  if(!rainD.length || !dryD.length)
+    return `<div style="color:var(--muted);font-size:13px;padding:10px 0;">比較できるデータが足りません(雨${rainD.length}日 / 晴${dryD.length}日)。</div>`;
+  const tot=d=>dTotal(byDay.get(d));
+  const rAvg=rainD.reduce((s,d)=>s+tot(d),0)/rainD.length;
+  const dAvg=dryD.reduce((s,d)=>s+tot(d),0)/dryD.length;
+  const diff=Math.round((rAvg/dAvg-1)*100);
+  let h=`<div style="display:flex;gap:10px;margin-bottom:12px;">
+    <div style="flex:1;background:var(--panel2);border-radius:10px;padding:10px;text-align:center;">
+      <div style="font-size:11px;color:var(--muted);">☔ 雨の日</div>
+      <div style="font-size:19px;font-weight:800;color:#4fc3f7;">${yen(Math.round(rAvg))}</div>
+      <div style="font-size:10px;color:var(--muted);">${rainD.length}日</div></div>
+    <div style="flex:1;background:var(--panel2);border-radius:10px;padding:10px;text-align:center;">
+      <div style="font-size:11px;color:var(--muted);">☀ 晴の日</div>
+      <div style="font-size:19px;font-weight:800;">${yen(Math.round(dAvg))}</div>
+      <div style="font-size:10px;color:var(--muted);">${dryD.length}日</div></div>
+    <div style="flex:1;background:var(--panel2);border-radius:10px;padding:10px;text-align:center;">
+      <div style="font-size:11px;color:var(--muted);">差</div>
+      <div style="font-size:19px;font-weight:800;color:${diff>=0?"#7dd87d":"#f08080"};">${diff>=0?"+":""}${diff}%</div></div>
+  </div>`;
+
+  const stat=(ds,lo,hi)=>{
+    const rs=ds.flatMap(d=>byDay.get(d)).filter(r=>lo==null||(shiftHour(r.t)>=lo&&shiftHour(r.t)<hi));
+    if(!rs.length) return {v:0,n:0,u:0};
+    return {v:rs.reduce((s,r)=>s+r.f,0)/ds.length, n:rs.length/ds.length, u:rs.reduce((s,r)=>s+r.f,0)/rs.length};
+  };
+  // クール別
+  h+=sectionTitle("クール別の雨・晴比較(1日あたり)");
+  [[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,30,"青タン"]].forEach(([lo,hi,label])=>{
+    const R=stat(rainD,lo,hi), D=stat(dryD,lo,hi);
+    const p=D.v? Math.round((R.v/D.v-1)*100) : 0;
+    h+=`<div style="border-top:1px solid var(--line);padding:7px 0;">
+      <div style="display:flex;align-items:baseline;gap:8px;font-size:12px;">
+        <b style="width:44px;">${label}</b>
+        <span style="color:#4fc3f7;">☔${yen(Math.round(R.v))}</span>
+        <span style="color:var(--muted);">☀${yen(Math.round(D.v))}</span>
+        <span style="flex:1"></span>
+        <b style="color:${p>=0?"#7dd87d":"#f08080"};">${p>=0?"+":""}${p}%</b></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:1px;">
+        本数 ☔${R.n.toFixed(1)} / ☀${D.n.toFixed(1)}　単価 ☔${yen(Math.round(R.u))} / ☀${yen(Math.round(D.u))}</div></div>`;
+  });
+
+  // 全体の本数・単価
+  const RA=stat(rainD,null), DA=stat(dryD,null);
+  h+=`<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.7;">
+    1日の本数: ☔${RA.n.toFixed(1)}本 / ☀${DA.n.toFixed(1)}本　　1本単価: ☔${yen(Math.round(RA.u))} / ☀${yen(Math.round(DA.u))}<br>
+    ${RA.n>DA.n?"雨の日は<b>本数</b>が伸びる傾向":"雨でも本数は変わらない"}、${RA.u>DA.u?"単価も高い":"単価はむしろ低め(近距離が増える)"}</div>`;
+
+  // エリア別(雨で伸びる場所)
+  h+=sectionTitle("雨の日に強い乗車地");
+  const agg=(ds)=>{
+    const m=new Map();
+    ds.flatMap(d=>byDay.get(d)).forEach(r=>{
+      const b=r.p.replace(/[0-9]+$/,"");
+      const a=m.get(b)||{s:0,n:0}; a.s+=r.f; a.n++; m.set(b,a);
+    });
+    return m;
+  };
+  const R=agg(rainD), D=agg(dryD);
+  const cmp=[];
+  R.forEach((a,p)=>{
+    const rn=a.n/rainD.length;
+    const d=D.get(p);
+    const dn=d? d.n/dryD.length : 0;
+    if(a.n>=3) cmp.push({p, rn, dn, ratio: dn? rn/dn : 99, avg:a.s/a.n});
+  });
+  cmp.sort((x,y)=>y.ratio-x.ratio);
+  const top=cmp.slice(0,6);
+  if(top.length){
+    const mx=Math.max(...top.map(x=>x.rn));
+    top.forEach(x=>{
+      h+=barRow(x.p.length>8?x.p.slice(0,8)+"…":x.p, x.rn, mx,
+        x.rn.toFixed(1)+"本/日<br><span style=\"color:var(--muted)\">晴"+x.dn.toFixed(1)+"本・平均"+yen(Math.round(x.avg))+"</span>");
+    });
+    h+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;">雨の日の1日あたり乗車数が、晴の日より多い順。3件以上の実績がある場所のみ</div>`;
+  }
+
+  // 日別
+  h+=sectionTitle("日別(雨の日)");
+  rainD.sort((a,b)=>tot(b)-tot(a));
+  const mxD=Math.max(...rainD.map(tot));
+  rainD.forEach(d=>{
+    h+=barRow(d.slice(5).replace("-","/")+"("+D_DN[dDow(d)]+")", tot(d), mxD,
+      yen(tot(d))+`<br><span style="color:var(--muted)">${rainMap[d].toFixed(1)}mm</span>`);
+  });
+  return h;
+}
+
 // ===== 大物(空港・万収)分析 =====
 const AREA_KEYS=[["千葉",["市川","船橋","千葉","浦安","流山","松戸","柏"]],["埼玉",["川口","草加","三郷","越谷","狭山","蕨","八潮","さいたま"]],
   ["多摩",["府中","東村山","三鷹","武蔵野","町田","羽村","調布","西東京","小平","立川","国分寺"]],["神奈川",["横浜","川崎","相模"]]];
