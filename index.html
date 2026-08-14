@@ -640,7 +640,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.14-2";
+const APP_VER = "2026.08.14-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1960,10 +1960,10 @@ function barRow(label, value, max, fmt){
 }
 const TABMARK="@@TAB@@";
 let reviewTab="基本";
-const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン","大物","天気"];
+const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン","大物","天気","グラフ"];
 // マーカーで区切られたHTMLをタブごとに束ね、タブバー付きで返す
 function renderReviewTabs(raw){
-  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:"",天気:""};
+  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:"",天気:"",グラフ:""};
   let cur="基本";
   raw.split(TABMARK).forEach((chunk,i)=>{
     if(i===0){ parts[cur]+=chunk; return; }
@@ -1978,8 +1978,185 @@ function renderReviewTabs(raw){
   if(reviewTab==="青タン") return bar + `<div>${(typeof renderNightTab==="function"?renderNightTab():"")}</div>`;
   if(reviewTab==="大物") return bar + `<div>${(typeof renderBigTab==="function"?renderBigTab():"")}</div>`;
   if(reviewTab==="天気") return bar + `<div>${(typeof renderWxTab==="function"?renderWxTab():"")}</div>`;
+  if(reviewTab==="グラフ") return bar + `<div>${(typeof renderChartTab==="function"?renderChartTab():"")}</div>`;
   return bar + `<div>${parts[reviewTab]||'<div style="color:var(--muted);font-size:12px;padding:10px 0;">このタブに表示できるデータがまだありません。</div>'}</div>`;
 }
+// ===== グラフ集 =====
+const CW=330, CH=120;   // 描画領域
+function svgWrap(inner, h){ return `<svg viewBox="0 0 ${CW} ${h||CH+16}" style="width:100%;height:auto;background:var(--panel2);border-radius:10px;">${inner}</svg>`; }
+function renderChartTab(){
+  const mine=myRides();
+  if(mine.length<20) return `<div style="color:var(--muted);font-size:13px;padding:10px 0;">データが少なすぎます。</div>`;
+  const byDay=diaryByDay();
+  const days=[...byDay.keys()].sort();
+  const tot=d=>dTotal(byDay.get(d));
+  const mcfg=monthCfg();
+  let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+  let h="";
+
+  // ---- 1. 月度推移(営収・単価・回数・実車率) ----
+  h+=sectionTitle("月度の推移");
+  const per=new Map();
+  days.forEach(d=>{
+    const p=periodOf(d,mcfg);
+    const a=per.get(p)||{sum:0,n:0,days:0,rate:0,rn:0};
+    a.sum+=tot(d); a.n+=byDay.get(d).length; a.days++;
+    if(kpi[d]){ a.rate+=kpi[d]; a.rn++; }
+    per.set(p,a);
+  });
+  const ps=[...per.entries()].sort();
+  if(ps.length>=2){
+    const X0=26, X1=CW-8;
+    const px=i=>X0+(i/(ps.length-1))*(X1-X0);
+    const series=[
+      {k:"営収(万)", col:"#f5a623", v:ps.map(([,a])=>a.sum/a.days/10000)},
+      {k:"単価(千円)", col:"#7dd87d", v:ps.map(([,a])=>a.sum/a.n/1000)},
+      {k:"回数", col:"#7db3f0", v:ps.map(([,a])=>a.n/a.days)},
+      {k:"実車率(%)", col:"#ba68c8", v:ps.map(([,a])=>a.rn?a.rate/a.rn:null)}
+    ];
+    let inner="";
+    series.forEach(s=>{
+      const vals=s.v.filter(x=>x!=null);
+      if(!vals.length) return;
+      const mx=Math.max(...vals)*1.15, mn=Math.min(...vals)*0.85;
+      const yy=v=>CH-((v-mn)/(mx-mn||1))*(CH-10)-5;
+      let dstr="", started=false;
+      s.v.forEach((v,i)=>{ if(v==null) return; dstr+=(started?"L":"M")+px(i).toFixed(1)+" "+yy(v).toFixed(1)+" "; started=true; });
+      inner+=`<path d="${dstr}" stroke="${s.col}" stroke-width="2" fill="none"/>`;
+      s.v.forEach((v,i)=>{ if(v==null) return;
+        inner+=`<circle cx="${px(i).toFixed(1)}" cy="${yy(v).toFixed(1)}" r="2.4" fill="${s.col}"/>
+        <text x="${px(i).toFixed(1)}" y="${(yy(v)-4).toFixed(1)}" fill="${s.col}" font-size="5.5" text-anchor="middle">${v.toFixed(1)}</text>`; });
+    });
+    inner+=ps.map(([p],i)=>`<text x="${px(i).toFixed(1)}" y="${CH+11}" fill="#5a6a85" font-size="6" text-anchor="middle">${parseInt(p.slice(5),10)}月度</text>`).join("");
+    h+=svgWrap(inner);
+    h+=`<div style="font-size:10px;margin-top:3px;">`
+      + series.map(s=>`<span style="color:${s.col};">━ ${s.k}</span>`).join("　") + `</div>`;
+    h+=`<div style="font-size:10px;color:var(--muted);">各指標は独立したスケールで描画しています(形の比較用)</div>`;
+  }
+
+  // ---- 2. 時間別の営収カーブ(曜日別) ----
+  h+=sectionTitle("時間別の営収カーブ(1営業日あたり)");
+  const HS=5, HE=29;
+  const dowDays=new Map();
+  days.forEach(d=>{ const k=dDow(d); dowDays.set(k,(dowDays.get(k)||0)+1); });
+  const curves=[1,2,3,4,5,6,0].filter(dw=>dowDays.get(dw)).map(dw=>{
+    const arr=[];
+    for(let hh=HS; hh<HE; hh++){
+      const v=mine.filter(r=>shiftDow(r)===dw && shiftHour(r.t)===hh).reduce((s,r)=>s+r.f,0)/dowDays.get(dw);
+      arr.push(v);
+    }
+    return {dw, arr, col:["#e57373","#f5a623","#7dd87d","#4dd0e1","#7db3f0","#ba68c8","#f06292"][[1,2,3,4,5,6,0].indexOf(dw)]};
+  });
+  const allMax=Math.max(...curves.flatMap(c=>c.arr))*1.1||1;
+  const cx=hh=>26+((hh-HS)/(HE-1-HS))*(CW-34);
+  const cy=v=>CH-(v/allMax)*(CH-8)-4;
+  let inner2=curves.map(c=>`<path d="${c.arr.map((v,i)=>(i?"L":"M")+cx(HS+i).toFixed(1)+" "+cy(v).toFixed(1)).join(" ")}" stroke="${c.col}" stroke-width="1.6" fill="none" opacity=".9"/>`).join("");
+  inner2+=[6,9,12,15,18,21,24,27].map(hh=>`<text x="${cx(hh).toFixed(1)}" y="${CH+11}" fill="#5a6a85" font-size="6" text-anchor="middle">${hh%24}</text>`).join("");
+  [2000,4000,6000].forEach(v=>{ if(v<allMax) inner2=`<line x1="26" y1="${cy(v)}" x2="${CW-8}" y2="${cy(v)}" stroke="#2a3547" stroke-width="0.5"/><text x="2" y="${cy(v)+2}" fill="#5a6a85" font-size="5.5">${v/1000}千</text>`+inner2; });
+  h+=svgWrap(inner2);
+  h+=`<div style="font-size:10px;margin-top:3px;">`+curves.map(c=>`<span style="color:${c.col};">━ ${D_DN[c.dw]}</span>`).join("　")+`</div>`;
+
+  // ---- 3. 散布図: 回数 × 単価 ----
+  h+=sectionTitle("回数 × 単価(1日ごと)");
+  const pts3=days.map(d=>({d, n:byDay.get(d).length, u:tot(d)/byDay.get(d).length, v:tot(d)}));
+  const nMx=Math.max(...pts3.map(p=>p.n))*1.1, uMx=Math.max(...pts3.map(p=>p.u))*1.1;
+  const sx=n=>26+(n/nMx)*(CW-34), sy=u=>CH-(u/uMx)*(CH-8)-4;
+  let inner3="";
+  // 11万の等高線
+  let hyper="";
+  for(let n=8; n<=nMx; n+=1){
+    const u=110000/n;
+    if(u>uMx) continue;
+    hyper+=(hyper?"L":"M")+sx(n).toFixed(1)+" "+sy(u).toFixed(1)+" ";
+  }
+  inner3+=`<path d="${hyper}" stroke="#ffd54f" stroke-width="1.2" stroke-dasharray="3 3" fill="none"/>`;
+  inner3+=pts3.map(p=>{
+    const col=p.v>=110000?"#ffd54f":p.v>=90000?"#7dd87d":p.v>=70000?"#7db3f0":"#5a6a85";
+    return `<circle cx="${sx(p.n).toFixed(1)}" cy="${sy(p.u).toFixed(1)}" r="3" fill="${col}" opacity=".9"/>`;
+  }).join("");
+  inner3+=[10,20,30,40].filter(n=>n<nMx).map(n=>`<text x="${sx(n).toFixed(1)}" y="${CH+11}" fill="#5a6a85" font-size="6" text-anchor="middle">${n}回</text>`).join("");
+  [2000,3000,4000].filter(u=>u<uMx).forEach(u=>{ inner3=`<line x1="26" y1="${sy(u)}" x2="${CW-8}" y2="${sy(u)}" stroke="#2a3547" stroke-width="0.5"/><text x="2" y="${sy(u)+2}" fill="#5a6a85" font-size="5.5">${u/1000}千</text>`+inner3; });
+  h+=svgWrap(inner3);
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:3px;"><span style="color:#ffd54f;">┄</span> 11万ライン(右上ほど良い)　<span style="color:#ffd54f;">●</span>11万超　<span style="color:#7dd87d;">●</span>9万超　<span style="color:#7db3f0;">●</span>7万超</div>`;
+
+  // ---- 4. エリア×時間帯のヒートテーブル ----
+  h+=sectionTitle("エリア × 時間帯(平均単価)");
+  const BANDS=[[5,9,"5-9"],[9,13,"9-13"],[13,18,"13-18"],[18,22,"18-22"],[22,25,"22-1"],[25,29,"1-5"]];
+  const areaAgg=new Map();
+  mine.forEach(r=>{
+    const b=r.p.replace(/[0-9]+$/,"");
+    const a=areaAgg.get(b)||{n:0,cells:BANDS.map(()=>({s:0,n:0}))};
+    a.n++;
+    const bi=BANDS.findIndex(([lo,hi])=>shiftHour(r.t)>=lo&&shiftHour(r.t)<hi);
+    if(bi>=0){ a.cells[bi].s+=r.f; a.cells[bi].n++; }
+    areaAgg.set(b,a);
+  });
+  const areas=[...areaAgg.entries()].sort((a,b)=>b[1].n-a[1].n).slice(0,10);
+  h+=`<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:10px;width:100%;">
+    <tr><th></th>${BANDS.map(b=>`<th style="padding:2px;color:var(--muted);font-weight:400;">${b[2]}</th>`).join("")}</tr>`;
+  areas.forEach(([p,a])=>{
+    h+=`<tr><td style="padding:3px 4px;white-space:nowrap;max-width:74px;overflow:hidden;text-overflow:ellipsis;">${p}</td>`
+      + a.cells.map(c=>{
+          if(!c.n) return `<td style="padding:3px;text-align:center;color:#3a4557;">·</td>`;
+          const avg=c.s/c.n;
+          const col=fareTierColor(avg);
+          return `<td style="padding:3px;text-align:center;background:${col};color:#0d1220;font-weight:700;border-radius:3px;">${Math.round(avg/1000)}</td>`;
+        }).join("") + `</tr>`;
+  });
+  h+=`</table></div><div style="font-size:10px;color:var(--muted);margin-top:3px;">数値は平均単価(千円)。色は単価の高さ。· は実績なし</div>`;
+
+  // ---- 5. 降車エリア → 次の乗車エリアの流れ ----
+  h+=sectionTitle("降ろした先 → 次に拾った場所");
+  const seqF=[...mine].sort((a,b)=>(a.d+a.t).localeCompare(b.d+b.t));
+  const flow=new Map();
+  for(let i=0;i<seqF.length-1;i++){
+    const a=seqF[i], b=seqF[i+1];
+    if(shiftDateStr(a)!==shiftDateStr(b)) continue;
+    if(!a.dst) continue;
+    const from=a.dst.replace(/[0-9]+$/,""), to=b.p.replace(/[0-9]+$/,"");
+    const k=from+"→"+to;
+    const x=flow.get(k)||{n:0,sum:0,from,to};
+    x.n++; x.sum+=b.f; flow.set(k,x);
+  }
+  const flows=[...flow.values()].filter(x=>x.n>=3).sort((a,b)=>b.n-a.n).slice(0,8);
+  if(flows.length){
+    const fMax=flows[0].n;
+    flows.forEach(x=>{
+      const same=x.from===x.to;
+      h+=`<div style="display:flex;align-items:center;gap:7px;padding:4px 0;font-size:11px;">
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x.from} <span style="color:var(--muted)">→</span> ${same?`<b style="color:#7dd87d">同エリア</b>`:x.to}</span>
+        <div style="width:70px;background:var(--panel2);border-radius:4px;height:9px;overflow:hidden;">
+          <div style="width:${x.n/fMax*100}%;height:100%;background:${same?"#7dd87d":"#7db3f0"};"></div></div>
+        <span style="width:52px;text-align:right;color:var(--muted);">${x.n}回 ${yen(Math.round(x.sum/x.n))}</span></div>`;
+    });
+    const sameN=flows.filter(x=>x.from===x.to).reduce((s,x)=>s+x.n,0);
+    const allN=flows.reduce((s,x)=>s+x.n,0);
+    h+=`<div style="font-size:10px;color:var(--muted);margin-top:3px;">同エリアで拾い直せた割合 ${Math.round(sameN/allN*100)}%(行った先営業の指標)</div>`;
+  }
+
+  // ---- 6. 月度内の累積推移 ----
+  h+=sectionTitle("今月度の累積");
+  const tnow=new Date(); if(tnow.getHours()<5) tnow.setDate(tnow.getDate()-1);
+  const curP=periodOf(dsOf(tnow), mcfg);
+  const curDays=days.filter(d=>periodOf(d,mcfg)===curP).sort();
+  if(curDays.length){
+    let cum=0; const cpts=curDays.map((d,i)=>{ cum+=tot(d); return {d, i, cum}; });
+    const target=110000*Math.max(cpts.length,12);
+    const mxc=Math.max(cum, 110000*cpts.length);
+    const ux=i=>26+(i/(Math.max(cpts.length-1,1)))*(CW-34);
+    const uy=v=>CH-(v/mxc)*(CH-8)-4;
+    let inner6=`<path d="M${ux(0)} ${uy(110000)} L${ux(cpts.length-1)} ${uy(110000*cpts.length)}" stroke="#5a6a85" stroke-width="1" stroke-dasharray="3 3" fill="none"/>`;
+    inner6+=`<path d="${cpts.map((p,i)=>(i?"L":"M")+ux(i).toFixed(1)+" "+uy(p.cum).toFixed(1)).join(" ")}" stroke="#f5a623" stroke-width="2.2" fill="none"/>`;
+    inner6+=cpts.map(p=>`<circle cx="${ux(p.i).toFixed(1)}" cy="${uy(p.cum).toFixed(1)}" r="2.4" fill="#f5a623"/>`).join("");
+    inner6+=cpts.map(p=>`<text x="${ux(p.i).toFixed(1)}" y="${CH+11}" fill="#5a6a85" font-size="5.5" text-anchor="middle">${p.d.slice(8)}</text>`).join("");
+    h+=svgWrap(inner6);
+    const pace=110000*cpts.length;
+    h+=`<div style="font-size:11px;margin-top:4px;">累計 <b style="color:var(--amber);">${yen(cum)}</b>(${cpts.length}日)　
+      11万ペース比 <b style="color:${cum>=pace?"#7dd87d":"#f08080"};">${cum>=pace?"+":""}${yen(cum-pace)}</b></div>`;
+  }
+  return h;
+}
+
 // ===== 天気別の分析(雨 vs 晴) =====
 function renderWxTab(){
   if(!rainMap){
