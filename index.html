@@ -641,7 +641,8 @@ function metricTip(name,a){
     return `${name}<br>万収 ${a.big}本 / ${a.n}件 = <b>${Math.round(a.big/a.n*100)}%</b>`
       + (a.n<3?"<br><span style='opacity:.7'>※件数が少なく参考値</span>":"");
   }
-  return `${name}<br>平均 ${yen(Math.round(a.sum/a.n))} / ${a.n}件`;
+  return `${name}<br>平均 ${yen(Math.round(a.sum/a.n))} / ${a.n}件`
+    + (a.n===1?`<br><span style="color:#ffb74d;font-size:10px;">1回のみ・参考値</span>`:"");
 }
 // 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
 // 町丁目の重心(計算結果をキャッシュ)
@@ -669,7 +670,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.15-1";
+const APP_VER = "2026.08.15-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -713,18 +714,29 @@ function drawHeat(list){
     if(metric==="hit" && a.n<2) return; // 1件だけの場所は率が意味を持たない
     const col=metricColor(a);
     const tip=metricTip(name,a);
+    const only1 = a.n===1;   // 1件だけの場所は目印を付ける
     const f=chomeIndex ? chomeIndex.get(name) : null;
     if(f){
       // 町丁目の実際の形で塗る
       L.geoJSON(f,{renderer:heatRenderer,
-        style:{color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:metricOpacity(a,.78)}})
+        style:{color: only1?"#ffffff":"#ffffff", weight: only1?1:1.2, opacity: only1?.75:.9,
+          dashArray: only1?"3 3":null, fillColor:col, fillOpacity:metricOpacity(a, only1?.55:.78)}})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }else{
       // 境界未収録の住所や読み込み前はマス目で表示
       const la=Math.floor((a.latS/a.n)/SIZE)*SIZE, lo=Math.floor((a.lngS/a.n)/SIZE)*SIZE;
       L.rectangle([[la,lo],[la+SIZE,lo+SIZE]],{renderer:heatRenderer,
-        color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:metricOpacity(a,.78)})
+        color:"#ffffff",weight: only1?1:1.2, opacity: only1?.75:.9, dashArray: only1?"3 3":null,
+        fillColor:col, fillOpacity:metricOpacity(a, only1?.55:.78)})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
+    }
+    // 1件だけの場所に「1」の目印
+    if(only1){
+      L.marker([a.latS/a.n, a.lngS/a.n],{interactive:false,
+        icon:L.divIcon({className:"",iconSize:[14,14],iconAnchor:[7,7],
+          html:`<div style="width:14px;height:14px;border-radius:50%;background:rgba(19,26,42,.82);
+            border:1px solid rgba(255,255,255,.75);color:#fff;font-size:9px;font-weight:800;
+            display:flex;align-items:center;justify-content:center;">1</div>`})}).addTo(heatLayer);
     }
   });
   // 実績のない町丁目を周辺から推定して塗る
