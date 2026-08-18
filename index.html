@@ -642,7 +642,7 @@ function metricTip(name,a){
       + (a.n<3?"<br><span style='opacity:.7'>※件数が少なく参考値</span>":"");
   }
   return `${name}<br>平均 ${yen(Math.round(a.sum/a.n))} / ${a.n}件`
-    + (a.n===1?`<br><span style="color:#ffb74d;font-size:10px;">1回のみ・参考値</span>`:"");
+    + (a.n===1?`<br><span style="color:#ffb74d;font-size:10px;">1回のみ・参考値</span>`:"");   // 1件はツールチップでのみ注記
 }
 // 平均単価→色(緑=低 → 黄 → 橙 → 赤=高)
 // 町丁目の重心(計算結果をキャッシュ)
@@ -670,7 +670,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.15-2";
+const APP_VER = "2026.08.15-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -714,29 +714,27 @@ function drawHeat(list){
     if(metric==="hit" && a.n<2) return; // 1件だけの場所は率が意味を持たない
     const col=metricColor(a);
     const tip=metricTip(name,a);
-    const only1 = a.n===1;   // 1件だけの場所は目印を付ける
     const f=chomeIndex ? chomeIndex.get(name) : null;
     if(f){
       // 町丁目の実際の形で塗る
       L.geoJSON(f,{renderer:heatRenderer,
-        style:{color: only1?"#ffffff":"#ffffff", weight: only1?1:1.2, opacity: only1?.75:.9,
-          dashArray: only1?"3 3":null, fillColor:col, fillOpacity:metricOpacity(a, only1?.55:.78)}})
+        style:{color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:metricOpacity(a,.78)}})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }else{
       // 境界未収録の住所や読み込み前はマス目で表示
       const la=Math.floor((a.latS/a.n)/SIZE)*SIZE, lo=Math.floor((a.lngS/a.n)/SIZE)*SIZE;
       L.rectangle([[la,lo],[la+SIZE,lo+SIZE]],{renderer:heatRenderer,
-        color:"#ffffff",weight: only1?1:1.2, opacity: only1?.75:.9, dashArray: only1?"3 3":null,
-        fillColor:col, fillOpacity:metricOpacity(a, only1?.55:.78)})
+        color:"#ffffff",weight:1.2,opacity:.9,fillColor:col,fillOpacity:metricOpacity(a,.78)})
         .bindTooltip(tip,{direction:"top",sticky:true}).addTo(heatLayer);
     }
-    // 1件だけの場所に「1」の目印
-    if(only1){
+    // 2件以上の場所に回数を表示(1件のみは表示なし)
+    if(a.n>=2){
+      const sz = a.n>=10 ? 19 : 16;
       L.marker([a.latS/a.n, a.lngS/a.n],{interactive:false,
-        icon:L.divIcon({className:"",iconSize:[14,14],iconAnchor:[7,7],
-          html:`<div style="width:14px;height:14px;border-radius:50%;background:rgba(19,26,42,.82);
-            border:1px solid rgba(255,255,255,.75);color:#fff;font-size:9px;font-weight:800;
-            display:flex;align-items:center;justify-content:center;">1</div>`})}).addTo(heatLayer);
+        icon:L.divIcon({className:"",iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],
+          html:`<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:rgba(13,19,32,.88);
+            border:1px solid rgba(255,255,255,.85);color:#fff;font-size:${a.n>=10?10:10}px;font-weight:800;
+            display:flex;align-items:center;justify-content:center;line-height:1;">${a.n}</div>`})}).addTo(heatLayer);
     }
   });
   // 実績のない町丁目を周辺から推定して塗る
@@ -850,6 +848,7 @@ function render(){
   markerLayer.clearLayers();
   if(typeof drawWardRank==="function") drawWardRank();
   if(typeof drawBig==="function") drawBig();
+  if(typeof drawAppRing==="function") drawAppRing();
   const list = filtered();
   if(!heatOn && !wardsOn) list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
@@ -983,6 +982,20 @@ function updateBigWindow(){
 }
 setInterval(updateBigWindow, 60000);
 
+// ===== アプリ配車の想定範囲(現在地から半径1km) =====
+let appRing=null;
+function drawAppRing(){
+  if(appRing){ map.removeLayer(appRing); appRing=null; }
+  // 配車フィルターが「アプリ」のときだけ表示
+  if(modeFilter!=="app" || !lastLL) return;
+  appRing=L.layerGroup([
+    L.circle(lastLL,{radius:1000, color:"#4fc3f7", weight:2, opacity:.75, dashArray:"6 6",
+      fillColor:"#4fc3f7", fillOpacity:.06, interactive:false}),
+    L.circle(lastLL,{radius:500, color:"#4fc3f7", weight:1, opacity:.35, dashArray:"3 5",
+      fill:false, interactive:false})
+  ]).addTo(map);
+}
+
 // ===== 走行中HUD(現在いる通り名 + 近くのアツいエリア) =====
 let hudLL=null, hudRoadAt=0, hudHotAt=0, hudRoadName="";
 async function hudRoad(ll){
@@ -1021,6 +1034,7 @@ async function updateHUD(ll, force){
   if(moved) hudLL=ll;
   updateBigWindow();
   layoutUnderHUD();
+  if(moved) drawAppRing();
 }
 document.getElementById("hud").onclick=()=>{ if(lastLL) showAdvice(lastLL); };
 
@@ -4156,6 +4170,7 @@ btnGps.onclick=()=>{
     if(firstFix){ map.setView(ll,15); firstFix=false; }
     else if(follow){ map.setView(ll, map.getZoom(), {animate:false}); } // 常に自分が中心
     updateHUD(ll);
+    if(!appRing) drawAppRing();
   },err=>{
     if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
     gpsSilent=false;
