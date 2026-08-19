@@ -142,6 +142,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
       </div>
     </div>
     <div id="hudHot" style="font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">🔥 現在地を取得すると表示されます</div>
+    <div id="hudPlan" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
     <div id="bigWin" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;"></div>
   </div>
 </div>
@@ -670,7 +671,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.15-4";
+const APP_VER = "2026.08.19-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -917,6 +918,45 @@ function showRoute(dlat,dlng){
 }
 document.getElementById("routeClose").onclick=clearRoute;
 
+// ===== 今やること(実績の谷・山に基づく時間帯別プラン) =====
+// 実績: 16時台と20時台が単価の谷。第2は港区南部、第3は銀座が高単価
+const PLAN_SLOTS=[
+  {lo:5,   hi:8,   t:"出庫〜朝の勝負", d:"荒川を超えるまで無線停止。足立・荒川・台東で1本目→都心へ"},
+  {lo:8,   hi:11,  t:"朝の窓", d:"郊外ロングが出る時間。行った先営業で流れに乗る"},
+  {lo:11,  hi:13,  t:"第1クール仕上げ", d:"都心で刻む。13時までに¥35,000"},
+  {lo:13,  hi:16,  t:"第2前半・港区南部へ", d:"芝浦3/4・芝5・港南で回す。空港客も。目標ここで¥15,000"},
+  {lo:16,  hi:16.7,t:"⏸ 休憩の推奨", d:"16時台は単価の谷(¥1,910)。ここで30〜40分休む"},
+  {lo:16.7,hi:18,  t:"第2の稼ぎ時", d:"17時台は単価が戻る。芝浦〜三田〜八重洲で¥30,000へ"},
+  {lo:18,  hi:20,  t:"第3・銀座へ移動", d:"銀座5/6・日本橋3が高単価。京橋〜銀座で回す"},
+  {lo:20,  hi:20.7,t:"⏸ 休憩の推奨", d:"20時台は谷(¥3,087)。ここで休んで21時に備える"},
+  {lo:20.7,hi:22,  t:"第3の締め", d:"21時台は単価¥2,519。銀座・日本橋・人形町で7本×¥3,000へ"},
+  {lo:22,  hi:23,  t:"青タンの入り", d:"都心に位置取り。日本橋・銀座・新橋・六本木。無理に拾わない"},
+  {lo:23,  hi:24,  t:"新橋へ移動", d:"23時台は最も薄い。0時の勝負に備えて新橋・上野へ"},
+  {lo:24,  hi:25,  t:"⭐ 0時台は勝負", d:"新橋2で張る(8回平均¥8,329)。動かず待つ"},
+  {lo:25,  hi:26,  t:"⭐ 1時台も勝負", d:"上野2・新橋2・六本木4。25時過ぎは上野の春日通り沿い"},
+  {lo:26,  hi:30,  t:"帰庫へ", d:"北東方向の客を優先。足立・葛飾方面で締める"}
+];
+function planNow(){
+  const d=new Date();
+  const h=d.getHours()+d.getMinutes()/60;
+  const sh=h<5?h+24:h;
+  return PLAN_SLOTS.find(s=>sh>=s.lo&&sh<s.hi) || null;
+}
+function updatePlan(){
+  const el=document.getElementById("hudPlan");
+  if(!el) return;
+  const p=planNow();
+  if(!p){ el.style.display="none"; return; }
+  el.style.display="block";
+  const rest = p.t.startsWith("⏸");
+  const star = p.t.startsWith("⭐");
+  const col = rest ? "#7db3f0" : star ? "#ffd54f" : "var(--amber)";
+  el.innerHTML=`<span style="color:${col};font-weight:800;font-size:12px;">${p.t}</span>`
+    + `<span style="font-size:11px;color:var(--muted);margin-left:6px;">${p.d}</span>`;
+  setTimeout(layoutUnderHUD,0);
+}
+setInterval(updatePlan, 60000);
+
 // ===== 万収ウィンドウ(大物が出る時間帯かどうか) =====
 // 実績: 12-19時は万収ゼロ。朝/夜/深夜の3つの窓に集中し、同じ場所への張り付きで当たっている
 const BIG_WINDOWS=[
@@ -1033,6 +1073,7 @@ async function updateHUD(ll, force){
   }
   if(moved) hudLL=ll;
   updateBigWindow();
+  updatePlan();
   layoutUnderHUD();
   if(moved) drawAppRing();
 }
@@ -4459,6 +4500,7 @@ document.getElementById("btnAppMode").onclick=()=>{
   document.querySelectorAll(".chip.dow").forEach(c=>
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
   updateBigWindow();
+  updatePlan();
   setTimeout(layoutUnderHUD,60);
   // 今日のブリーフィングを取得済みならイベントピンを復元
   try{
