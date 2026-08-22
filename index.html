@@ -258,7 +258,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
       <span id="roadSheetClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;">✕</span>
     </div>
     <div id="roadList"></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:8px;">初回のみ取得に数秒かかります。取得後は端末に保存され、次回から即表示されます。</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px;">交差点名はズーム15以上、出入口はズーム13以上で表示されます。初回のみ取得に数秒かかります。取得後は端末に保存され、次回から即表示されます。</div>
   </div>
 </div>
 
@@ -703,7 +703,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.20-5";
+const APP_VER = "2026.08.21-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3766,91 +3766,145 @@ document.getElementById("kbSave").onclick=()=>{
 // ===== 幹線道路・高速道路の表示 =====
 const ROAD_DEFS=[
   {g:"環状", items:[
-    {n:"環七通り", q:'["name"~"環七|環状七号"]', c:"#4dd0e1"},
-    {n:"環八通り", q:'["name"~"環八|環状八号"]', c:"#4dd0e1"},
-    {n:"明治通り", q:'["name"="明治通り"]', c:"#4dd0e1"},
-    {n:"山手通り", q:'["name"~"山手通"]', c:"#4dd0e1"},
+    {n:"内堀通り", q:'["name"="内堀通り"]', c:"#4dd0e1"},
     {n:"外堀通り", q:'["name"="外堀通り"]', c:"#4dd0e1"},
-    {n:"内堀通り", q:'["name"="内堀通り"]', c:"#4dd0e1"}
+    {n:"外苑東通り(環3)", q:'["name"="外苑東通り"]', c:"#4dd0e1"},
+    {n:"外苑西通り(環4)", q:'["name"="外苑西通り"]', c:"#4dd0e1"},
+    {n:"明治通り(環5)", q:'["name"="明治通り"]', c:"#4dd0e1"},
+    {n:"山手通り(環6)", q:'["name"~"山手通"]', c:"#4dd0e1"},
+    {n:"環七通り", q:'["name"~"環七|環状七号"]', c:"#4dd0e1"},
+    {n:"環八通り", q:'["name"~"環八|環状八号"]', c:"#4dd0e1"}
   ]},
-  {g:"放射(都心→郊外)", items:[
-    {n:"青山通り(R246)", q:'["name"~"青山通"]', c:"#81c784"},
-    {n:"甲州街道(R20)", q:'["name"~"甲州街道"]', c:"#81c784"},
-    {n:"第一京浜(R15)", q:'["name"~"第一京浜"]', c:"#81c784"},
-    {n:"第二京浜(R1)", q:'["name"~"第二京浜"]', c:"#81c784"},
-    {n:"中山道(R17)", q:'["name"~"中山道"]', c:"#81c784"},
+  {g:"放射(北・東)", items:[
     {n:"日光街道(R4)", q:'["name"~"日光街道"]', c:"#81c784"},
+    {n:"昭和通り", q:'["name"="昭和通り"]', c:"#81c784"},
+    {n:"中山道(R17)", q:'["name"~"中山道"]', c:"#81c784"},
+    {n:"白山通り", q:'["name"="白山通り"]', c:"#81c784"},
+    {n:"本郷通り", q:'["name"="本郷通り"]', c:"#81c784"},
+    {n:"川越街道(R254)", q:'["name"~"川越街道"]', c:"#81c784"},
+    {n:"春日通り", q:'["name"="春日通り"]', c:"#81c784"},
     {n:"水戸街道(R6)", q:'["name"~"水戸街道"]', c:"#81c784"},
     {n:"京葉道路(R14)", q:'["name"~"京葉道路"]', c:"#81c784"},
-    {n:"目白通り", q:'["name"="目白通り"]', c:"#81c784"},
-    {n:"目黒通り", q:'["name"="目黒通り"]', c:"#81c784"},
-    {n:"新大橋通り", q:'["name"="新大橋通り"]', c:"#81c784"},
+    {n:"蔵前橋通り", q:'["name"="蔵前橋通り"]', c:"#81c784"},
+    {n:"浅草通り", q:'["name"="浅草通り"]', c:"#81c784"},
+    {n:"言問通り", q:'["name"="言問通り"]', c:"#81c784"},
+    {n:"江戸通り", q:'["name"="江戸通り"]', c:"#81c784"},
+    {n:"尾竹橋通り", q:'["name"="尾竹橋通り"]', c:"#81c784"},
+    {n:"尾久橋通り", q:'["name"="尾久橋通り"]', c:"#81c784"},
+    {n:"墨堤通り", q:'["name"="墨堤通り"]', c:"#81c784"},
+    {n:"清澄通り", q:'["name"="清澄通り"]', c:"#81c784"},
+    {n:"三ツ目通り", q:'["name"="三ツ目通り"]', c:"#81c784"},
+    {n:"四ツ目通り", q:'["name"="四ツ目通り"]', c:"#81c784"},
     {n:"永代通り", q:'["name"="永代通り"]', c:"#81c784"},
-    {n:"春日通り", q:'["name"="春日通り"]', c:"#81c784"},
-    {n:"本郷通り", q:'["name"="本郷通り"]', c:"#81c784"},
-    {n:"昭和通り", q:'["name"="昭和通り"]', c:"#81c784"},
-    {n:"晴海通り", q:'["name"="晴海通り"]', c:"#81c784"},
-    {n:"六本木通り", q:'["name"="六本木通り"]', c:"#81c784"},
-    {n:"桜田通り", q:'["name"="桜田通り"]', c:"#81c784"}
+    {n:"新大橋通り", q:'["name"="新大橋通り"]', c:"#81c784"}
+  ]},
+  {g:"放射(西・南)", items:[
+    {n:"靖国通り", q:'["name"="靖国通り"]', c:"#ffb74d"},
+    {n:"新宿通り", q:'["name"="新宿通り"]', c:"#ffb74d"},
+    {n:"甲州街道(R20)", q:'["name"~"甲州街道"]', c:"#ffb74d"},
+    {n:"青梅街道", q:'["name"~"青梅街道"]', c:"#ffb74d"},
+    {n:"早稲田通り", q:'["name"="早稲田通り"]', c:"#ffb74d"},
+    {n:"目白通り", q:'["name"="目白通り"]', c:"#ffb74d"},
+    {n:"新目白通り", q:'["name"="新目白通り"]', c:"#ffb74d"},
+    {n:"大久保通り", q:'["name"="大久保通り"]', c:"#ffb74d"},
+    {n:"井の頭通り", q:'["name"="井ノ頭通り|井の頭通り"]', c:"#ffb74d"},
+    {n:"方南通り", q:'["name"="方南通り"]', c:"#ffb74d"},
+    {n:"青山通り(R246)", q:'["name"~"青山通"]', c:"#ffb74d"},
+    {n:"玉川通り(R246)", q:'["name"="玉川通り"]', c:"#ffb74d"},
+    {n:"六本木通り", q:'["name"="六本木通り"]', c:"#ffb74d"},
+    {n:"桜田通り(R1)", q:'["name"="桜田通り"]', c:"#ffb74d"},
+    {n:"日比谷通り", q:'["name"="日比谷通り"]', c:"#ffb74d"},
+    {n:"晴海通り", q:'["name"="晴海通り"]', c:"#ffb74d"},
+    {n:"第一京浜(R15)", q:'["name"~"第一京浜"]', c:"#ffb74d"},
+    {n:"第二京浜(R1)", q:'["name"~"第二京浜"]', c:"#ffb74d"},
+    {n:"中原街道", q:'["name"~"中原街道"]', c:"#ffb74d"},
+    {n:"目黒通り", q:'["name"="目黒通り"]', c:"#ffb74d"},
+    {n:"駒沢通り", q:'["name"="駒沢通り"]', c:"#ffb74d"},
+    {n:"淡島通り", q:'["name"="淡島通り"]', c:"#ffb74d"},
+    {n:"池上通り", q:'["name"="池上通り"]', c:"#ffb74d"},
+    {n:"世田谷通り", q:'["name"="世田谷通り"]', c:"#ffb74d"},
+    {n:"産業道路", q:'["name"~"産業道路"]', c:"#ffb74d"}
   ]},
   {g:"高速", items:[
     {n:"首都高 都心環状(C1)", q:'["ref"~"C1"]', c:"#ff8a65"},
     {n:"首都高 中央環状(C2)", q:'["ref"~"C2"]', c:"#ff8a65"},
-    {n:"首都高 1号羽田線", q:'["ref"~"^1$|首都高速1号"]', c:"#ff8a65"},
+    {n:"首都高 1号羽田線", q:'["ref"~"^1$"]', c:"#ff8a65"},
+    {n:"首都高 2号目黒線", q:'["ref"~"^2$"]', c:"#ff8a65"},
     {n:"首都高 3号渋谷線", q:'["ref"~"^3$"]', c:"#ff8a65"},
     {n:"首都高 4号新宿線", q:'["ref"~"^4$"]', c:"#ff8a65"},
     {n:"首都高 5号池袋線", q:'["ref"~"^5$"]', c:"#ff8a65"},
     {n:"首都高 6号向島線", q:'["ref"~"^6$"]', c:"#ff8a65"},
     {n:"首都高 7号小松川線", q:'["ref"~"^7$"]', c:"#ff8a65"},
     {n:"首都高 9号深川線", q:'["ref"~"^9$"]', c:"#ff8a65"},
-    {n:"首都高 湾岸線(B)", q:'["ref"~"^B$"]', c:"#ff8a65"},
-    {n:"首都高 11号台場線", q:'["ref"~"^11$"]', c:"#ff8a65"}
+    {n:"首都高 11号台場線", q:'["ref"~"^11$"]', c:"#ff8a65"},
+    {n:"首都高 湾岸線(B)", q:'["ref"~"^B$"]', c:"#ff8a65"}
   ]}
 ];
 let roadLayers={}, roadOn={};
-async function fetchRoad(def){
-  const key="road-"+def.n;
+let poiLayers={}, poiOn={};
+const POI_DEFS=[
+  {k:"cross", n:"交差点名", col:"#ffd54f", minZoom:14,
+   q:'(node["highway"="traffic_signals"]["name"](BBOX);node["junction"="yes"]["name"](BBOX););out body;'},
+  {k:"ic", n:"首都高 出入口", col:"#ff8a65", minZoom:12,
+   q:'(node["highway"="motorway_junction"]["name"](BBOX);node["highway"="motorway_junction"]["ref"](BBOX););out body;'}
+];
+async function fetchPOI(def){
+  const key="poi-"+def.k;
   try{ const c=JSON.parse(localStorage.getItem(key)); if(c&&c.length) return c; }catch(e){}
-  const q=`[out:json][timeout:30];way["highway"]${def.q}(35.45,139.45,35.90,140.00);out geom;`;
+  const bbox="35.50,139.53,35.85,139.95";
+  const q=`[out:json][timeout:40];`+def.q.replace(/BBOX/g,bbox);
   const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
   for(const url of servers){
     try{
       const res=await fetchT(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
-        body:"data="+encodeURIComponent(q)}, 40000);
+        body:"data="+encodeURIComponent(q)}, 50000);
       if(!res.ok) continue;
       const j=await res.json();
-      const lines=(j.elements||[]).filter(e=>e.geometry&&e.geometry.length>1)
-        .map(e=>e.geometry.map(g=>[+g.lat.toFixed(5),+g.lon.toFixed(5)]));
-      if(!lines.length) continue;
-      try{ localStorage.setItem(key, JSON.stringify(lines)); }catch(e){}
-      return lines;
+      const pts=(j.elements||[]).filter(e=>e.lat&&e.lon&&e.tags&&(e.tags.name||e.tags.ref))
+        .map(e=>[+e.lat.toFixed(5),+e.lon.toFixed(5), e.tags.name||e.tags.ref, e.tags.ref||""]);
+      if(!pts.length) continue;
+      try{ localStorage.setItem(key, JSON.stringify(pts)); }catch(e){}
+      return pts;
     }catch(e){}
   }
   throw new Error("取得できませんでした");
 }
-async function toggleRoad(def, btn){
-  if(roadOn[def.n]){
-    if(roadLayers[def.n]) map.removeLayer(roadLayers[def.n]);
-    roadOn[def.n]=false; btn.classList.remove("on");
+function drawPOI(def){
+  if(poiLayers[def.k]){ map.removeLayer(poiLayers[def.k]); poiLayers[def.k]=null; }
+  if(!poiOn[def.k] || !poiOn[def.k+"_data"]) return;
+  if(map.getZoom()<def.minZoom) return;
+  const b=map.getBounds();
+  const cv=L.canvas({padding:0.2});
+  const pts=poiOn[def.k+"_data"].filter(p=>b.contains([p[0],p[1]])).slice(0,400);
+  poiLayers[def.k]=L.layerGroup(pts.map(p=>{
+    const isIC = def.k==="ic";
+    return L.marker([p[0],p[1]],{icon:L.divIcon({className:"",iconSize:[70,24],iconAnchor:[35,12],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="width:7px;height:7px;border-radius:50%;background:${def.col};border:1px solid #0d1220;"></div>
+        <div style="margin-top:1px;font-size:9px;font-weight:700;color:${def.col};
+          text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;">${isIC?"⇄ ":""}${p[2]}</div>
+      </div>`})})
+      .bindPopup(`<b>${p[2]}</b>${p[3]&&p[3]!==p[2]?`<br><span style="font-size:11px;color:#8b98ad;">${p[3]}</span>`:""}
+        <br><span style="font-size:11px;color:#8b98ad;">${def.n}</span>
+        <br><button onclick="_evRoute(${p[0]},${p[1]})" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">経路</button>`);
+  })).addTo(map);
+}
+map.on("moveend zoomend",()=>{ POI_DEFS.forEach(d=>{ if(poiOn[d.k]) drawPOI(d); }); });
+async function togglePOI(def, btn){
+  if(poiOn[def.k]){
+    poiOn[def.k]=false; btn.classList.remove("on");
+    if(poiLayers[def.k]){ map.removeLayer(poiLayers[def.k]); poiLayers[def.k]=null; }
     return;
   }
-  if(!roadLayers[def.n]){
+  if(!poiOn[def.k+"_data"]){
     btn.textContent=def.n+" 取得中…";
-    try{
-      const lines=await fetchRoad(def);
-      roadLayers[def.n]=L.layerGroup(lines.flatMap(l=>[
-        L.polyline(l,{color:"#0d1220",weight:7,opacity:.35}),
-        L.polyline(l,{color:def.c,weight:3.5,opacity:.95})
-      ])).bindTooltip(def.n,{sticky:true});
-    }catch(e){
-      btn.textContent=def.n;
-      alert(def.n+"のデータを取得できませんでした。電波状況を確認して、もう一度お試しください。");
-      return;
-    }
+    try{ poiOn[def.k+"_data"]=await fetchPOI(def); }
+    catch(e){ btn.textContent=def.n; alert(def.n+"を取得できませんでした。電波状況を確認してもう一度お試しください。"); return; }
     btn.textContent=def.n;
   }
-  roadLayers[def.n].addTo(map);
-  roadOn[def.n]=true; btn.classList.add("on");
+  poiOn[def.k]=true; btn.classList.add("on");
+  if(map.getZoom()<def.minZoom) map.setZoom(def.minZoom);
+  drawPOI(def);
 }
 function buildRoadList(){
   const box=document.getElementById("roadList");
@@ -3859,6 +3913,14 @@ function buildRoadList(){
      <div style="display:flex;flex-wrap:wrap;gap:5px;">`
      + g.items.map(it=>`<button class="chip road-btn${roadOn[it.n]?" on":""}" data-n="${it.n}" style="font-size:11px;padding:6px 9px;">${it.n}</button>`).join("")
      + `</div>`).join("");
+  box.insertAdjacentHTML("afterbegin",
+    `<div style="font-size:11px;color:var(--amber);margin:0 0 5px;">目印</div>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;">`
+     + POI_DEFS.map(d=>`<button class="chip poi-btn${poiOn[d.k]?" on":""}" data-k="${d.k}" style="font-size:11px;padding:6px 9px;">${d.n}</button>`).join("")
+     + `</div>`);
+  box.querySelectorAll(".poi-btn").forEach(b=>{
+    b.onclick=()=>{ const d=POI_DEFS.find(x=>x.k===b.dataset.k); if(d) togglePOI(d,b); };
+  });
   const all=ROAD_DEFS.flatMap(g=>g.items);
   box.querySelectorAll(".road-btn").forEach(b=>{
     b.onclick=()=>{ const def=all.find(x=>x.n===b.dataset.n); if(def) toggleRoad(def,b); };
