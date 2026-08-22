@@ -221,17 +221,6 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="diaryBody"></div>
 </div>
 
-<div id="gonePanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:74px;z-index:1500;
-  background:rgba(19,26,42,.97);border:1px solid var(--amber);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-    <b style="font-size:14px;">🚉 行った先営業</b>
-    <span id="goneSub" style="font-size:11px;color:var(--muted);"></span>
-    <span style="flex:1"></span>
-    <span id="goneClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
-  </div>
-  <div id="goneBody"></div>
-</div>
-
 <div id="kbSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
   <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
     padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:88svh;overflow-y:auto;">
@@ -434,7 +423,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnMemo">📝 メモ</button>
     <button class="btn" id="btnRoads">🛣 道路</button>
     <button class="btn" id="btnKB">📚 ノウハウ</button>
-    <button class="btn" id="btnGone">🚉 行った先</button>
+    <button class="btn" id="btnGone">🚇 路線図</button>
     <button class="btn" id="btnAppMode">📲 アプリ営業</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -701,7 +690,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.20-2";
+const APP_VER = "2026.08.20-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3505,92 +3494,87 @@ async function showRoads(d){
   body.innerHTML=h;
   body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>showRoadStep(+el.dataset.i));
 }
-// ===== 行った先営業(近くの主要駅・沿線) =====
-// [駅名, 緯度, 経度, 沿線, 1=快速停車/主要ターミナル]
-const STATIONS=[
- ["新宿",35.6896,139.7006,"JR中央/山手・小田急・京王",1],["渋谷",35.6580,139.7016,"JR山手・東急・京王井の頭",1],
- ["池袋",35.7295,139.7109,"JR山手・西武・東武",1],["上野",35.7141,139.7774,"JR山手/常磐",1],
- ["東京",35.6812,139.7671,"JR各線",1],["品川",35.6285,139.7387,"JR山手/京浜東北",1],
- ["新橋",35.6663,139.7583,"JR山手・ゆりかもめ",1],["浜松町",35.6553,139.7570,"JR山手",0],
- ["田町",35.6457,139.7476,"JR山手",0],["五反田",35.6259,139.7233,"JR山手・東急池上",0],
- ["目黒",35.6339,139.7157,"JR山手・東急目黒",0],["恵比寿",35.6467,139.7100,"JR山手・日比谷",0],
- ["大崎",35.6197,139.7286,"JR山手/湘南新宿",0],["秋葉原",35.6984,139.7731,"JR山手/総武",1],
- ["日暮里",35.7280,139.7710,"JR山手/常磐・京成",1],["巣鴨",35.7335,139.7392,"JR山手・都営三田",0],
- ["高田馬場",35.7126,139.7038,"JR山手・西武新宿",1],["飯田橋",35.7020,139.7449,"JR総武・各地下鉄",0],
- ["中野",35.7057,139.6659,"JR中央線",1],["荻窪",35.7046,139.6199,"JR中央線",1],
- ["吉祥寺",35.7030,139.5800,"JR中央線・京王井の頭",1],["三鷹",35.7027,139.5606,"JR中央線",1],
- ["国分寺",35.7003,139.4802,"JR中央線",1],["立川",35.6979,139.4137,"JR中央線",1],
- ["四ツ谷",35.6862,139.7305,"JR中央線",0],["御茶ノ水",35.6996,139.7653,"JR中央/総武",0],
- ["笹塚",35.6738,139.6672,"京王線(甲州街道沿線)",1],["明大前",35.6686,139.6497,"京王線・井の頭線",1],
- ["上北沢",35.6700,139.6248,"京王線(甲州街道沿線)",0],["千歳烏山",35.6690,139.6009,"京王線",1],
- ["調布",35.6520,139.5443,"京王線",1],["府中",35.6720,139.4805,"京王線",1],
- ["下北沢",35.6614,139.6680,"京王井の頭線・小田急",1],["永福町",35.6739,139.6386,"京王井の頭線",0],
- ["久我山",35.6852,139.6041,"京王井の頭線",0],["経堂",35.6512,139.6329,"小田急線",0],
- ["成城学園前",35.6404,139.5988,"小田急線",1],["登戸",35.6203,139.5698,"小田急線",1],
- ["町田",35.5417,139.4466,"小田急線・JR横浜線",1],["三軒茶屋",35.6434,139.6706,"東急田園都市・世田谷線",1],
- ["二子玉川",35.6117,139.6265,"東急田園都市・大井町線",1],["溝の口",35.5996,139.6103,"東急田園都市・JR南武",1],
- ["中目黒",35.6440,139.6989,"東急東横・日比谷線",1],["自由が丘",35.6076,139.6690,"東急東横・大井町線",1],
- ["武蔵小杉",35.5765,139.6592,"東急東横・JR各線",1],["蒲田",35.5623,139.7161,"JR京浜東北・東急",1],
- ["大井町",35.6064,139.7343,"JR京浜東北・りんかい",1],["大森",35.5885,139.7284,"JR京浜東北",0],
- ["王子",35.7554,139.7380,"JR京浜東北・都電",0],["赤羽",35.7781,139.7208,"JR京浜東北/埼京",1],
- ["川口",35.8078,139.7180,"JR京浜東北",1],["錦糸町",35.6966,139.8146,"JR総武線",1],
- ["平井",35.7075,139.8443,"JR総武線",0],["新小岩",35.7166,139.8586,"JR総武線",1],
- ["亀戸",35.6975,139.8266,"JR総武線・東武亀戸線",0],["北千住",35.7497,139.8050,"JR常磐・東武・つくばEX",1],
- ["綾瀬",35.7622,139.8250,"JR常磐・千代田線",0],["金町",35.7663,139.8703,"JR常磐線",0],
- ["松戸",35.7876,139.9010,"JR常磐線",1],["西新井",35.7768,139.7913,"東武スカイツリーライン",0],
- ["竹ノ塚",35.7940,139.7920,"東武スカイツリーライン",0],["草加",35.8256,139.8050,"東武スカイツリーライン",1],
- ["青砥",35.7443,139.8598,"京成線",1],["京成高砂",35.7503,139.8676,"京成線",1],
- ["門前仲町",35.6717,139.7969,"東京メトロ東西線・大江戸",1],["木場",35.6697,139.8069,"東西線",0],
- ["西葛西",35.6647,139.8598,"東西線",0],["浦安",35.6591,139.8974,"東西線",1],
- ["練馬",35.7378,139.6541,"西武池袋線・大江戸",1],["石神井公園",35.7370,139.6055,"西武池袋線",1],
- ["六本木",35.6641,139.7314,"日比谷・大江戸線",1],["赤坂見附",35.6773,139.7370,"銀座・丸ノ内線",0],
- ["銀座",35.6717,139.7649,"銀座・日比谷・丸ノ内",1],["大手町",35.6862,139.7663,"各地下鉄",1],
- ["豊洲",35.6547,139.7967,"有楽町線・ゆりかもめ",1],["人形町",35.6862,139.7823,"日比谷・浅草線",0]
-];
-function showGone(cur){
-  const panel=document.getElementById("gonePanel");
-  panel.style.display="block";
-  const now=new Date();
-  document.getElementById("goneSub").textContent=`${now.getHours()}時台・現在地から近い順`;
-  const list=STATIONS.map(s=>({n:s[0], ll:[s[1],s[2]], line:s[3], major:s[4], d:haversineKm(cur,[s[1],s[2]])}))
-    .filter(s=>s.d<=12).sort((a,b)=>a.d-b.d).slice(0,8);
-  const body=document.getElementById("goneBody");
-  if(!list.length){ body.innerHTML=`<div style="font-size:13px;color:var(--muted);">12km以内に収録した主要駅がありません。</div>`; return; }
-  const sh=(t)=>{const h=+t.split(":")[0]; return h<5?h+24:h;};
-  const nowH=now.getHours()<5?now.getHours()+24:now.getHours();
-  body.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
-    郊外で降ろした後は、快速停車駅や大きな通り沿いで次を拾って都心へ戻るのが基本。⚡は快速停車・主要ターミナル。</div>`
-   + list.map(s=>{
-      // その駅の1km圏内での自分の実績(現在時刻±2時間)
-      const near=myRides().filter(r=>haversineKm(s.ll,[r.lat,r.lng])<=1.0);
-      const nearNow=near.filter(r=>Math.abs(sh(r.t)-nowH)<=2);
-      const avg=nearNow.length? Math.round(nearNow.reduce((a,r)=>a+r.f,0)/nearNow.length) : (near.length? Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0);
-      return `<div style="border-top:1px solid var(--line);padding:9px 2px;">
-        <div style="display:flex;align-items:baseline;gap:7px;">
-          <b style="font-size:15px;">${s.major?"⚡":""}${s.n}駅</b>
-          <span style="font-size:11px;color:var(--muted);">${bearingText(cur,s.ll)} ${s.d.toFixed(1)}km</span>
-          <span style="flex:1"></span>
-          <button class="btn gone-go" data-lat="${s.ll[0]}" data-lng="${s.ll[1]}" style="padding:6px 9px;font-size:11px;">経路</button>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${s.line}</div>
-        ${near.length? `<div style="font-size:11px;margin-top:2px;">周辺実績 <b>${near.length}件</b>${nearNow.length?`(この時間帯${nearNow.length}件)`:""}・平均<b style="color:var(--amber)">${yen(avg)}</b></div>`
-          : `<div style="font-size:11px;color:var(--muted);margin-top:2px;">周辺の実績なし(新規開拓)</div>`}
-      </div>`;
-   }).join("");
-  body.querySelectorAll(".gone-go").forEach(b=>b.onclick=()=>{
-    panel.style.display="none";
-    showRoute(+b.dataset.lat, +b.dataset.lng);
-  });
-}
-document.getElementById("btnGone").onclick=()=>{
-  if(lastLL){ showGone(lastLL); return; }
-  if(!navigator.geolocation){ showGone([map.getCenter().lat,map.getCenter().lng]); return; }
-  navigator.geolocation.getCurrentPosition(
-    p=>showGone([p.coords.latitude,p.coords.longitude]),
-    ()=>showGone([map.getCenter().lat,map.getCenter().lng]),
-    {enableHighAccuracy:true,timeout:8000,maximumAge:30000});
+// ===== 路線図(主要路線と駅を色分けして地図に表示) =====
+const ST_LL={
+ "東京":[35.6812,139.7671],"新橋":[35.6663,139.7583],"浜松町":[35.6553,139.7570],"田町":[35.6457,139.7476],
+ "品川":[35.6285,139.7387],"大崎":[35.6197,139.7286],"五反田":[35.6259,139.7233],"目黒":[35.6339,139.7157],
+ "恵比寿":[35.6467,139.7100],"渋谷":[35.6580,139.7016],"新宿":[35.6896,139.7006],"高田馬場":[35.7126,139.7038],
+ "池袋":[35.7295,139.7109],"巣鴨":[35.7335,139.7392],"日暮里":[35.7280,139.7710],"上野":[35.7141,139.7774],
+ "秋葉原":[35.6984,139.7731],"御茶ノ水":[35.6996,139.7653],"四ツ谷":[35.6862,139.7305],"中野":[35.7057,139.6659],
+ "荻窪":[35.7046,139.6199],"吉祥寺":[35.7030,139.5800],"三鷹":[35.7027,139.5606],"国分寺":[35.7003,139.4802],
+ "立川":[35.6979,139.4137],"錦糸町":[35.6966,139.8146],"亀戸":[35.6975,139.8266],"平井":[35.7075,139.8443],
+ "新小岩":[35.7166,139.8586],"川口":[35.8078,139.7180],"赤羽":[35.7781,139.7208],"王子":[35.7554,139.7380],
+ "大井町":[35.6064,139.7343],"大森":[35.5885,139.7284],"蒲田":[35.5623,139.7161],"北千住":[35.7497,139.8050],
+ "綾瀬":[35.7622,139.8250],"金町":[35.7663,139.8703],"松戸":[35.7876,139.9010],"笹塚":[35.6738,139.6672],
+ "明大前":[35.6686,139.6497],"上北沢":[35.6700,139.6248],"千歳烏山":[35.6690,139.6009],"調布":[35.6520,139.5443],
+ "府中":[35.6720,139.4805],"下北沢":[35.6614,139.6680],"永福町":[35.6739,139.6386],"久我山":[35.6852,139.6041],
+ "経堂":[35.6512,139.6329],"成城学園前":[35.6404,139.5988],"登戸":[35.6203,139.5698],"町田":[35.5417,139.4466],
+ "中目黒":[35.6440,139.6989],"自由が丘":[35.6076,139.6690],"武蔵小杉":[35.5765,139.6592],"三軒茶屋":[35.6434,139.6706],
+ "二子玉川":[35.6117,139.6265],"溝の口":[35.5996,139.6103],"西新井":[35.7768,139.7913],"竹ノ塚":[35.7940,139.7920],
+ "草加":[35.8256,139.8050],"青砥":[35.7443,139.8598],"京成高砂":[35.7503,139.8676],"大手町":[35.6862,139.7663],
+ "門前仲町":[35.6717,139.7969],"木場":[35.6697,139.8069],"西葛西":[35.6647,139.8598],"浦安":[35.6591,139.8974],
+ "飯田橋":[35.7020,139.7449],"練馬":[35.7378,139.6541],"石神井公園":[35.7370,139.6055],"六本木":[35.6641,139.7314],
+ "銀座":[35.6717,139.7649],"豊洲":[35.6547,139.7967],"人形町":[35.6862,139.7823]
 };
-document.getElementById("goneClose").onclick=()=>document.getElementById("gonePanel").style.display="none";
+const LINES=[
+ {n:"山手線", c:"#9ACD32", s:["東京","新橋","浜松町","田町","品川","大崎","五反田","目黒","恵比寿","渋谷","新宿","高田馬場","池袋","巣鴨","日暮里","上野","秋葉原","東京"]},
+ {n:"中央線", c:"#F15A22", s:["東京","御茶ノ水","四ツ谷","新宿","中野","荻窪","吉祥寺","三鷹","国分寺","立川"]},
+ {n:"総武線", c:"#FFD400", s:["御茶ノ水","秋葉原","錦糸町","亀戸","平井","新小岩"]},
+ {n:"京浜東北線", c:"#00A7DB", s:["川口","赤羽","王子","上野","東京","浜松町","田町","品川","大井町","大森","蒲田"]},
+ {n:"常磐線", c:"#00B48D", s:["上野","日暮里","北千住","綾瀬","金町","松戸"]},
+ {n:"京王線", c:"#DD0077", s:["新宿","笹塚","明大前","上北沢","千歳烏山","調布","府中"]},
+ {n:"京王井の頭線", c:"#1C86C7", s:["渋谷","下北沢","永福町","久我山","吉祥寺"]},
+ {n:"小田急線", c:"#0085C7", s:["新宿","下北沢","経堂","成城学園前","登戸","町田"]},
+ {n:"東急東横線", c:"#DA0442", s:["渋谷","中目黒","自由が丘","武蔵小杉"]},
+ {n:"東急田園都市線", c:"#009944", s:["渋谷","三軒茶屋","二子玉川","溝の口"]},
+ {n:"東武スカイツリー線", c:"#1C4C9C", s:["北千住","西新井","竹ノ塚","草加"]},
+ {n:"京成線", c:"#1259A5", s:["日暮里","青砥","京成高砂"]},
+ {n:"東京メトロ東西線", c:"#00A7DB", s:["中野","高田馬場","飯田橋","大手町","門前仲町","木場","西葛西","浦安"]},
+ {n:"西武池袋線", c:"#F6931E", s:["池袋","練馬","石神井公園"]}
+];
+let railLayer=null, railOn=false;
+function drawRail(){
+  if(railLayer){ map.removeLayer(railLayer); railLayer=null; }
+  if(!railOn) return;
+  const items=[];
+  const cv=L.canvas({padding:0.3});
+  // 路線(色つきの線)
+  LINES.forEach(L2=>{
+    const pts=L2.s.map(n=>ST_LL[n]).filter(Boolean);
+    if(pts.length<2) return;
+    items.push(L.polyline(pts,{renderer:cv, color:"#0d1220", weight:6, opacity:.35}));
+    items.push(L.polyline(pts,{renderer:cv, color:L2.c, weight:3, opacity:.95}).bindTooltip(L2.n,{sticky:true}));
+  });
+  // 駅(所属路線の色で塗り分け・複数路線は白丸)
+  const stLines={};
+  LINES.forEach(L2=>L2.s.forEach(n=>{ (stLines[n]=stLines[n]||[]).push(L2); }));
+  Object.entries(stLines).forEach(([n,ls])=>{
+    const ll=ST_LL[n]; if(!ll) return;
+    const uniq=[...new Set(ls.map(x=>x.n))];
+    const multi=uniq.length>=2;
+    const col=multi?"#ffffff":ls[0].c;
+    const near=myRides().filter(r=>haversineKm(ll,[r.lat,r.lng])<=1.0);
+    const avg=near.length?Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0;
+    const sz=multi?13:10;
+    items.push(L.marker(ll,{icon:L.divIcon({className:"",iconSize:[64,30],iconAnchor:[32,sz/2+2],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};border:2px solid #0d1220;box-shadow:0 0 0 1px rgba(255,255,255,.6);"></div>
+        <div style="margin-top:1px;font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;">${n}</div>
+      </div>`})})
+      .bindPopup(`<b>${n}駅</b><br><span style="font-size:11px;color:#8b98ad;">${uniq.join(" / ")}</span>`
+        + (near.length?`<br>周辺実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b>`:`<br><span style="color:#8b98ad;">周辺の実績なし</span>`)
+        + `<br><button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この駅へ経路</button>`));
+  });
+  railLayer=L.layerGroup(items).addTo(map);
+}
+document.getElementById("btnGone").onclick=e=>{
+  railOn=!railOn; e.target.classList.toggle("on",railOn); drawRail();
+  if(railOn){
+    const h=document.getElementById("hint");
+    h.textContent="駅をタップすると路線と実績が出ます"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2800);
+  }
+};
 
 // ===== ノウハウ帳(AIの判断材料に加える知識) =====
 function loadKB(){ try{ return JSON.parse(localStorage.getItem("kb-v1"))||[]; }catch(e){ return []; } }
