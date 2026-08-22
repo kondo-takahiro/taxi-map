@@ -221,6 +221,34 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="diaryBody"></div>
 </div>
 
+<div id="gonePanel" style="display:none;position:fixed;top:calc(60px + env(safe-area-inset-top));left:10px;right:10px;bottom:74px;z-index:1500;
+  background:rgba(19,26,42,.97);border:1px solid var(--amber);border-radius:14px;padding:12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+    <b style="font-size:14px;">🚉 行った先営業</b>
+    <span id="goneSub" style="font-size:11px;color:var(--muted);"></span>
+    <span style="flex:1"></span>
+    <span id="goneClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="goneBody"></div>
+</div>
+
+<div id="kbSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
+  <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:88svh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;margin-bottom:8px;">
+      <b style="font-size:15px;">📚 ノウハウ帳</b>
+      <span style="flex:1"></span>
+      <span id="kbClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;">✕</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
+      YouTubeや先輩から聞いた営業のコツを貯めておくと、AI相談・コーチング・立ち回り分析がこの内容も踏まえて助言します。</div>
+    <input id="kbTitle" placeholder="出典・タイトル(例: ◯◯さんの動画 深夜営業編)" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px;margin-bottom:6px;">
+    <textarea id="kbText" rows="5" placeholder="要点を箇条書きで(例:&#10;・金曜深夜は六本木より西麻布の交差点が拾いやすい&#10;・雨の日はロータリーではなく路地の出口で待つ)" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:14px;margin-bottom:8px;resize:vertical;"></textarea>
+    <button class="btn on" id="kbSave" style="width:100%;padding:11px;font-size:15px;margin-bottom:12px;">追加する</button>
+    <div id="kbList"></div>
+  </div>
+</div>
+
 <div id="roadSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
   <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
     padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:80svh;overflow-y:auto;">
@@ -405,6 +433,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnToilet">🚻 トイレ</button>
     <button class="btn" id="btnMemo">📝 メモ</button>
     <button class="btn" id="btnRoads">🛣 道路</button>
+    <button class="btn" id="btnKB">📚 ノウハウ</button>
+    <button class="btn" id="btnGone">🚉 行った先</button>
     <button class="btn" id="btnAppMode">📲 アプリ営業</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -671,7 +701,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.19-1";
+const APP_VER = "2026.08.20-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1413,7 +1443,7 @@ async function buildBrief(force){
 - 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
 - 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
 以下の会社の研修方針を助言の土台にしてください。
-${COACH_TIPS}
+${COACH_TIPS}${kbForPrompt()}
 形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。
 「狙い」はクールの流れ(第1→第2→第3→青タン)で構成し、研修方針の推奨エリア・連続配車の使い分け・今日の曜日特性・イベント終演を織り込むこと。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
 最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","s":"18:00","f":"21:20","lat":35.7056,"lng":139.7519}]`;
@@ -3024,7 +3054,7 @@ async function askCoach(){
 形式: 「◎良い点」2つ、「▲課題」2つ、「→次の乗務でやること」3つ。それぞれ1行、数字を引用して具体的に。方針のクール別目標(10万配分など)や曜日特性と照らすこと。前置き・締めの言葉は不要。
 ■本人の重点目標: 実車率を高めること(55%超えが理想)。空走を減らす観点を必ず盛り込むこと。
 ■会社の研修方針
-${COACH_TIPS}
+${COACH_TIPS}${kbForPrompt()}
 ■本人の実績サマリー
 ${coachSummary()}`;
   const r=await callAIRetry(key, prompt_, s=>{ out.textContent=s; });
@@ -3475,6 +3505,133 @@ async function showRoads(d){
   body.innerHTML=h;
   body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>showRoadStep(+el.dataset.i));
 }
+// ===== 行った先営業(近くの主要駅・沿線) =====
+// [駅名, 緯度, 経度, 沿線, 1=快速停車/主要ターミナル]
+const STATIONS=[
+ ["新宿",35.6896,139.7006,"JR中央/山手・小田急・京王",1],["渋谷",35.6580,139.7016,"JR山手・東急・京王井の頭",1],
+ ["池袋",35.7295,139.7109,"JR山手・西武・東武",1],["上野",35.7141,139.7774,"JR山手/常磐",1],
+ ["東京",35.6812,139.7671,"JR各線",1],["品川",35.6285,139.7387,"JR山手/京浜東北",1],
+ ["新橋",35.6663,139.7583,"JR山手・ゆりかもめ",1],["浜松町",35.6553,139.7570,"JR山手",0],
+ ["田町",35.6457,139.7476,"JR山手",0],["五反田",35.6259,139.7233,"JR山手・東急池上",0],
+ ["目黒",35.6339,139.7157,"JR山手・東急目黒",0],["恵比寿",35.6467,139.7100,"JR山手・日比谷",0],
+ ["大崎",35.6197,139.7286,"JR山手/湘南新宿",0],["秋葉原",35.6984,139.7731,"JR山手/総武",1],
+ ["日暮里",35.7280,139.7710,"JR山手/常磐・京成",1],["巣鴨",35.7335,139.7392,"JR山手・都営三田",0],
+ ["高田馬場",35.7126,139.7038,"JR山手・西武新宿",1],["飯田橋",35.7020,139.7449,"JR総武・各地下鉄",0],
+ ["中野",35.7057,139.6659,"JR中央線",1],["荻窪",35.7046,139.6199,"JR中央線",1],
+ ["吉祥寺",35.7030,139.5800,"JR中央線・京王井の頭",1],["三鷹",35.7027,139.5606,"JR中央線",1],
+ ["国分寺",35.7003,139.4802,"JR中央線",1],["立川",35.6979,139.4137,"JR中央線",1],
+ ["四ツ谷",35.6862,139.7305,"JR中央線",0],["御茶ノ水",35.6996,139.7653,"JR中央/総武",0],
+ ["笹塚",35.6738,139.6672,"京王線(甲州街道沿線)",1],["明大前",35.6686,139.6497,"京王線・井の頭線",1],
+ ["上北沢",35.6700,139.6248,"京王線(甲州街道沿線)",0],["千歳烏山",35.6690,139.6009,"京王線",1],
+ ["調布",35.6520,139.5443,"京王線",1],["府中",35.6720,139.4805,"京王線",1],
+ ["下北沢",35.6614,139.6680,"京王井の頭線・小田急",1],["永福町",35.6739,139.6386,"京王井の頭線",0],
+ ["久我山",35.6852,139.6041,"京王井の頭線",0],["経堂",35.6512,139.6329,"小田急線",0],
+ ["成城学園前",35.6404,139.5988,"小田急線",1],["登戸",35.6203,139.5698,"小田急線",1],
+ ["町田",35.5417,139.4466,"小田急線・JR横浜線",1],["三軒茶屋",35.6434,139.6706,"東急田園都市・世田谷線",1],
+ ["二子玉川",35.6117,139.6265,"東急田園都市・大井町線",1],["溝の口",35.5996,139.6103,"東急田園都市・JR南武",1],
+ ["中目黒",35.6440,139.6989,"東急東横・日比谷線",1],["自由が丘",35.6076,139.6690,"東急東横・大井町線",1],
+ ["武蔵小杉",35.5765,139.6592,"東急東横・JR各線",1],["蒲田",35.5623,139.7161,"JR京浜東北・東急",1],
+ ["大井町",35.6064,139.7343,"JR京浜東北・りんかい",1],["大森",35.5885,139.7284,"JR京浜東北",0],
+ ["王子",35.7554,139.7380,"JR京浜東北・都電",0],["赤羽",35.7781,139.7208,"JR京浜東北/埼京",1],
+ ["川口",35.8078,139.7180,"JR京浜東北",1],["錦糸町",35.6966,139.8146,"JR総武線",1],
+ ["平井",35.7075,139.8443,"JR総武線",0],["新小岩",35.7166,139.8586,"JR総武線",1],
+ ["亀戸",35.6975,139.8266,"JR総武線・東武亀戸線",0],["北千住",35.7497,139.8050,"JR常磐・東武・つくばEX",1],
+ ["綾瀬",35.7622,139.8250,"JR常磐・千代田線",0],["金町",35.7663,139.8703,"JR常磐線",0],
+ ["松戸",35.7876,139.9010,"JR常磐線",1],["西新井",35.7768,139.7913,"東武スカイツリーライン",0],
+ ["竹ノ塚",35.7940,139.7920,"東武スカイツリーライン",0],["草加",35.8256,139.8050,"東武スカイツリーライン",1],
+ ["青砥",35.7443,139.8598,"京成線",1],["京成高砂",35.7503,139.8676,"京成線",1],
+ ["門前仲町",35.6717,139.7969,"東京メトロ東西線・大江戸",1],["木場",35.6697,139.8069,"東西線",0],
+ ["西葛西",35.6647,139.8598,"東西線",0],["浦安",35.6591,139.8974,"東西線",1],
+ ["練馬",35.7378,139.6541,"西武池袋線・大江戸",1],["石神井公園",35.7370,139.6055,"西武池袋線",1],
+ ["六本木",35.6641,139.7314,"日比谷・大江戸線",1],["赤坂見附",35.6773,139.7370,"銀座・丸ノ内線",0],
+ ["銀座",35.6717,139.7649,"銀座・日比谷・丸ノ内",1],["大手町",35.6862,139.7663,"各地下鉄",1],
+ ["豊洲",35.6547,139.7967,"有楽町線・ゆりかもめ",1],["人形町",35.6862,139.7823,"日比谷・浅草線",0]
+];
+function showGone(cur){
+  const panel=document.getElementById("gonePanel");
+  panel.style.display="block";
+  const now=new Date();
+  document.getElementById("goneSub").textContent=`${now.getHours()}時台・現在地から近い順`;
+  const list=STATIONS.map(s=>({n:s[0], ll:[s[1],s[2]], line:s[3], major:s[4], d:haversineKm(cur,[s[1],s[2]])}))
+    .filter(s=>s.d<=12).sort((a,b)=>a.d-b.d).slice(0,8);
+  const body=document.getElementById("goneBody");
+  if(!list.length){ body.innerHTML=`<div style="font-size:13px;color:var(--muted);">12km以内に収録した主要駅がありません。</div>`; return; }
+  const sh=(t)=>{const h=+t.split(":")[0]; return h<5?h+24:h;};
+  const nowH=now.getHours()<5?now.getHours()+24:now.getHours();
+  body.innerHTML=`<div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">
+    郊外で降ろした後は、快速停車駅や大きな通り沿いで次を拾って都心へ戻るのが基本。⚡は快速停車・主要ターミナル。</div>`
+   + list.map(s=>{
+      // その駅の1km圏内での自分の実績(現在時刻±2時間)
+      const near=myRides().filter(r=>haversineKm(s.ll,[r.lat,r.lng])<=1.0);
+      const nearNow=near.filter(r=>Math.abs(sh(r.t)-nowH)<=2);
+      const avg=nearNow.length? Math.round(nearNow.reduce((a,r)=>a+r.f,0)/nearNow.length) : (near.length? Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0);
+      return `<div style="border-top:1px solid var(--line);padding:9px 2px;">
+        <div style="display:flex;align-items:baseline;gap:7px;">
+          <b style="font-size:15px;">${s.major?"⚡":""}${s.n}駅</b>
+          <span style="font-size:11px;color:var(--muted);">${bearingText(cur,s.ll)} ${s.d.toFixed(1)}km</span>
+          <span style="flex:1"></span>
+          <button class="btn gone-go" data-lat="${s.ll[0]}" data-lng="${s.ll[1]}" style="padding:6px 9px;font-size:11px;">経路</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${s.line}</div>
+        ${near.length? `<div style="font-size:11px;margin-top:2px;">周辺実績 <b>${near.length}件</b>${nearNow.length?`(この時間帯${nearNow.length}件)`:""}・平均<b style="color:var(--amber)">${yen(avg)}</b></div>`
+          : `<div style="font-size:11px;color:var(--muted);margin-top:2px;">周辺の実績なし(新規開拓)</div>`}
+      </div>`;
+   }).join("");
+  body.querySelectorAll(".gone-go").forEach(b=>b.onclick=()=>{
+    panel.style.display="none";
+    showRoute(+b.dataset.lat, +b.dataset.lng);
+  });
+}
+document.getElementById("btnGone").onclick=()=>{
+  if(lastLL){ showGone(lastLL); return; }
+  if(!navigator.geolocation){ showGone([map.getCenter().lat,map.getCenter().lng]); return; }
+  navigator.geolocation.getCurrentPosition(
+    p=>showGone([p.coords.latitude,p.coords.longitude]),
+    ()=>showGone([map.getCenter().lat,map.getCenter().lng]),
+    {enableHighAccuracy:true,timeout:8000,maximumAge:30000});
+};
+document.getElementById("goneClose").onclick=()=>document.getElementById("gonePanel").style.display="none";
+
+// ===== ノウハウ帳(AIの判断材料に加える知識) =====
+function loadKB(){ try{ return JSON.parse(localStorage.getItem("kb-v1"))||[]; }catch(e){ return []; } }
+function saveKB(v){ localStorage.setItem("kb-v1", JSON.stringify(v)); }
+function kbForPrompt(){
+  const list=loadKB();
+  if(!list.length) return "";
+  let s=list.map(k=>`【${k.t||"メモ"}】\n${k.b}`).join("\n");
+  if(s.length>4000) s=s.slice(0,4000)+"…";
+  return `\n■本人が集めた営業ノウハウ(動画・先輩の話など。研修方針と併せて活用し、矛盾する場合は本人の実績データを優先)\n${s}\n`;
+}
+function renderKBList(){
+  const box=document.getElementById("kbList");
+  const list=loadKB();
+  if(!list.length){ box.innerHTML=`<div style="font-size:12px;color:var(--muted);">まだ登録がありません。</div>`; return; }
+  box.innerHTML=`<div style="font-size:11px;color:var(--amber);margin-bottom:5px;">登録済み ${list.length}件</div>`
+    + list.map(k=>`<div style="border-top:1px solid var(--line);padding:8px 0;">
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <b style="font-size:13px;flex:1;">${k.t||"メモ"}</b>
+          <span class="kb-del" data-id="${k.id}" style="color:#f08080;font-size:11px;cursor:pointer;">削除</span></div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.65;white-space:pre-wrap;margin-top:2px;">${k.b}</div>
+      </div>`).join("");
+  box.querySelectorAll(".kb-del").forEach(el=>el.onclick=()=>{
+    if(!confirm("このノウハウを削除しますか?")) return;
+    saveKB(loadKB().filter(x=>x.id!==el.dataset.id));
+    renderKBList();
+  });
+}
+document.getElementById("btnKB").onclick=()=>{ renderKBList(); document.getElementById("kbSheet").style.display="block"; };
+document.getElementById("kbClose").onclick=()=>document.getElementById("kbSheet").style.display="none";
+document.getElementById("kbSave").onclick=()=>{
+  const t=document.getElementById("kbTitle").value.trim();
+  const b=document.getElementById("kbText").value.trim();
+  if(!b){ alert("内容を入力してください"); return; }
+  const list=loadKB();
+  list.push({id:"k"+Date.now(), t, b, d:new Date().toISOString().slice(0,10)});
+  saveKB(list);
+  document.getElementById("kbTitle").value=""; document.getElementById("kbText").value="";
+  renderKBList();
+};
+
 // ===== 幹線道路・高速道路の表示 =====
 const ROAD_DEFS=[
   {g:"環状", items:[
@@ -4292,6 +4449,9 @@ document.getElementById("btnCsvOut").onclick=()=>{
 // メモ・実車率・休憩の書き出し(貼り付け読み込みでそのまま復元できる形式)
 document.getElementById("btnMemoOut").onclick=()=>{
   const lines=[];
+  loadKB().forEach(k=>{
+    lines.push(["KB",(k.t||"").replace(/[,\n]/g," "),(k.b||"").replace(/\n/g,"§").replace(/,/g,"、"),k.d||""].join(","));
+  });
   const memos=loadMemos();
   memos.forEach(m=>{
     lines.push(["MEMO",m.lat,m.lng,m.c,(m.n||"").replace(/[,\n]/g," "),(m.t||"").replace(/[,\n]/g," "),m.d||""].join(","));
@@ -4318,6 +4478,18 @@ function importKPI(text){
   try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
   try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
   let n=0;
+  // KB行: KB,タイトル,本文(§=改行),登録日
+  const kb=loadKB(); let kn=0;
+  text.split(/\r?\n/).forEach(l=>{
+    const m=l.trim().match(/^KB\s*,\s*([^,]*)\s*,\s*([^,]*)\s*,?\s*(.*)$/i);
+    if(!m) return;
+    const b=(m[2]||"").replace(/§/g,"\n").trim();
+    if(!b) return;
+    if(kb.some(x=>x.b===b)) return;
+    kb.push({id:"k"+Date.now()+Math.random(), t:(m[1]||"").trim(), b, d:(m[3]||"").trim()});
+    kn++;
+  });
+  if(kn) saveKB(kb);
   // MEMO行: MEMO,lat,lng,カテゴリ,名前,本文,登録日
   const memos=loadMemos();
   let mn=0;
@@ -4343,7 +4515,7 @@ function importKPI(text){
     localStorage.setItem("kpi-v1", JSON.stringify(kpi));
     localStorage.setItem("break-v1", JSON.stringify(brk));
   }
-  return n+mn;
+  return n+mn+kn;
 }
 function importText(text, silent){
   const nk=importKPI(text);
