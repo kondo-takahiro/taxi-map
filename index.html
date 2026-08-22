@@ -221,6 +221,16 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="diaryBody"></div>
 </div>
 
+<div id="settingsPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+    <b style="font-size:16px;">⚙️ 設定</b>
+    <span style="flex:1"></span>
+    <span id="settingsClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div id="settingsBody"></div>
+</div>
+
 <div id="kbSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
   <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
     padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:88svh;overflow-y:auto;">
@@ -355,6 +365,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="font-size:18px;line-height:1;">📊</span>分析</button>
   <button class="tab-btn" data-tab="brief" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
     <span style="font-size:18px;line-height:1;">📋</span>今日</button>
+  <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+    <span style="font-size:18px;line-height:1;">⚙️</span>設定</button>
 </nav>
 
 <div class="panel" id="panel">
@@ -424,6 +436,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnRoads">🛣 道路</button>
     <button class="btn" id="btnKB">📚 ノウハウ</button>
     <button class="btn" id="btnGone">🚇 路線図</button>
+    <button class="btn" id="btnLast">🚃 終電</button>
     <button class="btn" id="btnAppMode">📲 アプリ営業</button>
     <button class="btn" id="btnHead">⬆️ 北固定</button>
     <button class="btn" id="btnStyle">🌙 夜間配色</button>
@@ -690,7 +703,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.20-3";
+const APP_VER = "2026.08.20-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3494,6 +3507,53 @@ async function showRoads(d){
   body.innerHTML=h;
   body.querySelectorAll(".road-row").forEach(el=>el.onclick=()=>showRoadStep(+el.dataset.i));
 }
+// ===== 表示ボタンの設定(使わない機能を隠す) =====
+const BTN_GROUPS=[
+  {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
+  {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
+  {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
+];
+function loadHidden(){ try{ return new Set(JSON.parse(localStorage.getItem("hidden-btns"))||[]); }catch(e){ return new Set(); } }
+function applyHidden(){
+  const hid=loadHidden();
+  BTN_GROUPS.flatMap(g=>g.items).forEach(([id])=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display = hid.has(id) ? "none" : "";
+  });
+}
+function renderSettings(){
+  const hid=loadHidden();
+  const body=document.getElementById("settingsBody");
+  body.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+      使わないボタンを消してパネルをすっきりできます。タップで表示/非表示が切り替わります。<br>
+      <span style="color:var(--amber)">オレンジ=表示中</span>　グレー=非表示</div>`
+    + BTN_GROUPS.map(g=>`<div style="font-size:12px;color:var(--amber);margin:12px 0 5px;">${g.g}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">`
+        + g.items.map(([id,label])=>`<button class="chip set-btn${hid.has(id)?"":" on"}" data-id="${id}" style="font-size:12px;padding:7px 10px;">${label}</button>`).join("")
+        + `</div>`).join("")
+    + `<div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn" id="setAllOn" style="flex:1;padding:10px;">すべて表示</button>
+        <button class="btn" id="setMin" style="flex:1;padding:10px;">最小構成にする</button></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:8px;">「最小構成」は走行中によく使うものだけを残します(ヒート・指標・現在地・立ち回り・アプリ営業・日誌・分析)。</div>`;
+  body.querySelectorAll(".set-btn").forEach(b=>b.onclick=()=>{
+    const h=loadHidden();
+    if(h.has(b.dataset.id)) h.delete(b.dataset.id); else h.add(b.dataset.id);
+    localStorage.setItem("hidden-btns", JSON.stringify([...h]));
+    applyHidden(); renderSettings();
+  });
+  document.getElementById("setAllOn").onclick=()=>{
+    localStorage.setItem("hidden-btns","[]"); applyHidden(); renderSettings();
+  };
+  document.getElementById("setMin").onclick=()=>{
+    const keep=new Set(["btnHeat","btnMetric","btnGps","btnAdvice","btnAppMode","btnDiary","btnReview","btnAdd","btnScan","btnSync"]);
+    const hide=BTN_GROUPS.flatMap(g=>g.items).map(([id])=>id).filter(id=>!keep.has(id));
+    localStorage.setItem("hidden-btns", JSON.stringify(hide));
+    applyHidden(); renderSettings();
+  };
+}
+
 // ===== 路線図(主要路線と駅を色分けして地図に表示) =====
 const ST_LL={
  "東京":[35.6812,139.7671],"新橋":[35.6663,139.7583],"浜松町":[35.6553,139.7570],"田町":[35.6457,139.7476],
@@ -3532,6 +3592,93 @@ const LINES=[
  {n:"東京メトロ東西線", c:"#00A7DB", s:["中野","高田馬場","飯田橋","大手町","門前仲町","木場","西葛西","浦安"]},
  {n:"西武池袋線", c:"#F6931E", s:["池袋","練馬","石神井公園"]}
 ];
+// 終電の目安(平日・その駅を最終電車が通る頃合い)。実測で修正可能
+const LAST_DEF={
+ "新宿":"00:45","渋谷":"00:45","池袋":"00:45","東京":"00:40","上野":"00:45","品川":"00:45","新橋":"00:40",
+ "浜松町":"00:40","田町":"00:40","五反田":"00:40","目黒":"00:40","恵比寿":"00:40","大崎":"00:40",
+ "秋葉原":"00:40","日暮里":"00:45","巣鴨":"00:40","高田馬場":"00:45","御茶ノ水":"00:40","四ツ谷":"00:40",
+ "飯田橋":"00:40","大手町":"00:40","銀座":"00:45","六本木":"00:45","豊洲":"00:45","人形町":"00:45",
+ "中野":"00:50","荻窪":"00:55","吉祥寺":"01:00","三鷹":"01:05","国分寺":"00:55","立川":"00:50",
+ "錦糸町":"00:45","亀戸":"00:50","平井":"00:55","新小岩":"01:00",
+ "大井町":"00:45","大森":"00:50","蒲田":"00:55","王子":"00:50","赤羽":"00:55","川口":"01:00",
+ "北千住":"00:55","綾瀬":"01:00","金町":"01:05","松戸":"01:10",
+ "笹塚":"00:50","明大前":"00:55","上北沢":"01:00","千歳烏山":"01:00","調布":"00:55","府中":"00:50",
+ "下北沢":"00:55","永福町":"01:00","久我山":"01:05","経堂":"00:55","成城学園前":"01:00","登戸":"01:00","町田":"00:50",
+ "中目黒":"00:50","自由が丘":"00:55","武蔵小杉":"00:55","三軒茶屋":"00:50","二子玉川":"00:55","溝の口":"01:00",
+ "西新井":"01:00","竹ノ塚":"01:05","草加":"01:10","青砥":"00:55","京成高砂":"01:00",
+ "門前仲町":"00:45","木場":"00:50","西葛西":"00:55","浦安":"01:00","練馬":"00:55","石神井公園":"01:00"
+};
+function loadLast(){
+  let ov={}; try{ ov=JSON.parse(localStorage.getItem("lasttrain-v1"))||{}; }catch(e){}
+  return Object.assign({}, LAST_DEF, ov);
+}
+function setLast(st, hhmm){
+  let ov={}; try{ ov=JSON.parse(localStorage.getItem("lasttrain-v1"))||{}; }catch(e){}
+  if(hhmm) ov[st]=hhmm; else delete ov[st];
+  localStorage.setItem("lasttrain-v1", JSON.stringify(ov));
+}
+window._editLast=(st)=>{
+  const cur=loadLast()[st]||"";
+  const v=prompt(st+"駅の終電の目安(HH:MM)。実際の時刻に直せます", cur);
+  if(v===null) return;
+  const m=v.trim().match(/^(\d{1,2})[::](\d{2})$/);
+  if(v.trim()==="" ){ setLast(st,null); } else if(m){ setLast(st, String(+m[1]).padStart(2,"0")+":"+m[2]); }
+  map.closePopup(); drawLast();
+};
+let lastLayer=null, lastOn=false;
+function minsFromLast(hhmm){
+  const m=hhmm.match(/^(\d{1,2}):(\d{2})$/); if(!m) return null;
+  const now=new Date();
+  const t=new Date(now); t.setHours(+m[1], +m[2], 0, 0);
+  if(+m[1]<5) { /* 深夜は当日の0時台 */ }
+  let diff=(now-t)/60000;
+  if(diff< -720) diff+=1440;      // 日付をまたぐ場合の補正
+  if(diff> 720) diff-=1440;
+  return Math.round(diff);
+}
+function drawLast(){
+  if(lastLayer){ map.removeLayer(lastLayer); lastLayer=null; }
+  if(!lastOn) return;
+  const tbl=loadLast();
+  const stLines={};
+  LINES.forEach(L2=>L2.s.forEach(n=>{ (stLines[n]=stLines[n]||[]).push(L2.n); }));
+  const items=[];
+  Object.entries(tbl).forEach(([n,hhmm])=>{
+    const ll=ST_LL[n]; if(!ll) return;
+    const d=minsFromLast(hhmm);
+    // 通過前=グレー / 通過後0〜45分=赤(需要ピーク) / 45〜120分=橙 / それ以降=薄い
+    let col="#78909c", label=hhmm;
+    if(d!=null){
+      if(d<0){ col="#78909c"; label=hhmm+" (あと"+(-d)+"分)"; }
+      else if(d<=45){ col="#ff5252"; label=hhmm+" 済 "+d+"分"; }
+      else if(d<=120){ col="#ffb74d"; label=hhmm+" 済"; }
+      else { col="#4a5568"; label=hhmm; }
+    }
+    const uniq=[...new Set(stLines[n]||[])];
+    items.push(L.marker(ll,{icon:L.divIcon({className:"",iconSize:[80,30],iconAnchor:[40,14],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="font-size:10px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;">${n}</div>
+        <div style="margin-top:1px;background:rgba(13,19,32,.92);border:1px solid ${col};color:${col};
+          border-radius:7px;padding:1px 5px;font-size:9px;font-weight:800;white-space:nowrap;">${label}</div>
+      </div>`})})
+      .bindPopup(`<b>${n}駅</b> <span style="font-size:11px;color:#8b98ad;">${uniq.join(" / ")}</span><br>
+        終電の目安 <b>${hhmm}</b>${d!=null? (d<0?`<br>あと${-d}分`:`<br><b style="color:${col}">通過から${d}分</b>`) : ""}
+        <br><span style="font-size:10px;color:#8b98ad;">※目安です。実時刻は各社の時刻表で確認を</span>
+        <br><button onclick="_editLast('${n}')" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid #8b98ad;background:transparent;color:#fff;">時刻を直す</button>
+        <button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;margin-left:6px;padding:6px 10px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">経路</button>`));
+  });
+  lastLayer=L.layerGroup(items).addTo(map);
+}
+setInterval(()=>{ if(lastOn) drawLast(); }, 300000);
+document.getElementById("btnLast").onclick=e=>{
+  lastOn=!lastOn; e.target.classList.toggle("on",lastOn); drawLast();
+  if(lastOn){
+    const h=document.getElementById("hint");
+    h.textContent="赤=終電通過から45分以内(需要ピーク)"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },3000);
+  }
+};
+
 let railLayer=null, railOn=false;
 function drawRail(){
   if(railLayer){ map.removeLayer(railLayer); railLayer=null; }
@@ -4143,7 +4290,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 });
 // ===== 下部タブによる画面切替 =====
 function showTab(name){
-  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel"};
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
   document.querySelectorAll(".tab-btn").forEach(b=>{
@@ -4157,9 +4304,10 @@ function showTab(name){
   if(name==="diary"){ const on=document.querySelector(".diary-tab.on"); renderDiary(on?on.dataset.t:"y"); }
   if(name==="review") renderReview();
   if(name==="brief") buildBrief(false);
+  if(name==="settings") renderSettings();
 }
 document.querySelectorAll(".tab-btn").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
-["diaryClose","reviewClose","briefClose"].forEach(id=>{
+["diaryClose","reviewClose","briefClose","settingsClose"].forEach(id=>{
   const el=document.getElementById(id);
   if(el) el.onclick=()=>showTab("map");
 });
@@ -4657,6 +4805,7 @@ document.getElementById("btnAppMode").onclick=()=>{
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
   updateBigWindow();
   updatePlan();
+  applyHidden();
   setTimeout(layoutUnderHUD,60);
   // 今日のブリーフィングを取得済みならイベントピンを復元
   try{
