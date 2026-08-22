@@ -257,6 +257,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
       <span id="roadClear" style="color:var(--muted);font-size:12px;cursor:pointer;margin-right:12px;">すべて消す</span>
       <span id="roadSheetClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;">✕</span>
     </div>
+    <div id="roadStatus" style="display:none;font-size:11px;color:var(--amber);background:var(--panel2);border-radius:8px;padding:7px 9px;margin-bottom:8px;"></div>
     <div id="roadList"></div>
     <div style="font-size:10px;color:var(--muted);margin-top:8px;">交差点名はズーム15以上、出入口はズーム13以上で表示されます。初回のみ取得に数秒かかります。取得後は端末に保存され、次回から即表示されます。</div>
   </div>
@@ -703,7 +704,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.21-1";
+const APP_VER = "2026.08.21-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3807,7 +3808,7 @@ const ROAD_DEFS=[
     {n:"目白通り", q:'["name"="目白通り"]', c:"#ffb74d"},
     {n:"新目白通り", q:'["name"="新目白通り"]', c:"#ffb74d"},
     {n:"大久保通り", q:'["name"="大久保通り"]', c:"#ffb74d"},
-    {n:"井の頭通り", q:'["name"="井ノ頭通り|井の頭通り"]', c:"#ffb74d"},
+    {n:"井の頭通り", q:'["name"~"井ノ頭通り|井の頭通り"]', c:"#ffb74d"},
     {n:"方南通り", q:'["name"="方南通り"]', c:"#ffb74d"},
     {n:"青山通り(R246)", q:'["name"~"青山通"]', c:"#ffb74d"},
     {n:"玉川通り(R246)", q:'["name"="玉川通り"]', c:"#ffb74d"},
@@ -3841,6 +3842,69 @@ const ROAD_DEFS=[
   ]}
 ];
 let roadLayers={}, roadOn={};
+function roadStatus(msg){
+  const el=document.getElementById("roadStatus");
+  if(el){ el.textContent=msg||""; el.style.display=msg?"block":"none"; }
+}
+async function fetchRoadQ(def, qsel, key){
+  const q=`[out:json][timeout:30];way["highway"]${qsel}(35.45,139.45,35.90,140.00);out geom;`;
+  const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  for(let i=0;i<servers.length;i++){
+    try{
+      roadStatus(`${def.n} を取得中… (サーバー${i+1}/${servers.length})`);
+      const res=await fetchT(servers[i],{method:"POST",
+        headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(q)}, 40000);
+      if(!res.ok) continue;
+      const j=await res.json();
+      const lines=(j.elements||[]).filter(e=>e.geometry&&e.geometry.length>1)
+        .map(e=>e.geometry.map(g=>[+g.lat.toFixed(5),+g.lon.toFixed(5)]));
+      if(!lines.length) continue;
+      const s=JSON.stringify(lines);
+      if(s.length<400000){ try{ localStorage.setItem(key,s); }catch(e){} }
+      return lines;
+    }catch(e){}
+  }
+  return null;
+}
+async function fetchRoad(def){
+  const key="road-"+def.n;
+  try{ const c=JSON.parse(localStorage.getItem(key)); if(c&&c.length) return c; }catch(e){}
+  const qs=[def.q];
+  const exact=def.q.match(/^\["name"="(.+)"\]$/);
+  if(exact) qs.push(`["name"~"${exact[1]}"]`);   // 完全一致で無ければ部分一致でも試す
+  for(const qq of qs){
+    const r=await fetchRoadQ(def, qq, key);
+    if(r) return r;
+  }
+  throw new Error("該当する道路が見つかりませんでした");
+}
+async function toggleRoad(def, btn){
+  if(roadOn[def.n]){
+    if(roadLayers[def.n]) map.removeLayer(roadLayers[def.n]);
+    roadOn[def.n]=false; btn.classList.remove("on");
+    return;
+  }
+  if(!roadLayers[def.n]){
+    btn.classList.add("on"); btn.style.opacity=".6";
+    roadStatus(def.n+" を取得中…");
+    try{
+      const lines=await fetchRoad(def);
+      const cv=L.canvas({padding:0.3});
+      roadLayers[def.n]=L.layerGroup(lines.flatMap(l=>[
+        L.polyline(l,{renderer:cv, color:"#0d1220", weight:7, opacity:.35}),
+        L.polyline(l,{renderer:cv, color:def.c, weight:3.5, opacity:.95})
+      ])).bindTooltip(def.n,{sticky:true});
+    }catch(e){
+      btn.classList.remove("on"); btn.style.opacity="";
+      roadStatus(def.n+" を取得できませんでした("+e.message+")");
+      return;
+    }
+    btn.style.opacity=""; roadStatus("");
+  }
+  roadLayers[def.n].addTo(map);
+  roadOn[def.n]=true; btn.classList.add("on");
+}
 let poiLayers={}, poiOn={};
 const POI_DEFS=[
   {k:"cross", n:"交差点名", col:"#ffd54f", minZoom:14,
