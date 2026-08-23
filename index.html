@@ -406,12 +406,12 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   </div>
   <div class="row">
     <span class="label">クール</span>
-    <button class="chip cool on" data-c="all">全て</button>
+    <button class="chip cool" data-c="all">全て</button>
     <button class="chip cool" data-c="7,13">第1</button>
     <button class="chip cool" data-c="13,18">第2</button>
     <button class="chip cool" data-c="18,22">第3</button>
     <button class="chip cool" data-c="22,29">青タン</button>
-    <button class="chip cool" data-c="now">現在</button>
+    <button class="chip cool on" data-c="auto">自動</button>
   </div>
   <div class="row">
     <span class="label">時間帯</span>
@@ -704,7 +704,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.21-3";
+const APP_VER = "2026.08.21-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1980,22 +1980,39 @@ function setTimeRange(a,b){
   document.getElementById("tlVal").textContent = `${fmtH(tMin)} – ${fmtH(tMax)}`;
   render();
 }
+// 現在時刻が属するクール
+const COOL_RANGES=[[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,29,"青タン"]];
+let coolAuto=true;   // 自動追従するか
+function currentCool(){
+  const d=new Date(); const h=d.getHours()+d.getMinutes()/60;
+  const sh=h<5?h+24:h;
+  return COOL_RANGES.find(c=>sh>=c[0]&&sh<c[1]) || COOL_RANGES[0];
+}
+function applyAutoCool(force){
+  if(!coolAuto) return;
+  const c=currentCool();
+  if(!force && tMin===c[0] && tMax===c[1]) return;   // 変化がなければ何もしない
+  setTimeRange(c[0], c[1]);
+  const btn=document.querySelector('.chip.cool[data-c="auto"]');
+  if(btn) btn.textContent="自動("+c[2]+")";
+}
+setInterval(()=>applyAutoCool(false), 60000);
+
 document.querySelectorAll(".chip.cool").forEach(c=>{
   c.onclick=()=>{
     document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
     c.classList.add("on");
     const v=c.dataset.c;
+    if(v==="auto"){ coolAuto=true; applyAutoCool(true); return; }
+    coolAuto=false;
     if(v==="all"){ setTimeRange(5,29); return; }
-    if(v==="now"){
-      const h=new Date().getHours(), sh=h<5?h+24:h;
-      setTimeRange(Math.max(5,sh-1), Math.min(29,sh+2)); return;
-    }
     const [a,b]=v.split(",").map(Number);
     setTimeRange(a,b);
   };
 });
 // スライダーを手で動かしたらクールの選択を外す
 [elMin,elMax].forEach(el=>el.addEventListener("input",()=>{
+  coolAuto=false;
   document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
 }));
 
@@ -4922,7 +4939,7 @@ document.getElementById("btnAppMode").onclick=()=>{
 function saveViewState(){
   try{
     const st={
-      minFare, modeFilter, weatherFilter, metric, appMode,
+      minFare, modeFilter, weatherFilter, metric, appMode, coolAuto,
       dows:[...dowSet], tMin, tMax,
       heatOn, areaMode, bigOn, predictOn,
       standsOn, toiletOn, memoOn, railOn, lastOn,
@@ -4947,7 +4964,11 @@ function restoreViewState(){
     document.querySelectorAll(".chip.wx").forEach(c=>c.classList.toggle("on", c.dataset.wx===weatherFilter)); }
   if(Array.isArray(st.dows)){ dowSet=new Set(st.dows);
     document.querySelectorAll(".chip.dow").forEach(c=>c.classList.toggle("on", dowSet.has(+c.dataset.dow))); }
-  if(st.tMin!=null && st.tMax!=null){
+  if(st.coolAuto!=null) coolAuto=st.coolAuto;
+  if(coolAuto){
+    applyAutoCool(true);
+    document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="auto"));
+  }else if(st.tMin!=null && st.tMax!=null){
     tMin=st.tMin; tMax=st.tMax; elMin.value=tMin; elMax.value=tMax;
     const fill=document.getElementById("tlFill");
     fill.style.left=((tMin-5)/24*100)+"%"; fill.style.width=((tMax-tMin)/24*100)+"%";
@@ -5025,15 +5046,8 @@ setInterval(saveViewState, 30000);
     return;   // 前回の状態を維持
   }
   document.getElementById("btnHeat").classList.add("on");
-  const h=new Date().getHours();
-  const sh=h<5?h+24:h;
-  elMin.value=Math.max(5, sh-1); elMax.value=Math.min(29, sh+2);
-  tMin=+elMin.value; tMax=+elMax.value;
-  const fill=document.getElementById("tlFill");
-  fill.style.left=((tMin-5)/24*100)+"%";
-  fill.style.width=((tMax-tMin)/24*100)+"%";
-  document.getElementById("tlVal").textContent=fmtH(tMin)+" – "+fmtH(tMax);
-  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="now"));
+  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="auto"));
+  coolAuto=true; applyAutoCool(true);
   // 曜日フィルターの初期値: 平日は月〜金、土日は土日
   const td=new Date(); if(td.getHours()<5) td.setDate(td.getDate()-1);
   const isWeekend = td.getDay()===0 || td.getDay()===6;
