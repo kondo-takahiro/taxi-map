@@ -704,7 +704,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.21-4";
+const APP_VER = "2026.08.26-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3663,14 +3663,17 @@ function minsFromLast(hhmm){
   if(diff> 720) diff-=1440;
   return Math.round(diff);
 }
+function loadLastOv(){ try{ return JSON.parse(localStorage.getItem("lasttrain-v1"))||{}; }catch(e){ return {}; } }
 function drawLast(){
   if(lastLayer){ map.removeLayer(lastLayer); lastLayer=null; }
   if(!lastOn) return;
-  const tbl=loadLast();
+  const tbl=loadLast(), ov=loadLastOv();
   const stLines={};
   LINES.forEach(L2=>L2.s.forEach(n=>{ (stLines[n]=stLines[n]||[]).push(L2.n); }));
   const items=[];
   Object.entries(tbl).forEach(([n,hhmm])=>{
+    if(!stLines[n]) return;                 // 路線図に無い駅は表示しない
+    const confirmed = ov[n]!=null;          // 自分で確認して入力済みか
     const ll=ST_LL[n]; if(!ll) return;
     const d=minsFromLast(hhmm);
     // 通過前=グレー / 通過後0〜45分=赤(需要ピーク) / 45〜120分=橙 / それ以降=薄い
@@ -3682,27 +3685,48 @@ function drawLast(){
       else { col="#4a5568"; label=hhmm; }
     }
     const uniq=[...new Set(stLines[n]||[])];
-    items.push(L.marker(ll,{icon:L.divIcon({className:"",iconSize:[80,30],iconAnchor:[40,14],
+    if(!confirmed) label="?"+label;         // 目安は?付き
+    items.push(L.marker(ll,{icon:L.divIcon({className:"",iconSize:[86,30],iconAnchor:[43,14],
       html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
         <div style="font-size:10px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;">${n}</div>
-        <div style="margin-top:1px;background:rgba(13,19,32,.92);border:1px solid ${col};color:${col};
-          border-radius:7px;padding:1px 5px;font-size:9px;font-weight:800;white-space:nowrap;">${label}</div>
+        <div style="margin-top:1px;background:rgba(13,19,32,.92);border:1px ${confirmed?"solid":"dashed"} ${col};color:${col};
+          border-radius:7px;padding:1px 5px;font-size:9px;font-weight:800;white-space:nowrap;opacity:${confirmed?1:.75};">${label}</div>
       </div>`})})
       .bindPopup(`<b>${n}駅</b> <span style="font-size:11px;color:#8b98ad;">${uniq.join(" / ")}</span><br>
         終電の目安 <b>${hhmm}</b>${d!=null? (d<0?`<br>あと${-d}分`:`<br><b style="color:${col}">通過から${d}分</b>`) : ""}
-        <br><span style="font-size:10px;color:#8b98ad;">※目安です。実時刻は各社の時刻表で確認を</span>
+        <br><span style="font-size:10px;color:#8b98ad;">${confirmed?"✓ 確認済み":"※目安。時刻表で確認して入力してください"}</span>
+        <br><a href="https://www.google.com/search?q=${encodeURIComponent(n+"駅 終電 時刻表")}" target="_blank" style="font-size:11px;color:#7db3f0;">🔍 ${n}駅の時刻表を調べる</a>
         <br><button onclick="_editLast('${n}')" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid #8b98ad;background:transparent;color:#fff;">時刻を直す</button>
         <button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;margin-left:6px;padding:6px 10px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">経路</button>`));
   });
   lastLayer=L.layerGroup(items).addTo(map);
 }
 setInterval(()=>{ if(lastOn) drawLast(); }, 300000);
+window._bulkLast=()=>{
+  const ov=loadLastOv();
+  const cur=Object.entries(ov).map(([k,v])=>k+"="+v).join(", ");
+  const v=prompt("終電時刻をまとめて入力できます。\n形式: 新宿=00:52, 渋谷=00:48, 池袋=00:55\n(調べた駅から順に足していけばOK)", cur);
+  if(v===null) return;
+  let n=0;
+  v.split(/[,、\n]/).forEach(s=>{
+    const m=s.trim().match(/^(.+?)\s*[=＝]\s*(\d{1,2})[::](\d{2})$/);
+    if(!m) return;
+    const st=m[1].trim().replace(/駅$/,"");
+    if(!ST_LL[st]) return;
+    ov[st]=String(+m[2]).padStart(2,"0")+":"+m[3];
+    n++;
+  });
+  localStorage.setItem("lasttrain-v1", JSON.stringify(ov));
+  alert(n+"駅の終電時刻を登録しました");
+  drawLast();
+};
+document.getElementById("btnLast").oncontextmenu=e=>{ e.preventDefault(); _bulkLast(); };
 document.getElementById("btnLast").onclick=e=>{
   lastOn=!lastOn; e.target.classList.toggle("on",lastOn); drawLast();
   if(lastOn){
     const h=document.getElementById("hint");
-    h.textContent="赤=終電通過から45分以内(需要ピーク)"; h.classList.add("show");
-    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },3000);
+    h.textContent="?付きは目安。駅をタップして正確な時刻に直せます"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },3200);
   }
 };
 
