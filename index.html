@@ -411,7 +411,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip cool" data-c="13,18">第2</button>
     <button class="chip cool" data-c="18,22">第3</button>
     <button class="chip cool" data-c="22,29">青タン</button>
-    <button class="chip cool on" data-c="auto">自動</button>
+    <button class="chip cool on" data-c="near">前後1h</button>
+    <button class="chip cool" data-c="auto">クール追従</button>
   </div>
   <div class="row">
     <span class="label">時間帯</span>
@@ -1982,7 +1983,7 @@ function setTimeRange(a,b){
 }
 // 現在時刻が属するクール
 const COOL_RANGES=[[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,29,"青タン"]];
-let coolAuto=true;   // 自動追従するか
+let coolAuto="near";   // "near"=前後1時間 / "auto"=クール追従 / false=手動
 function currentCool(){
   const d=new Date(); const h=d.getHours()+d.getMinutes()/60;
   const sh=h<5?h+24:h;
@@ -1990,20 +1991,32 @@ function currentCool(){
 }
 function applyAutoCool(force){
   if(!coolAuto) return;
+  if(coolAuto==="near"){
+    // 現在時刻の前後1時間
+    const d=new Date(); const h=d.getHours()+d.getMinutes()/60;
+    const sh=h<5?h+24:h;
+    const a=Math.max(5, Math.round((sh-1)*2)/2), b=Math.min(29, Math.round((sh+1)*2)/2);
+    if(!force && tMin===a && tMax===b) return;
+    setTimeRange(a,b);
+    const btn=document.querySelector('.chip.cool[data-c="near"]');
+    if(btn) btn.textContent="前後1h("+fmtH(a)+"-"+fmtH(b)+")";
+    return;
+  }
   const c=currentCool();
   if(!force && tMin===c[0] && tMax===c[1]) return;   // 変化がなければ何もしない
   setTimeRange(c[0], c[1]);
   const btn=document.querySelector('.chip.cool[data-c="auto"]');
-  if(btn) btn.textContent="自動("+c[2]+")";
+  if(btn) btn.textContent="クール追従("+c[2]+")";
 }
-setInterval(()=>applyAutoCool(false), 60000);
+setInterval(()=>applyAutoCool(false), coolAuto==="near"?900000:60000);
+setInterval(()=>applyAutoCool(false), 900000);
 
 document.querySelectorAll(".chip.cool").forEach(c=>{
   c.onclick=()=>{
     document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
     c.classList.add("on");
     const v=c.dataset.c;
-    if(v==="auto"){ coolAuto=true; applyAutoCool(true); return; }
+    if(v==="auto"||v==="near"){ coolAuto=v; applyAutoCool(true); return; }
     coolAuto=false;
     if(v==="all"){ setTimeRange(5,29); return; }
     const [a,b]=v.split(",").map(Number);
@@ -4988,10 +5001,10 @@ function restoreViewState(){
     document.querySelectorAll(".chip.wx").forEach(c=>c.classList.toggle("on", c.dataset.wx===weatherFilter)); }
   if(Array.isArray(st.dows)){ dowSet=new Set(st.dows);
     document.querySelectorAll(".chip.dow").forEach(c=>c.classList.toggle("on", dowSet.has(+c.dataset.dow))); }
-  if(st.coolAuto!=null) coolAuto=st.coolAuto;
+  if(st.coolAuto!=null) coolAuto = st.coolAuto===true ? "auto" : st.coolAuto;
   if(coolAuto){
     applyAutoCool(true);
-    document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="auto"));
+    document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c===coolAuto));
   }else if(st.tMin!=null && st.tMax!=null){
     tMin=st.tMin; tMax=st.tMax; elMin.value=tMin; elMax.value=tMax;
     const fill=document.getElementById("tlFill");
@@ -5070,8 +5083,9 @@ setInterval(saveViewState, 30000);
     return;   // 前回の状態を維持
   }
   document.getElementById("btnHeat").classList.add("on");
-  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="auto"));
-  coolAuto=true; applyAutoCool(true);
+  coolAuto="near";
+  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="near"));
+  applyAutoCool(true);
   // 曜日フィルターの初期値: 平日は月〜金、土日は土日
   const td=new Date(); if(td.getHours()<5) td.setDate(td.getDate()-1);
   const isWeekend = td.getDay()===0 || td.getDay()===6;
