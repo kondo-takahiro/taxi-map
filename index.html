@@ -337,7 +337,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 
 <div id="heatLegend" style="display:none;position:fixed;top:calc(70px + env(safe-area-inset-top));right:10px;max-width:calc(100vw - 84px);flex-wrap:wrap;justify-content:flex-end;z-index:900;align-items:center;gap:5px;
   background:rgba(19,26,42,.85);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:9px;color:var(--muted);"><span class="legend-bar" style="display:inline-flex;align-items:center;gap:5px;"><span>低</span>
-  <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#1e88e5,#26c6da,#26a69a,#66bb6a,#9ccc65,#ffee58,#ffca28,#ffa726,#f4511e,#e53935);"></span>
+  <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#2e7d32,#66bb6a,#9ccc65,#d4e157,#ffee58,#ffc107,#fb8c00,#f4511e,#e53935,#c62828);"></span>
   <span>高</span></span>
   <span id="legendLabel" style="font-size:8px;opacity:.6;">単価</span>
   <span id="quadLegend" style="display:none;align-items:center;gap:5px;font-size:8px;margin-left:4px;">
@@ -696,22 +696,22 @@ function chomeCentroid(name, f){
   }catch(e){ _cenCache.set(name,null); return null; }
 }
 let showCountBadge = localStorage.getItem("opt-countbadge")!=="0";
-// 単価→色(10段階・青=低 → 緑 → 黄 → 赤=高)
+// 単価→色(10段階・濃緑=低 → 黄 → 赤=高。青系は水域と紛らわしいため不使用)
 function fareTierColor(avg){
-  if(avg>=10000) return "#e53935";  // 万収
-  if(avg>=7000)  return "#f4511e";
-  if(avg>=5000)  return "#ffa726";
-  if(avg>=4000)  return "#ffca28";
-  if(avg>=3000)  return "#ffee58";
-  if(avg>=2500)  return "#9ccc65";
-  if(avg>=2000)  return "#66bb6a";
-  if(avg>=1500)  return "#26a69a";
-  if(avg>=1000)  return "#26c6da";
-  return "#1e88e5";                 // ¥1,000未満
+  if(avg>=10000) return "#c62828";  // 万収
+  if(avg>=7000)  return "#e53935";
+  if(avg>=5000)  return "#f4511e";
+  if(avg>=4000)  return "#fb8c00";
+  if(avg>=3000)  return "#ffc107";
+  if(avg>=2500)  return "#ffee58";
+  if(avg>=2000)  return "#d4e157";
+  if(avg>=1500)  return "#9ccc65";
+  if(avg>=1000)  return "#66bb6a";
+  return "#2e7d32";                 // ¥1,000未満
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.29-2";
+const APP_VER = "2026.08.29-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
