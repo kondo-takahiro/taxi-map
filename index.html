@@ -248,6 +248,23 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   </div>
 </div>
 
+<div id="hotelSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
+  <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:80svh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;margin-bottom:10px;">
+      <b style="font-size:15px;">🏨 ホテルを表示</b>
+      <span style="flex:1"></span>
+      <span id="hotelClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;">✕</span>
+    </div>
+    <div id="hotelStatus" style="display:none;font-size:11px;color:var(--amber);background:var(--panel2);border-radius:8px;padding:7px 9px;margin-bottom:8px;"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">料金帯で絞り込めます(タップで表示/非表示)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;" id="hotelTiers"></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">
+      料金帯はホテル名(ブランド)からの推定です。ズーム13以上で表示されます。<br>
+      タップすると、その周辺1km内での自分の実績も見られます。</div>
+  </div>
+</div>
+
 <div id="roadSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
   <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
     padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:80svh;overflow-y:auto;">
@@ -434,6 +451,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
     <button class="btn" id="btnToilet">🚻 トイレ</button>
+    <button class="btn" id="btnHotel">🏨 ホテル</button>
     <button class="btn" id="btnMemo">📝 メモ</button>
     <button class="btn" id="btnRoads">🛣 道路</button>
     <button class="btn" id="btnKB">📚 ノウハウ</button>
@@ -711,7 +729,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.08.29-3";
+const APP_VER = "2026.09.01-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3548,7 +3566,7 @@ async function showRoads(d){
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
   {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
-  {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
+  {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
 ];
@@ -3846,6 +3864,101 @@ document.getElementById("kbSave").onclick=()=>{
   document.getElementById("kbTitle").value=""; document.getElementById("kbText").value="";
   renderKBList();
 };
+
+// ===== ホテル(料金帯で色分け) =====
+const HOTEL_TIERS=[
+  {k:"lux", n:"高級", c:"#e91e63", re:/リッツ|マンダリン|ペニンシュラ|フォーシーズン|アマン|パレスホテル|帝国ホテル|オークラ|ニューオータニ|コンラッド|パークハイアット|グランドハイアット|アンダーズ|シャングリ|ブルガリ|エディション|プリンスギャラリー|ジャヌ|フォーシーズンズ|Ritz|Mandarin|Peninsula|Four Seasons|Aman|Conrad|Park Hyatt|Grand Hyatt|Andaz|Shangri|Bulgari|Edition/i},
+  {k:"city",n:"シティ", c:"#ff9800", re:/ハイアット|マリオット|ヒルトン|シェラトン|ウェスティン|インターコンチネンタル|ANA|全日空|JALシティ|京王プラザ|センチュリー|ロイヤルパーク|メトロポリタン|グランドニッコー|プリンスホテル|東京プリンス|品川プリンス|セルリアン|椿山荘|ウェスティン|Hyatt|Marriott|Hilton|Sheraton|Westin|InterContinental|Cerulean/i},
+  {k:"biz", n:"ビジネス", c:"#4dd0e1", re:/アパホテル|APA|東横イン|ドーミーイン|スーパーホテル|ルートイン|コンフォート|相鉄フレッサ|ヴィラフォンテーヌ|三井ガーデン|リッチモンド|JR東日本ホテル|ユニゾ|ダイワロイネット|レム|カンデオ|ホテルマイステイズ|プレミアイン|Toyoko|Dormy|Super Hotel|Route Inn|Comfort|Fresa|Villa Fontaine|Richmond|Daiwa Roynet|Candeo/i},
+  {k:"other",n:"その他", c:"#9e9e9e", re:null}
+];
+let hotelData=null, hotelLayer=null, hotelOn=false, hotelBusy=false;
+let hotelShow={lux:true, city:true, biz:true, other:false};
+function hotelTierOf(name){
+  for(const t of HOTEL_TIERS){ if(t.re && t.re.test(name)) return t; }
+  return HOTEL_TIERS[HOTEL_TIERS.length-1];
+}
+function hotelStatus(msg){
+  const el=document.getElementById("hotelStatus");
+  if(el){ el.textContent=msg||""; el.style.display=msg?"block":"none"; }
+}
+async function loadHotels(){
+  try{ const c=JSON.parse(localStorage.getItem("hotels-v1")); if(c&&c.length) return c; }catch(e){}
+  const q='[out:json][timeout:40];(node["tourism"="hotel"]["name"](35.50,139.53,35.85,139.95);way["tourism"="hotel"]["name"](35.50,139.53,35.85,139.95););out center tags;';
+  const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  for(let i=0;i<servers.length;i++){
+    try{
+      hotelStatus(`ホテルの位置を取得中… (サーバー${i+1}/${servers.length})`);
+      const res=await fetchT(servers[i],{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(q)}, 45000);
+      if(!res.ok) continue;
+      const j=await res.json();
+      const pts=(j.elements||[]).map(e=>{
+        const la=e.lat!=null?e.lat:(e.center&&e.center.lat), lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
+        const nm=(e.tags&&(e.tags["name:ja"]||e.tags.name))||"";
+        if(la==null||!nm) return null;
+        return [+la.toFixed(5), +lo.toFixed(5), nm];
+      }).filter(Boolean);
+      if(!pts.length) continue;
+      try{ localStorage.setItem("hotels-v1", JSON.stringify(pts)); }catch(e){}
+      return pts;
+    }catch(e){}
+  }
+  throw new Error("取得できませんでした");
+}
+function drawHotels(){
+  if(hotelLayer){ map.removeLayer(hotelLayer); hotelLayer=null; }
+  if(!hotelOn || !hotelData) return;
+  if(map.getZoom()<13) return;
+  const b=map.getBounds();
+  const items=[];
+  hotelData.forEach(p=>{
+    if(!b.contains([p[0],p[1]])) return;
+    const t=hotelTierOf(p[2]);
+    if(!hotelShow[t.k]) return;
+    if(items.length>=250) return;
+    const near=myRides().filter(r=>haversineKm([p[0],p[1]],[r.lat,r.lng])<=1.0);
+    const avg=near.length?Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0;
+    items.push(L.marker([p[0],p[1]],{icon:L.divIcon({className:"",iconSize:[16,16],iconAnchor:[8,8],
+      html:`<div style="width:14px;height:14px;border-radius:3px;background:${t.c};border:1.5px solid #fff;
+        box-shadow:0 1px 3px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:8px;">🏨</div>`})})
+      .bindPopup(`<b>${p[2]}</b><br><span style="color:${t.c};font-size:11px;">${t.n}</span>`
+        + (near.length?`<br>周辺実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b>`:`<br><span style="color:#8b98ad;font-size:11px;">周辺の実績なし</span>`)
+        + `<br><button onclick="_evRoute(${p[0]},${p[1]})" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍経路</button>`));
+  });
+  hotelLayer=L.layerGroup(items).addTo(map);
+}
+map.on("moveend zoomend",()=>{ if(hotelOn) drawHotels(); });
+function buildHotelTiers(){
+  const box=document.getElementById("hotelTiers");
+  box.innerHTML=HOTEL_TIERS.map(t=>
+    `<button class="chip htier${hotelShow[t.k]?" on":""}" data-k="${t.k}" style="font-size:12px;padding:7px 11px;">
+      <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${t.c};margin-right:4px;"></span>${t.n}</button>`).join("");
+  box.querySelectorAll(".htier").forEach(b=>b.onclick=()=>{
+    hotelShow[b.dataset.k]=!hotelShow[b.dataset.k];
+    b.classList.toggle("on", hotelShow[b.dataset.k]);
+    drawHotels();
+  });
+}
+document.getElementById("btnHotel").onclick=async ()=>{
+  if(hotelOn && document.getElementById("hotelSheet").style.display==="block"){
+    hotelOn=false; document.getElementById("btnHotel").classList.remove("on");
+    document.getElementById("hotelSheet").style.display="none"; drawHotels(); return;
+  }
+  buildHotelTiers();
+  document.getElementById("hotelSheet").style.display="block";
+  if(!hotelData){
+    if(hotelBusy) return;
+    hotelBusy=true;
+    try{ hotelData=await loadHotels(); hotelStatus(""); }
+    catch(e){ hotelStatus("取得できませんでした("+e.message+")"); hotelBusy=false; return; }
+    hotelBusy=false;
+  }
+  hotelOn=true; document.getElementById("btnHotel").classList.add("on");
+  if(map.getZoom()<13) map.setZoom(14);
+  drawHotels();
+};
+document.getElementById("hotelClose").onclick=()=>document.getElementById("hotelSheet").style.display="none";
 
 // ===== 幹線道路・高速道路の表示 =====
 const ROAD_DEFS=[
