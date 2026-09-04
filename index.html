@@ -143,6 +143,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     </div>
     <div id="hudHot" style="font-size:12px;color:var(--amber);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">🔥 現在地を取得すると表示されます</div>
     <div id="hudPlan" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+    <div id="hudAir" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
     <div id="bigWin" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;"></div>
   </div>
 </div>
@@ -729,7 +730,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.01-1";
+const APP_VER = "2026.09.01-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -980,9 +981,9 @@ document.getElementById("routeClose").onclick=clearRoute;
 // 実績: 16時台と20時台が単価の谷。第2は港区南部、第3は銀座が高単価
 const PLAN_SLOTS=[
   {lo:5,   hi:8,   t:"出庫〜朝の勝負", d:"荒川を超えるまで無線停止。足立・荒川・台東で1本目→都心へ"},
-  {lo:8,   hi:11,  t:"朝の窓", d:"郊外ロングが出る時間。行った先営業で流れに乗る"},
+  {lo:8,   hi:11,  t:"朝の窓 ✈️", d:"郊外ロングの時間。9時以降はホテル発の空港客も狙える"},
   {lo:11,  hi:13,  t:"第1クール仕上げ", d:"都心で刻む。13時までに¥35,000"},
-  {lo:13,  hi:16,  t:"第2前半・港区南部へ", d:"芝浦3/4・芝5・港南で回す。空港客も。目標ここで¥15,000"},
+  {lo:13,  hi:16,  t:"✈️ 空港の窓・第2前半", d:"9-17時は空港客の時間。湾岸(有明・芝浦・港南)とホテルを意識。目標¥15,000"},
   {lo:16,  hi:16.7,t:"⏸ 休憩の推奨", d:"16時台は単価の谷(¥1,910)。ここで30〜40分休む"},
   {lo:16.7,hi:18,  t:"第2の稼ぎ時", d:"17時台は単価が戻る。芝浦〜三田〜八重洲で¥30,000へ"},
   {lo:18,  hi:20,  t:"第3・銀座へ移動", d:"銀座5/6・日本橋3が高単価。京橋〜銀座で回す"},
@@ -1059,6 +1060,32 @@ function layoutUnderHUD(){
   if(ri) ri.style.top = top+"px";
 }
 window.addEventListener("resize", layoutUnderHUD);
+function updateAirFare(){
+  const el=document.getElementById("hudAir");
+  if(!el) return;
+  const name=(typeof lastAddr!=="undefined" && lastAddr) ? lastAddr : (hudLL?nearestAddrName(hudLL):"");
+  const f=airFareOf(name);
+  const h=new Date().getHours(), sh=h<5?h+24:h;
+  const inWindow = sh>=9 && sh<18;   // 空港案件は9-17時に集中
+  if(!f){ el.style.display="none"; return; }
+  el.style.display="block";
+  el.innerHTML=`<span style="color:${inWindow?"#4fc3f7":"var(--muted)"};font-weight:${inWindow?800:400};">✈️ ${f.ward}発</span>`
+    + ` <span style="color:var(--text);">羽田 <b>${yen(f.haneda)}</b></span>`
+    + ` <span style="color:var(--muted);">成田 ${yen(f.narita)}</span>`
+    + (inWindow?` <span style="color:#4fc3f7;">← 空港の窓</span>`:"");
+}
+// 現在地の町名から区名を得る(chome.jsonの最寄り)
+function nearestAddrName(ll){
+  if(!chomeIndex) return "";
+  let best=null, bd=9;
+  chomeIndex.forEach((f,name)=>{
+    const c=chomeCentroid(name,f);
+    if(!c) return;
+    const d=haversineKm(ll,c);
+    if(d<bd){ bd=d; best=name; }
+  });
+  return best||"";
+}
 function updateBigWindow(){
   const el=document.getElementById("bigWin");
   if(!el) return;
@@ -1132,6 +1159,7 @@ async function updateHUD(ll, force){
   if(moved) hudLL=ll;
   updateBigWindow();
   updatePlan();
+  updateAirFare();
   layoutUnderHUD();
   if(moved) drawAppRing();
 }
@@ -2443,14 +2471,14 @@ const AREA_KEYS=[["千葉",["市川","船橋","千葉","浦安","流山","松戸
   ["多摩",["府中","東村山","三鷹","武蔵野","町田","羽村","調布","西東京","小平","立川","国分寺"]],["神奈川",["横浜","川崎","相模"]]];
 function areaOf(dst){
   if(!dst) return "不明";
-  if(/空港/.test(dst)) return "空港";
+  if(isAirportRide(dst)) return "空港";
   for(const [n,ks] of AREA_KEYS){ if(ks.some(k=>dst.includes(k))) return n; }
   return "都内";
 }
 function renderBigTab(){
   const mine=myRides();
   const days=new Set(mine.map(r=>shiftDateStr(r))).size||1;
-  const air=mine.filter(r=>/空港/.test(r.dst||""));
+  const air=mine.filter(r=>isAirportRide(r.dst));
   const big=mine.filter(r=>r.f>=10000);
   if(!big.length && !air.length) return `<div style="color:var(--muted);font-size:13px;padding:10px 0;">大物の実績がまだありません。</div>`;
   let h=`<div style="display:flex;gap:10px;margin-bottom:10px;">
@@ -3865,6 +3893,26 @@ document.getElementById("kbSave").onclick=()=>{
   renderKBList();
 };
 
+// ===== 空港定額運賃(発地の区市別・東京無線の公示例。事業者や時間帯で変わるため目安) =====
+const AIR_FARE={
+  "千代田区":[7600,22600],"中央区":[7800,22800],"港区":[7100,21600],"新宿区":[9000,23000],
+  "文京区":[9500,22600],"台東区":[9800,22600],"墨田区":[10500,21600],"江東区":[8800,20600],
+  "品川区":[6200,23600],"目黒区":[8300,24600],"大田区":[5200,24600],"世田谷区":[10500,25600],
+  "渋谷区":[8500,23600],"中野区":[11200,24600],"杉並区":[12300,25600],"豊島区":[11200,23600],
+  "北区":[11800,22600],"荒川区":[10800,21600],"板橋区":[12300,23600],"練馬区":[12800,25600],
+  "足立区":[11100,21600],"葛飾区":[11500,20600],"江戸川区":[10500,19600],
+  "武蔵野市":[14000,25600],"三鷹市":[13300,25600],"府中市":[15900,27600],"調布市":[14900,26600]
+};
+function airFareOf(addr){
+  if(!addr) return null;
+  for(const k in AIR_FARE){ if(addr.startsWith(k)) return {ward:k, haneda:AIR_FARE[k][0], narita:AIR_FARE[k][1]}; }
+  return null;
+}
+// 空港案件かどうか(羽田・成田の両方を判定)
+function isAirportRide(dst){
+  return /空港|成田市|羽田/.test(dst||"");
+}
+
 // ===== ホテル(料金帯で色分け) =====
 const HOTEL_TIERS=[
   {k:"lux", n:"高級", c:"#e91e63", re:/リッツ|マンダリン|ペニンシュラ|フォーシーズン|アマン|パレスホテル|帝国ホテル|オークラ|ニューオータニ|コンラッド|パークハイアット|グランドハイアット|アンダーズ|シャングリ|ブルガリ|エディション|プリンスギャラリー|ジャヌ|フォーシーズンズ|Ritz|Mandarin|Peninsula|Four Seasons|Aman|Conrad|Park Hyatt|Grand Hyatt|Andaz|Shangri|Bulgari|Edition/i},
@@ -5228,6 +5276,7 @@ setInterval(saveViewState, 30000);
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
   updateBigWindow();
   updatePlan();
+  updateAirFare();
   applyHidden();
   setTimeout(layoutUnderHUD,60);
   // 今日のブリーフィングを取得済みならイベントピンを復元
