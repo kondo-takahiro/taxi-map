@@ -730,7 +730,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.01-2";
+const APP_VER = "2026.09.05-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3263,11 +3263,12 @@ ${seq}`;
   if(!r.auth){ clearAIKey(); out.textContent="APIキーが無効でした。もう一度お試しください。"; return; }
   out.textContent=r.err? r.err : (r.text||"生成できませんでした。");
 }
-function renderDiaryY(){
+function renderDiaryY(pick){
   const byDay=diaryByDay();
   const days=[...byDay.keys()].sort();
   if(!days.length) return "データがありません";
-  const target=days[days.length-1], rs=byDay.get(target);
+  const target=(pick && byDay.has(pick)) ? pick : days[days.length-1];
+  const rs=byDay.get(target);
   const dw=dDow(target);
   const peers=days.filter(d=>d!==target && dDow(d)===dw);
   const total=dTotal(rs);
@@ -4310,6 +4311,44 @@ document.getElementById("btnMemo").onclick=e=>{
 // 地図の長押しでメモ追加
 map.on("contextmenu", e=>{ openMemo([e.latlng.lat, e.latlng.lng]); });
 
+function bindDiaryY(){
+  const body=document.getElementById("diaryBody");
+    const b=document.getElementById("diaryAI");
+    if(b) b.onclick=analyzeLastShift;
+    body.querySelectorAll(".memo-add").forEach(el=>el.onclick=()=>{
+      showTab("map");
+      openMemo([+el.dataset.lat, +el.dataset.lng], null, el.dataset.n);
+    });
+    const rd=document.getElementById("diaryRoads");
+    if(rd) rd.onclick=()=>{ document.getElementById("diaryPanel").style.display="none"; showRoads(lastReportDay); };
+    const bk=document.getElementById("brkEdit");
+    if(bk) bk.onclick=()=>{
+      let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
+      const v=prompt("この乗務の休憩時間を日報のとおり入力(例: 13:20-13:56 六本木7, 18:23-19:03 新橋1)", brk[lastReportDay]||"");
+      if(v===null) return;
+      if(v.trim()) brk[lastReportDay]=v.trim(); else delete brk[lastReportDay];
+      localStorage.setItem("break-v1", JSON.stringify(brk));
+      renderDiary("y");
+    };
+    const k=document.getElementById("kpiEdit");
+    if(k) k.onclick=()=>{
+      let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
+      const v=prompt("この乗務の実車率(%)を日報から入力", kpi[lastReportDay]||"");
+      if(v===null) return;
+      const n=parseFloat(v);
+      if(isFinite(n) && n>0 && n<100){ kpi[lastReportDay]=n; localStorage.setItem("kpi-v1", JSON.stringify(kpi)); }
+      renderDiary("y");
+    };
+}
+// その日の売上分析(カレンダーから)
+function showDayReport(ds){
+  const p=document.getElementById("diaryPanel");
+  p.style.display="block";
+  document.querySelectorAll(".diary-tab").forEach(b=>b.classList.toggle("on", b.dataset.t==="y"));
+  document.getElementById("diaryBody").innerHTML=renderDiaryY(ds);
+  bindDiaryY();
+  p.scrollTop=0;
+}
 let fcDay=null;
 function showForecast(ds){
   fcDay=ds;
@@ -4602,39 +4641,12 @@ function renderDiary(tab){
     body.querySelectorAll(".cal-cell").forEach(el=>{
       el.onclick=()=>{
         const ds=el.dataset.ds;
-        if(el.dataset.w==="1"){ replayDay(ds); return; }
+        if(el.dataset.w==="1"){ showDayReport(ds); return; }
         showForecast(ds);
       };
     });
   }
-  if(tab==="y"){
-    const b=document.getElementById("diaryAI");
-    if(b) b.onclick=analyzeLastShift;
-    body.querySelectorAll(".memo-add").forEach(el=>el.onclick=()=>{
-      showTab("map");
-      openMemo([+el.dataset.lat, +el.dataset.lng], null, el.dataset.n);
-    });
-    const rd=document.getElementById("diaryRoads");
-    if(rd) rd.onclick=()=>{ document.getElementById("diaryPanel").style.display="none"; showRoads(lastReportDay); };
-    const bk=document.getElementById("brkEdit");
-    if(bk) bk.onclick=()=>{
-      let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
-      const v=prompt("この乗務の休憩時間を日報のとおり入力(例: 13:20-13:56 六本木7, 18:23-19:03 新橋1)", brk[lastReportDay]||"");
-      if(v===null) return;
-      if(v.trim()) brk[lastReportDay]=v.trim(); else delete brk[lastReportDay];
-      localStorage.setItem("break-v1", JSON.stringify(brk));
-      renderDiary("y");
-    };
-    const k=document.getElementById("kpiEdit");
-    if(k) k.onclick=()=>{
-      let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
-      const v=prompt("この乗務の実車率(%)を日報から入力", kpi[lastReportDay]||"");
-      if(v===null) return;
-      const n=parseFloat(v);
-      if(isFinite(n) && n>0 && n<100){ kpi[lastReportDay]=n; localStorage.setItem("kpi-v1", JSON.stringify(kpi)); }
-      renderDiary("y");
-    };
-  }
+  if(tab==="y") bindDiaryY();
   if(tab==="t"){
     fillTomorrowWx();
     const en=document.getElementById("editNext");
