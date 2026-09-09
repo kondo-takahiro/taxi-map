@@ -119,6 +119,92 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     background:var(--amber);color:#1a1206;font-size:12px;font-weight:700;border-radius:20px;padding:7px 14px;display:none;}
   .hint.show{display:block;}
   @media (max-width:480px){ .stats .stat:nth-child(3){display:none;} }
+
+/* ===== 人の流れシミュレーター ===== */
+#flowSim{
+    --fs-ink:#0d1420; --fs-panel:#18222f; --fs-line:#26344a;
+    --fs-text:#e7edf6; --fs-dim:#8fa2bb;
+    --fs-amber:#f2b233; --fs-red:#e2483d; --fs-sky:#4aa3e0;
+  }
+#flowSim *{box-sizing:border-box}
+#flowSim .wrap{max-width:560px;margin:0 auto;padding:0 16px}
+#flowSim .modes{display:flex;gap:0;margin:14px 0 0;border:1px solid var(--fs-line);border-radius:10px;overflow:hidden}
+#flowSim .modes button{flex:1;border:0;border-radius:0;background:#141d2c;color:var(--fs-dim);padding:11px 8px;font-size:14px}
+#flowSim .modes button[aria-pressed="true"]{background:var(--fs-sky);color:#06121d;font-weight:700}
+#flowSim .modes button:first-child[aria-pressed="true"]{background:var(--fs-amber);color:#1a1204}
+#flowSim .meter{
+    margin:10px 0; background:linear-gradient(180deg,#0a0f18,#121b28);
+    border:1px solid var(--fs-line); border-radius:10px; padding:14px 16px 16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+#flowSim .meter-row{display:flex;align-items:baseline;gap:12px}
+#flowSim .clock{font-size:46px;font-weight:700;letter-spacing:.02em;color:var(--fs-amber);
+    font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(242,178,51,.28);line-height:1.05}
+#flowSim.app .clock{color:var(--fs-sky);text-shadow:0 0 18px rgba(74,163,224,.3)}
+#flowSim .clock .nx{font-size:18px;font-weight:600;margin-right:2px;opacity:.75}
+#flowSim .band{margin-left:auto;text-align:right;color:var(--fs-dim);font-size:12.5px;line-height:1.45}
+#flowSim .band b{display:block;color:var(--fs-text);font-size:14px;font-weight:600}
+#flowSim input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:34px;background:transparent;margin:6px 0 0}
+#flowSim input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,#2b3f5c,#f2b233 62%,#e2483d 88%)}
+#flowSim input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:linear-gradient(90deg,#2b3f5c,#f2b233 62%,#e2483d 88%)}
+#flowSim input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;margin-top:-10px;border-radius:50%;background:#fff;border:3px solid var(--fs-amber);cursor:pointer}
+#flowSim input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--fs-amber);cursor:pointer}
+#flowSim.app input[type=range]::-webkit-slider-thumb{border-color:var(--fs-sky)}
+#flowSim.app input[type=range]::-moz-range-thumb{border-color:var(--fs-sky)}
+#flowSim input[type=range]:focus-visible{outline:2px solid var(--fs-amber);outline-offset:4px;border-radius:6px}
+#flowSim .ticks{display:flex;justify-content:space-between;color:var(--fs-dim);font-size:11px;margin-top:-2px;font-variant-numeric:tabular-nums}
+#flowSim .ctrls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+#flowSim button{font:inherit;color:var(--fs-text);background:#1d2836;border:1px solid var(--fs-line);
+    border-radius:999px;padding:7px 14px;cursor:pointer;font-size:13.5px}
+#flowSim button:focus-visible{outline:2px solid var(--fs-amber);outline-offset:2px}
+#flowSim #days button[aria-pressed="true"]:not(.play){background:var(--fs-amber);color:#1a1204;border-color:var(--fs-amber);font-weight:700}
+#flowSim.app #days button[aria-pressed="true"]:not(.play){background:var(--fs-sky);color:#06121d;border-color:var(--fs-sky)}
+#flowSim .play{margin-left:auto}
+#flowSim .play[aria-pressed="true"]{background:var(--fs-red);border-color:var(--fs-red);color:#fff}
+#flowSim .map{position:relative;width:100%;aspect-ratio:1/.94;margin:16px 0 6px;
+    background:radial-gradient(120% 90% at 55% 52%, #172233 0%, #0f1723 70%);
+    border:1px solid var(--fs-line);border-radius:12px;overflow:hidden}
+#flowSim .loop{position:absolute;border:1px dashed rgba(143,162,187,.22);border-radius:50%;left:26%;top:24%;width:48%;height:50%}
+#flowSim .node{position:absolute;transform:translate(-50%,-50%);text-align:center;background:none;border:0;padding:0;cursor:pointer;width:74px}
+#flowSim .dot{width:14px;height:14px;border-radius:50%;margin:0 auto;transition:width .25s,height .25s,background .25s}
+#flowSim .node .nm{display:block;font-size:9.5px;color:var(--fs-dim);margin-top:2px;line-height:1.25;letter-spacing:-.01em}
+#flowSim .node.hot .nm{color:var(--fs-text);font-weight:600}
+#flowSim .node.sel .nm{color:var(--fs-amber);font-weight:700}
+#flowSim.app .node.sel .nm{color:var(--fs-sky)}
+#flowSim .node.sel .dot{box-shadow:0 0 0 2px #fff,0 0 0 5px rgba(242,178,51,.55)}
+#flowSim .node:focus-visible{outline:2px solid var(--fs-amber);outline-offset:2px;border-radius:8px}
+#flowSim .legend{display:flex;align-items:center;gap:8px;color:var(--fs-dim);font-size:11.5px;padding:0 2px 4px}
+#flowSim .legend i{display:block;height:8px;flex:1;border-radius:4px;background:linear-gradient(90deg,#2b3f5c,#3f6fa8,#f2b233,#e2483d)}
+#flowSim h2{font-size:15px;margin:22px 0 8px;font-weight:700;letter-spacing:.01em}
+#flowSim h2 span{color:var(--fs-dim);font-weight:500;font-size:12.5px;margin-left:8px}
+#flowSim .flow{background:var(--fs-panel);border-left:3px solid var(--fs-amber);border-radius:0 10px 10px 0;padding:12px 14px}
+#flowSim.app .flow{border-left-color:var(--fs-sky)}
+#flowSim .flow p{margin:0}
+#flowSim .arrows{display:flex;flex-direction:column;gap:5px;margin-top:10px}
+#flowSim .arw{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--fs-dim)}
+#flowSim .arw b{color:var(--fs-text);font-weight:600}
+#flowSim .arw .a{color:var(--fs-amber)}
+#flowSim.app .arw .a{color:var(--fs-sky)}
+#flowSim ol.rank{list-style:none;margin:0;padding:0}
+#flowSim ol.rank li{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #1e293a;cursor:pointer}
+#flowSim ol.rank li:last-child{border-bottom:0}
+#flowSim ol.rank .pos{width:18px;color:var(--fs-dim);font-size:12px;font-variant-numeric:tabular-nums}
+#flowSim ol.rank .nm2{width:112px;font-size:13.5px;font-weight:600}
+#flowSim ol.rank .bar{flex:1;height:9px;background:#1b2434;border-radius:5px;overflow:hidden}
+#flowSim ol.rank .bar i{display:block;height:100%;border-radius:5px}
+#flowSim ol.rank .sc{width:30px;text-align:right;font-size:12px;color:var(--fs-dim);font-variant-numeric:tabular-nums}
+#flowSim .detail{background:var(--fs-panel);border:1px solid var(--fs-line);border-radius:12px;padding:14px 15px;margin-top:8px}
+#flowSim .detail h3{margin:0 0 2px;font-size:17px}
+#flowSim .detail .lv{font-size:12.5px;color:var(--fs-dim);margin-bottom:10px}
+#flowSim .detail dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font-size:13.5px}
+#flowSim .detail dt{color:var(--fs-amber);font-weight:600;white-space:nowrap}
+#flowSim.app .detail dt{color:var(--fs-sky)}
+#flowSim .detail dd{margin:0;color:#d3ddea}
+#flowSim .real{margin-top:10px;padding-top:9px;border-top:1px solid #24334a;font-size:12.5px;color:var(--fs-dim);font-variant-numeric:tabular-nums}
+#flowSim .real b{color:var(--fs-text);font-weight:600}
+#flowSim .detail .real{margin-top:10px}
+#flowSim .note{color:var(--fs-dim);font-size:12px;line-height:1.65;margin-top:26px;border-top:1px solid #1e293a;padding-top:12px}
+#flowSim *{transition:none!important}
 </style>
 </head>
 <body>
@@ -220,6 +306,17 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip diary-tab" data-t="c">カレンダー</button>
   </div>
   <div id="diaryBody"></div>
+</div>
+
+<div id="flowPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(6px + env(safe-area-inset-top)) 0 14px;">
+  <div style="display:flex;align-items:center;gap:8px;padding:4px 14px 6px;position:sticky;top:0;background:var(--bg);z-index:3;">
+    <b style="font-size:16px;">🌊 人の流れ</b>
+    <span style="flex:1"></span>
+    <span id="flowClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div id="flowMount"></div>
 </div>
 
 <div id="settingsPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
@@ -376,15 +473,17 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 <nav id="tabBar" style="position:fixed;left:0;right:0;bottom:0;z-index:1600;display:flex;
   background:rgba(13,19,32,.97);border-top:1px solid var(--line);
   padding:6px 0 calc(4px + env(safe-area-inset-bottom));">
-  <button class="tab-btn on" data-tab="map" style="flex:1;background:none;border:none;color:var(--amber);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+  <button class="tab-btn on" data-tab="map" style="flex:1;background:none;border:none;color:var(--amber);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">🗺</span>地図</button>
-  <button class="tab-btn" data-tab="diary" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+  <button class="tab-btn" data-tab="diary" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📓</span>日誌</button>
-  <button class="tab-btn" data-tab="review" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+  <button class="tab-btn" data-tab="review" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📊</span>分析</button>
-  <button class="tab-btn" data-tab="brief" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+  <button class="tab-btn" data-tab="flow" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
+    <span style="font-size:18px;line-height:1;">🌊</span>流れ</button>
+  <button class="tab-btn" data-tab="brief" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📋</span>今日</button>
-  <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:10px;">
+  <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">⚙️</span>設定</button>
 </nav>
 
@@ -730,7 +829,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.05-1";
+const APP_VER = "2026.09.06-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -2652,6 +2751,525 @@ function renderNightTab(){
   });
   return h;
 }
+const FLOW_HTML = `<div id="flowSim">
+<div class="wrap">
+
+  <div class="modes" id="modes">
+    <button data-mode="street" aria-pressed="false">流し・付け待ち</button>
+    <button data-mode="app" aria-pressed="true">アプリ配車</button>
+  </div>
+
+  <div class="meter">
+    <div class="meter-row">
+      <div class="clock" id="clock">23:00</div>
+      <div class="band">
+        <b id="bandName">深夜の稼ぎ時</b>
+        <span id="dayName">平日</span>
+      </div>
+    </div>
+    <input type="range" id="hour" min="5" max="28" step="1" value="23" aria-label="時刻">
+    <div class="ticks"><span>5時</span><span>12時</span><span>19時</span><span>翌4時</span></div>
+    <div class="ctrls" id="days">
+      <button data-day="weekday" aria-pressed="true">平日</button>
+      <button data-day="friday" aria-pressed="false">金曜</button>
+      <button data-day="saturday" aria-pressed="false">土曜</button>
+      <button data-day="sunday" aria-pressed="false">日曜</button>
+      <button id="calBtn" aria-pressed="true">実績で補正</button>
+      <button class="play" id="play" aria-pressed="false">時間を進める</button>
+    </div>
+  </div>
+
+  <div class="legend"><span id="legLo">鳴りにくい</span><i></i><span id="legHi">鳴りやすい</span></div>
+  <div class="map" id="map"><div class="loop"></div></div>
+
+  <h2 id="flowTitle">この時間のアプリの流れ<span id="flowHour">23時台</span></h2>
+  <div class="flow" id="flow"></div>
+
+  <h2 id="rankTitle">待機したいエリア<span>タップで詳細</span></h2>
+  <ol class="rank" id="rank"></ol>
+
+  <div class="detail" id="detail" hidden></div>
+
+  <p class="note" id="note"></p>
+</div>
+
+</div>`;
+
+// ===== 人の流れシミュレーター =====
+let FS_INIT=false, FS_ROOT=null;
+function FS_$(id){ return FS_ROOT ? FS_ROOT.querySelector("#"+id) : null; }
+function FS_$$(s){ return FS_ROOT ? FS_ROOT.querySelectorAll(s) : []; }
+function initFlowSim(){
+  if(FS_INIT || !document.getElementById("flowSim")) return;
+  FS_ROOT=document.getElementById("flowSim"); FS_INIT=true;
+
+const HS = 5, HE = 28;
+
+const C = {
+  office:  [5,10,25,45,40,35,35,45,45,40,40,45,65,85,80,70,60,45,30,20,10,5,3,3],
+  night:   [5,3,2,2,2,3,5,8,8,8,8,10,20,40,60,70,80,90,100,95,75,50,30,15],
+  terminal:[10,12,20,25,20,20,20,25,25,25,25,30,40,50,55,55,60,70,85,100,90,55,30,20],
+  resi:    [15,25,40,45,40,40,35,30,30,35,35,30,25,25,20,20,20,20,20,15,10,8,5,5],
+  hub:     [30,45,55,60,55,50,50,50,50,50,50,55,60,65,65,60,55,50,45,35,20,12,10,12]
+};
+
+// アプリ配車は住宅地・郊外に寄り、繁華街の中心は競合が増える
+const APPW = {office:.70, night:.80, terminal:.60, resi:2.0, hub:1.0};
+
+const AREAS = [
+  {n:"銀座・有楽町", x:64, y:52, k:0.85, w:{office:0.22,night:0.55,terminal:0.13,resi:0.05,hub:0.05}, st:{r:868478,c:"full",d:493.6}, adj:[{f:18,t:23,m:1.15}],
+   why:"会食・クラブ帰りの短距離と、都心オフィスからの移動が重なる。夜は待っている人が途切れにくい。",
+   wait:"外堀通り・晴海通りを流す。停められる場所が少ないので、路地の出口側で拾う意識を。",
+   drop:"世田谷・目黒方面や、都心のホテル。深夜は郊外まで伸びることもある。",
+   care:"タクシー乗り場と客待ち禁止区間が細かい。取り締まりが多いので停車位置に注意。",
+   app:{b:.8, s:.95,
+    why:"リクエスト自体は多いが、待機している車も最多。取り合いになりやすい。",
+    wait:"銀座のど真ん中で止まらず、昭和通りより東か新富町・築地寄りで待つ。",
+    care:"迎車の合流場所が指定しづらい区間が多い。到着後は電話で位置をすり合わせる。"}},
+  {n:"六本木・西麻布", x:44, y:58, k:0.85, w:{office:0.12,night:0.88}, st:{r:325717,c:"partial",d:432.0}, adj:[{f:24,t:28,m:1.2}],
+   why:"終電がなくなってからが本番。深夜1〜3時でも人が歩いている数少ないエリア。",
+   wait:"六本木交差点から西麻布交差点の外苑東通り・六本木通りを往復するのが基本。",
+   drop:"広尾・白金・目黒・世田谷。長距離で埼玉・神奈川方面に出ることもある。",
+   care:"酔客が多い時間帯。行き先と支払い方法の確認を乗車時に。",
+   app:{b:.95, s:.95,
+    why:"深夜のアプリ需要は都内最大級。ただし空車も集中するので、位置取りで差がつく。",
+    wait:"交差点付近ではなく、麻布十番・広尾側に少し引いて待つと迎車1〜2kmで入りやすい。",
+    care:"歩道が混み、指定地点に着けないことが多い。安全に停められる場所を先に伝える。"}},
+  {n:"赤坂・虎ノ門", x:46, y:51, k:0.76, w:{office:0.27,night:0.45,terminal:0.15,resi:0.06,hub:0.07}, st:{r:859289,c:"full",d:432.0}, adj:[{f:10,t:16,m:1.1}],
+   why:"官庁・大企業が密集。昼は商談移動、夜は会食帰りが出る二毛作エリア。",
+   wait:"外堀通り沿いとホテルの車寄せ。夕方はビルの正面出口が狙い目。",
+   drop:"都心内の短距離が中心。夜は城南方面。",
+   care:"一方通行が多く、道を間違えると大回りになる。抜け道を覚えておく。",
+   app:{b:.9, s:.8,
+    why:"ビルの裏口や坂の上など、流しでは拾いにくい場所からのリクエストが出る。",
+    wait:"溜池山王・六本木一丁目の周辺で待機。ホテル前は流し車と競合しない位置に。",
+    care:"坂と一方通行で迎車ルートが伸びる。受ける前に到着予定時間を見る。"}},
+  {n:"新橋・汐留", x:56, y:56, k:0.67, w:{office:0.29,night:0.4,terminal:0.17,resi:0.07,hub:0.07}, st:{r:591055,c:"full",d:432.0},
+   why:"サラリーマンの飲み需要が18時から立ち上がり、22時以降は終電前の移動が増える。",
+   wait:"日比谷通り・第一京浜。汐留のオフィス車寄せも夕方は強い。",
+   drop:"品川・大井町方面、湾岸マンション、都心のホテル。",
+   care:"手を挙げる人が多い分、後続車との競合も激しい。無理な車線変更をしない。",
+   app:{b:.85, s:.85,
+    why:"手を挙げれば拾える街なので、アプリの比率はやや低い。会社の経費配車が中心。",
+    wait:"汐留のオフィス地下や、浜松町寄りで待機すると競合が減る。",
+    care:"高架下や一方通行で合流に手間取りやすい。到着地点を口頭で確認する。"}},
+  {n:"丸の内・大手町・東京駅", x:58, y:45, k:0.86, w:{office:0.57,terminal:0.28,resi:0.03,hub:0.12}, st:{r:1262378,c:"full",d:1738.8}, adj:[{f:10,t:16,m:1.1}],
+   why:"日中の商談移動と、夕方の帰宅・会食移動。新幹線客の荷物あり乗車も多い。",
+   wait:"丸の内の各ビル車寄せと、東京駅八重洲・丸の内の乗り場。付け待ち向き。",
+   drop:"霞が関・日本橋・銀座など都心短距離。夜は郊外方面も。",
+   care:"乗り場の待機列が長いと回転が悪い。列を見て流しに切り替える判断を。",
+   app:{b:.85, s:.8,
+    why:"法人配車と予約が多い時間帯型。飛び込みのリクエストは競合が激しい。",
+    wait:"日本橋・八重洲側に少し外して待つ。ビル車寄せは乗り場ルールを確認。",
+    care:"駅周辺は指定ピンがずれやすい。八重洲・丸の内どちら側かを必ず確認する。"}},
+  {n:"新宿", x:34, y:40, k:1.00, w:{office:0.23,night:0.45,terminal:0.15,resi:0.1,hub:0.07}, st:{r:2227897,c:"full",d:229.9},
+   why:"歌舞伎町・三丁目の飲み需要と、終電後のターミナル需要が両方立つ。",
+   wait:"靖国通り・明治通り。西口は乗り場、東口は流しが基本。",
+   drop:"中野・杉並・練馬など西側の住宅地。深夜は多摩方面の長距離も。",
+   care:"乗車禁止区間と混雑がきつい。慣れないうちは大ガード外側で待つ。",
+   app:{b:1.0, s:.95,
+    why:"需要量は最大だが待機車も最大。中心にいるほど鳴らないという逆転が起きる。",
+    wait:"新宿三丁目や大久保、初台あたりに引いて待つ。深夜は西側の住宅地寄りが有利。",
+    care:"歌舞伎町周辺は合流地点でのトラブルが多い。停まれる場所を指定して誘導する。"}},
+  {n:"渋谷", x:32, y:54, k:0.92, w:{office:0.22,night:0.5,terminal:0.14,resi:0.08,hub:0.06}, st:{r:1590572,c:"full",d:254.6},
+   why:"若い層の飲み・イベント帰り。再開発でオフィス需要も伸びている。",
+   wait:"明治通り・六本木通り。スクランブル周辺は停めにくいので少し外す。",
+   drop:"世田谷・目黒・中目黒。深夜は二子玉川方面まで伸びる。",
+   care:"道が複雑で歩行者も多い。金曜深夜は渋滞で時間を食う。",
+   app:{b:1.0, s:.9,
+    why:"アプリ利用者の年齢層と最も合うエリア。若い客のリクエストが途切れない。",
+    wait:"駅前を避け、代官山・松濤・神泉側で待機。渋滞に巻き込まれない位置が大事。",
+    care:"迎車で駅前に入ると出られなくなる。到着地点は明治通り沿いへ誘導する。"}},
+  {n:"池袋", x:38, y:26, k:0.94, w:{office:0.2,night:0.45,terminal:0.15,resi:0.13,hub:0.07}, st:{r:1777477,c:"full",d:148.6},
+   why:"繁華街と大ターミナルが一体。終電後は北・西方向へ帰る客が集中する。",
+   wait:"明治通り・東口の乗り場。サンシャイン方面からの流しも有効。",
+   drop:"板橋・練馬・豊島の住宅地。埼玉方面の長距離が出やすい。",
+   care:"都心に戻る空車回送が長くなりがち。帰り道の営業を意識する。",
+   app:{b:1.0, s:.8,
+    why:"周辺の住宅地が広く、深夜は自宅方向のリクエストがコンスタントに出る。",
+    wait:"駅前ではなく、要町・雑司が谷・大塚側で待つ。",
+    care:"降車後に都心へ戻る距離が長い。方向を見て受ける・見送るを判断する。"}},
+  {n:"品川・港南", x:52, y:64, k:0.69, w:{office:0.49,terminal:0.28,resi:0.11,hub:0.12}, st:{r:640644,c:"full",d:432.0},
+   why:"新幹線・空港アクセスとオフィスの複合。朝晩は出張客の荷物あり乗車。",
+   wait:"高輪口・港南口の乗り場が中心。付け待ちで確実に拾える。",
+   drop:"都心オフィス街、羽田空港、湾岸エリア。",
+   care:"乗り場ルールが厳格。列の時間と単価を天秤にかける。",
+   app:{b:.9, s:.7,
+    why:"港南のオフィス・タワマンからの配車が安定。朝の空港行きも入る。",
+    wait:"港南側の運河沿いや、高輪・白金の住宅地寄りで待機。",
+    care:"駅は乗り場エリアが決まっている。アプリの合流は駅を外した場所で。"}},
+  {n:"恵比寿・中目黒", x:34, y:62, k:0.64, w:{office:0.21,night:0.6,terminal:0.06,resi:0.08,hub:0.05}, st:{r:479865,c:"full",d:254.6},
+   why:"落ち着いた飲み需要。終電後は自宅までの中距離になりやすい。",
+   wait:"駒沢通り・山手通り。駅前ロータリーは列ができやすい。",
+   drop:"世田谷・目黒の住宅地。単価はそこそこ安定。",
+   care:"路地が狭く一方通行が多い。降車地点の指定に手間取りやすい。",
+   app:{b:1.15, s:.7,
+    why:"アプリ常用者が住んでいる街。飲みの行き帰り両方でリクエストが出る。",
+    wait:"山手通り沿いで待機。代官山・広尾方面へも数分で動ける位置が良い。",
+    care:"細い道の指定が多い。入れない道は手前で合流するよう連絡を入れる。"}},
+  {n:"五反田・大崎", x:42, y:66, k:0.60, w:{office:0.24,night:0.45,terminal:0.08,resi:0.16,hub:0.07}, st:{r:441952,c:"full",d:144.3},
+   why:"オフィスと飲み屋街が近く、夕方から夜まで切れ目が少ない。",
+   wait:"桜田通り・山手通り。大崎のオフィス車寄せも夕方は有効。",
+   drop:"城南の住宅地、都心方面。",
+   care:"競合が多い。長時間の付け待ちより流しが向く。",
+   app:{b:1.0, s:.65,
+    why:"IT系オフィスが多く、残業帰りの配車が遅い時間まで出る。",
+    wait:"大崎の駅裏や、戸越・武蔵小山方面に寄せて待つ。",
+    care:"駅前ロータリーは進入待ちが出る。合流は少し離れた通り沿いで。"}},
+  {n:"上野・御徒町", x:62, y:33, k:0.63, w:{office:0.23,night:0.4,terminal:0.17,resi:0.13,hub:0.07}, st:{r:501609,c:"full",d:167.5},
+   why:"昼は観光・商業、夜は飲み需要。新幹線と在来線の乗り換え客も出る。",
+   wait:"中央通り・昭和通り。駅の乗り場は回転が読みやすい。",
+   drop:"台東・荒川・足立方面。北千住方面の中距離が出やすい。",
+   care:"戻りが空車になりやすい。帰りのルートを考えて受ける。",
+   app:{b:.95, s:.6,
+    why:"周辺の下町住宅地からの生活配車が地味に強い。観光客の利用も増えている。",
+    wait:"入谷・鶯谷・浅草橋あたりで待つと競合が少ない。",
+    care:"外国人客の指定地点はピンがずれやすい。到着後の確認を丁寧に。"}},
+  {n:"秋葉原", x:60, y:41, k:0.64, w:{office:0.44,night:0.26,terminal:0.21,hub:0.09}, st:{r:520668,c:"full",d:1738.8},
+   why:"オフィスが増え、平日夕方の需要が安定。イベント時は昼も伸びる。",
+   wait:"中央通り・昭和通り沿い。",
+   drop:"都心オフィス街、東側の住宅地。",
+   care:"短距離が多い。回転で稼ぐ意識を。",
+   app:{b:.95, s:.6,
+    why:"神田・岩本町のオフィスからの配車が中心。夜は落ちるのが早い。",
+    wait:"神田・馬喰町方面で待機。都心にすぐ戻れる位置。",
+    care:"高架下と一方通行で合流に迷いやすい。ピンの正確さを確認する。"}},
+  {n:"浅草", x:72, y:30, k:0.42, w:{office:0.16,night:0.3,terminal:0.05,resi:0.2,hub:0.29}, st:{r:164116,c:"partial",d:167.5},
+   why:"観光客の移動が中心。夜は地元の飲み需要が少し。",
+   wait:"雷門通り・国際通り。ホテル前が読みやすい。",
+   drop:"上野・スカイツリー・都心のホテル。",
+   care:"観光客は行き先の説明が曖昧なことがある。地図で確認してから発車する。",
+   app:{b:.95, s:.45,
+    why:"ホテルからの配車と、外国人観光客のアプリ利用が伸びている。",
+    wait:"ホテルが集まる駅東側で待機。競合は少ない。",
+    care:"英語での合流連絡になることがある。定型文を用意しておくと早い。"}},
+  {n:"錦糸町", x:74, y:44, k:0.48, w:{office:0.18,night:0.51,terminal:0.07,resi:0.18,hub:0.06}, st:{r:280110,c:"full",d:100.0},
+   why:"東側最大級の飲み屋街。終電後は江東・墨田・江戸川方面へ流れる。",
+   wait:"京葉道路・四ツ目通り。駅南口周辺。",
+   drop:"墨田・江東・葛飾・市川方面。",
+   care:"都心から離れるので、深夜に入り込むと戻りが遠い。",
+   app:{b:1.15, s:.4,
+    why:"待機車が少ないわりに需要がある。深夜は住宅地への中距離が拾える。",
+    wait:"駅南側と、住吉・菊川方面で待機。",
+    care:"降車が東へ伸びると都心に戻れない。時間帯で線引きを決めておく。"}},
+  {n:"北千住・足立", x:62, y:20, k:0.71, w:{office:0.23,night:0.2,terminal:0.22,resi:0.25,hub:0.1}, st:{r:696452,c:"full",d:90.0}, adj:[{f:6,t:9,m:1.6}],
+   why:"朝の都心方向への長距離が出やすい。鉄道が不便な区間を埋める需要がある。",
+   wait:"朝は住宅地と駅周辺を流す。日光街道沿いが基本線。",
+   drop:"都心のオフィス街まで一気に伸びることがある。単価は高め。",
+   care:"朝以外は需要が薄い。長居せず都心に戻る判断が要る。",
+   app:{b:1.3, s:.3,
+    why:"待機車が薄いエリア。朝の都心向け長距離をアプリで先に押さえられる。",
+    wait:"住宅地の中で止まって待つ。駅前より団地・マンション周辺が鳴る。",
+    care:"迎車距離が長くなりがち。3km超えは実車率を下げるので見送る判断も。"}},
+  {n:"豊洲・お台場", x:70, y:60, k:0.53, w:{office:0.4,terminal:0.15,resi:0.33,hub:0.12}, st:{r:334322,c:"full",d:119.1},
+   why:"オフィスと大型施設、タワーマンションの複合需要。",
+   wait:"施設の車寄せ。流しでは拾いにくいエリア。",
+   drop:"都心方面、湾岸内の移動。",
+   care:"道が広く走りやすい反面、空車で走る距離が長くなりがち。",
+   app:{b:1.3, s:.4,
+    why:"流しでは絶対に拾えない街なので、住民はアプリを使う。相性が最も良いエリアの一つ。",
+    wait:"タワーマンション群の周辺と、豊洲市場・有明の間で待機。",
+    care:"マンションの車寄せは入口が分かりにくい。エントランス名まで確認する。"}},
+  {n:"中野・高円寺", x:24, y:40, k:0.60, w:{office:0.19,night:0.45,terminal:0.08,resi:0.21,hub:0.07}, st:{r:444480,c:"full",d:90.0},
+   why:"個人の飲み需要と住宅地の生活需要。終電後は自宅までの短距離。",
+   wait:"青梅街道・早稲田通り。",
+   drop:"杉並・練馬の住宅地。",
+   care:"単価が伸びにくい。新宿への戻りを絡めて考える。",
+   app:{b:1.35, s:.35,
+    why:"新宿から流れてきた客の降車地。降ろした先でそのまま次が鳴りやすい。",
+    wait:"青梅街道・環七の交点付近。新宿へ戻れる向きで待つ。",
+    care:"短距離が続くと売上が伸びない。深夜は距離を見て組み立てる。"}},
+  {n:"世田谷（三軒茶屋・二子玉川）", x:22, y:62, k:0.50, w:{night:0.25,terminal:0.15,resi:0.6}, st:{r:null,c:"none",d:90.0},
+   why:"降車が多いエリアだが、朝の通勤と夜の生活需要で乗車も出る。",
+   wait:"246号・環七。駅前ロータリー。",
+   drop:"渋谷方面、区内の移動。",
+   care:"深夜に降ろした後、空車で滞留しやすい。すぐ都心へ向かう。",
+   app:{b:1.45, s:.3,
+    why:"アプリ営業の主戦場。駅から遠い住宅地が広く、朝の通勤と夜の帰宅で両方鳴る。",
+    wait:"環七・環八の内側の住宅地で停まって待つ。駅前より住宅地の中が有利。",
+    care:"道が細く迎車に時間がかかる。到着時間が長い案件は無理に取らない。"}},
+  {n:"蒲田・大井町", x:48, y:76, k:0.44, w:{office:0.1,night:0.4,terminal:0.04,resi:0.29,hub:0.16}, st:{r:227292,c:"partial",d:90.0},
+   why:"地元の飲み需要と、空港アクセスの中継。",
+   wait:"第一京浜・環八。駅前。",
+   drop:"大田・品川区内、羽田空港。",
+   care:"都心より単価が低め。空港絡みを拾えるかで差が出る。",
+   app:{b:1.2, s:.35,
+    why:"空港への早朝配車が読める。住宅地からの生活利用も安定している。",
+    wait:"環八沿いと、大森・馬込の住宅地。",
+    care:"早朝の空港配車は遅れが許されない。前日から動線を決めておく。"}},
+  {n:"羽田空港", x:58, y:82, k:0.70, w:{hub:1.0}, st:{r:null,c:"none",d:119.1}, adj:[{f:5,t:8,m:1.4},{f:18,t:22,m:1.2},{f:24,t:28,m:.3}],
+   why:"到着便に合わせて需要が出る。1回の単価が大きい。",
+   wait:"到着ロビーの乗り場（プール待機）。",
+   drop:"都心・湾岸のホテルやオフィス。",
+   care:"待機時間が長く、当たり外れが大きい。新人のうちは主軸にしない。",
+   app:{b:.35, s:.5,
+    why:"到着客は乗り場に並ぶため、アプリ配車はほとんど成立しない。",
+    wait:"空港で待つ意味は薄い。周辺の住宅地に出たほうが鳴る。",
+    care:"アプリ営業なら空港は「降ろす場所」と割り切り、降車後すぐ市街へ戻る。"}},
+  {n:"吉祥寺・三鷹", x:8, y:44, k:0.47, w:{office:0.11,night:0.35,terminal:0.17,resi:0.33,hub:0.04}, st:{r:237730,c:"partial",d:90.0},
+   why:"武蔵野・三鷹の中心。終電後は市内の住宅地への短距離が中心。",
+   wait:"吉祥寺駅周辺、五日市街道・井の頭通り。",
+   drop:"武蔵野・三鷹・杉並の住宅地。",
+   care:"23区中心部より薄い。都心から流れてきたら帰り客を拾ってから戻る。",
+   app:{b:1.35, s:.25,
+    why:"待機車が最も少ないエリア。地元の生活配車を独占しやすい。",
+    wait:"吉祥寺駅の南北の住宅地。武蔵境・三鷹方面も射程に入れる。",
+    care:"営業区域の境目に注意。区域外に出る配車は受けられない。"}}
+];
+
+
+// ==== 実績データによる補正（2026/04/15〜09/05・1,557本 うち1,426本をエリアに割り当て） ====
+const CAL={app:{"day":{"銀座・有楽町":2.4,"六本木・西麻布":1.25,"赤坂・虎ノ門":2,"新橋・汐留":2.4,"丸の内・大手町・東京駅":1.08,"新宿":2.4,"渋谷":1.97,"池袋":1.4,"品川・港南":1.19,"恵比寿・中目黒":0.75,"五反田・大崎":1.11,"上野・御徒町":1.24,"秋葉原":1.86,"浅草":1.36,"錦糸町":0.84,"北千住・足立":0.64,"豊洲・お台場":1.17,"中野・高円寺":0.45,"世田谷（三軒茶屋・二子玉川）":0.45,"蒲田・大井町":0.45,"羽田空港":0.45,"吉祥寺・三鷹":0.45},"night":{"銀座・有楽町":0.9,"六本木・西麻布":0.72,"赤坂・虎ノ門":0.82,"新橋・汐留":1.09,"丸の内・大手町・東京駅":0.8,"新宿":1.64,"渋谷":0.89,"池袋":1.04,"品川・港南":0.78,"恵比寿・中目黒":1.45,"五反田・大崎":0.82,"上野・御徒町":1.1,"秋葉原":1.19,"浅草":1.01,"錦糸町":0.75,"北千住・足立":1.33,"豊洲・お台場":0.76,"中野・高円寺":1.12,"世田谷（三軒茶屋・二子玉川）":1.3,"蒲田・大井町":0.74,"羽田空港":0.83,"吉祥寺・三鷹":0.84}},street:{"銀座・有楽町":1.35,"六本木・西麻布":1.42,"赤坂・虎ノ門":1.15,"新橋・汐留":1.45,"丸の内・大手町・東京駅":0.91,"新宿":1.58,"渋谷":0.66,"池袋":0.5,"品川・港南":0.92,"恵比寿・中目黒":0.65,"五反田・大崎":0.45,"上野・御徒町":1.86,"秋葉原":2.16,"浅草":0.91,"錦糸町":1.11,"北千住・足立":1.02,"豊洲・お台場":1.07,"中野・高円寺":0.61,"世田谷（三軒茶屋・二子玉川）":0.66,"蒲田・大井町":0.45,"羽田空港":0.45,"吉祥寺・三鷹":0.45}};
+const STATS={"銀座・有楽町":{"app":45,"st":60,"avg":2980,"appAvg":2760},"六本木・西麻布":{"app":26,"st":61,"avg":2590,"appAvg":2190},"赤坂・虎ノ門":{"app":39,"st":40,"avg":2750,"appAvg":2720},"新橋・汐留":{"app":58,"st":55,"avg":3830,"appAvg":3680},"丸の内・大手町・東京駅":{"app":42,"st":42,"avg":2330,"appAvg":2470},"新宿":{"app":79,"st":70,"avg":2580,"appAvg":2760},"渋谷":{"app":35,"st":23,"avg":3020,"appAvg":3370},"池袋":{"app":32,"st":14,"avg":2800,"appAvg":3310},"品川・港南":{"app":45,"st":36,"avg":3300,"appAvg":3170},"恵比寿・中目黒":{"app":32,"st":16,"avg":2460,"appAvg":2590},"五反田・大崎":{"app":16,"st":7,"avg":2590,"appAvg":2800},"上野・御徒町":{"app":43,"st":69,"avg":2840,"appAvg":3420},"秋葉原":{"app":56,"st":68,"avg":2730,"appAvg":2890},"浅草":{"app":50,"st":22,"avg":2510,"appAvg":2950},"錦糸町":{"app":22,"st":25,"avg":2070,"appAvg":2090},"北千住・足立":{"app":44,"st":23,"avg":3360,"appAvg":4160},"豊洲・お台場":{"app":54,"st":25,"avg":2840,"appAvg":3110},"中野・高円寺":{"app":6,"st":8,"avg":2810,"appAvg":2670},"世田谷（三軒茶屋・二子玉川）":{"app":17,"st":10,"avg":2780,"appAvg":3510},"蒲田・大井町":{"app":2,"st":2,"avg":1380,"appAvg":1400},"羽田空港":{"app":1,"st":0,"avg":6900,"appAvg":6900},"吉祥寺・三鷹":{"app":1,"st":5,"avg":5210,"appAvg":1200}};
+const HOURS={"5":{"n":2,"avg":2200,"ap":100},"6":{"n":2,"avg":1900,"ap":100},"7":{"n":39,"avg":3900,"ap":85},"8":{"n":70,"avg":2590,"ap":70},"9":{"n":90,"avg":2940,"ap":78},"10":{"n":79,"avg":2950,"ap":75},"11":{"n":91,"avg":3050,"ap":59},"12":{"n":79,"avg":2550,"ap":51},"13":{"n":63,"avg":2770,"ap":62},"14":{"n":75,"avg":2790,"ap":60},"15":{"n":79,"avg":2540,"ap":61},"16":{"n":68,"avg":2260,"ap":57},"17":{"n":88,"avg":2630,"ap":58},"18":{"n":85,"avg":2650,"ap":60},"19":{"n":72,"avg":2600,"ap":46},"20":{"n":62,"avg":2350,"ap":48},"21":{"n":75,"avg":2590,"ap":37},"22":{"n":78,"avg":2790,"ap":28},"23":{"n":72,"avg":2180,"ap":24},"24":{"n":83,"avg":3960,"ap":22},"25":{"n":52,"avg":4950,"ap":23},"26":{"n":22,"avg":2800,"ap":14}};
+
+const DAYS = {
+  weekday:{label:"平日", m:()=>({})},
+  friday:{label:"金曜", m:h=>({night:h>=19?1.35:1, terminal:h>=22?1.3:1, office:(h>=17&&h<=21)?1.1:1})},
+  saturday:{label:"土曜", m:h=>({office:.35, resi:.9, hub:1.15, night:h>=18?1.15:.9, terminal:h>=21?1.15:.8})},
+  sunday:{label:"日曜", m:h=>({office:.25, night:h>=24?.45:.65, terminal:h>=24?.5:.7, hub:1.1, resi:.95})}
+};
+
+const BANDS = [
+  {f:5,t:6,name:"早朝の立ち上がり",
+   text:"街はまだ静か。始発前に動く人と、空港・新幹線へ向かう荷物ありの客が主役です。数は少ないですが1本が長く、当たれば大きい時間帯。",
+   arrows:[["住宅地","羽田空港・東京駅"],["繁華街の残り","都心のホテル"]],
+   app:"予約配車を持っているかで動きが決まる時間。飛び込みなら住宅地で停まって待つほうが鳴ります。空港行きは遅刻できないので、余裕をもった動線で。",
+   appArrows:[["住宅地","羽田空港・東京駅"],["ホテル","空港"]]},
+  {f:7,t:9,name:"通勤ラッシュ",
+   text:"電車が混む時間に、あえてタクシーを選ぶ人が動きます。都心へ向かう流れが一方通行で、都心に着いたら次がすぐ拾えるのが強みです。",
+   arrows:[["足立・北千住","都心オフィス街"],["城南の住宅地","丸の内・赤坂"],["ホテル","会議先・空港"]],
+   app:"アプリがいちばん住宅地に寄る時間帯。駅から遠い家、子どもを送った後、荷物が多い人からのリクエストが集中します。都心のビル前で待つより、環七〜環八の内側の住宅地に入って待つほうが圧倒的に鳴ります。",
+   appArrows:[["城南・城西の住宅地","都心・主要駅"],["足立・板橋","都心オフィス街"]]},
+  {f:10,t:11,name:"商談・外回り",
+   text:"ビジネスの移動が中心。港区・千代田区・中央区の三角地帯を回っていれば、短距離が切れずに続きます。病院や役所の需要もこの時間。",
+   arrows:[["丸の内・大手町","赤坂・虎ノ門"],["住宅地","病院・クリニック"]],
+   app:"通院・買い物など生活の配車が増えます。大きな病院の周辺と住宅地が安定。都心に戻るより、住宅地に残って回すほうが効率が良い時間です。",
+   appArrows:[["住宅地","総合病院・駅"],["自宅","商業施設"]]},
+  {f:12,t:13,name:"昼の移動",
+   text:"打ち合わせと会食の移動。距離は短いですが本数が出ます。都心を離れないことが効率のカギ。",
+   arrows:[["オフィス","会食先・取引先"],["東京駅","都心各所"]],
+   app:"オフィス街は流し車と競合します。裏通りのビルや、駅から離れた事業所からのリクエストのほうが取りやすい時間帯。",
+   appArrows:[["オフィス","取引先"],["住宅地","駅・商業施設"]]},
+  {f:14,t:16,name:"一日の凪",
+   text:"1日でいちばん需要が落ちる時間。無理に走り回るより、休憩・給油・トイレを済ませて夕方に備えるほうが結果的に稼げます。",
+   arrows:[["病院","住宅地"],["都心","都心（少量）"]],
+   app:"都心で空車のまま粘っても鳴りません。住宅地に移動して停めておくか、この時間に休憩を取ってしまうのが正解です。",
+   appArrows:[["病院・施設","住宅地"],["住宅地","塾・習い事"]]},
+  {f:17,t:18,name:"夕方の転換点",
+   text:"帰宅と会食、2つの流れが同時に立ち上がります。オフィス街のビル出口が最も強くなる時間。ここから朝までが勝負です。",
+   arrows:[["オフィス街","銀座・赤坂・六本木"],["オフィス街","自宅・駅"]],
+   app:"リクエストが増え始めます。オフィス街のど真ん中は待機車が多いので、1〜2km外して待つのがコツ。保育園の迎え後や買い物帰りの短距離もこの時間から出ます。",
+   appArrows:[["オフィス街の周辺","自宅・会食先"],["住宅地","駅・商業施設"]]},
+  {f:19,t:20,name:"会食のはじまり",
+   text:"店を目指す移動が中心。銀座・赤坂・西麻布に人が集まっていきます。行き先が読みやすく、走りやすい時間帯。",
+   arrows:[["丸の内・新橋","銀座・六本木"],["駅","飲食店"]],
+   app:"ホテル・レストランへの配車が増えます。合流地点の指定が細かくなるので、到着したら停まれる場所を先に伝えると回転が上がります。",
+   appArrows:[["自宅・オフィス","飲食店・ホテル"],["駅","会食先"]]},
+  {f:21,t:22,name:"一次会明け",
+   text:"店を出た客が次の店か駅へ動きます。短距離が増えますが、拾いやすさは1日でも上位。終電を意識し始める客が出てきます。",
+   arrows:[["銀座・新橋","六本木・西麻布"],["繁華街","主要駅"]],
+   app:"繁華街のど真ん中は待機台数が最も多くなります。あえて少し外した住宅地寄りで待つと、帰宅方向のリクエストが先に入ります。",
+   appArrows:[["繁華街の外周","住宅地"],["飲食店","自宅・二次会"]]},
+  {f:23,t:23,name:"終電前の駆け込み",
+   text:"「間に合わないから乗る」客が増え、距離が伸び始めます。ここから深夜料金へ入る流れをどう作るかで、その日の水揚げが決まります。",
+   arrows:[["繁華街","自宅（中距離）"],["繁華街","主要駅"]],
+   app:"郊外方向の中距離リクエストが増えます。単価が上がる時間なので、迎車距離が短い案件を選んで回転を落とさないこと。",
+   appArrows:[["繁華街","城南・城西の住宅地"],["駅周辺","自宅"]]},
+  {f:24,t:25,name:"終電後のピーク",
+   text:"1日の最高潮。電車がなくなり、選択肢がタクシーだけになります。城南・城西方面への長距離が出やすく、単価がいちばん跳ねる時間。",
+   arrows:[["銀座・六本木・新宿","世田谷・目黒・杉並"],["渋谷・恵比寿","郊外・神奈川方面"]],
+   app:"需要も競合も最大。繁華街の中心で待つと後ろに何十台も並んでいる状態になります。1〜2km外して、迎車距離の短いリクエストを確実に取るのが結果的に一番稼げます。",
+   appArrows:[["繁華街の外周","世田谷・杉並・練馬"],["駅周辺","郊外の自宅"]]},
+  {f:26,t:27,name:"深夜の残り火",
+   text:"歩いている人が一気に減ります。六本木・西麻布・歌舞伎町など、まだ人がいる場所へ絞り込む時間。本数は減っても単価は高いままです。",
+   arrows:[["六本木・西麻布","広尾・白金・目黒"],["歌舞伎町","中野・杉並・練馬"]],
+   app:"リクエストの数が落ちます。残っている繁華街の周辺に絞り、鳴らない場所で粘らないこと。降ろした先で次を待つ動きに切り替えます。",
+   appArrows:[["繁華街の周辺","住宅地"],["住宅地","住宅地（近距離）"]]},
+  {f:28,t:28,name:"明け方・帰庫前",
+   text:"始発が近づき需要は消えていきます。最後の1本を欲張るより、帰庫時間と洗車・精算の時間を逆算して動くこと。",
+   arrows:[["繁華街の残り","住宅地"],["都心","営業所方向"]],
+   app:"営業所の方向に向かうリクエストだけ受ける時間。逆方向の長距離を取ると帰庫に間に合わなくなります。",
+   appArrows:[["都心","営業所方向"],["住宅地","早朝の駅・空港"]]}
+];
+
+let hour = 23, day = "weekday", mode = "app", calOn = true, sel = null, timer = null;
+
+function bandOf(h){ return BANDS.find(b=>h>=b.f&&h<=b.t) || BANDS[BANDS.length-1]; }
+
+function score(a,h,d,md,cal){
+  const mult = DAYS[d].m(h), i = h - HS;
+  let s = 0;
+  for(const key in a.w){
+    const m = (mult[key]===undefined?1:mult[key]) * (md==="app" ? APPW[key] : 1);
+    s += a.w[key] * C[key][i] * m;
+  }
+  s *= a.k;
+  if(a.adj) a.adj.forEach(x=>{ if(h>=x.f&&h<=x.t) s*=x.m; });
+  if(md==="app") s = s * a.app.b / (1 + a.app.s*0.85);
+  if(cal){ const t = md==="app" ? (h<19?CAL.app.day:CAL.app.night) : CAL.street; s *= (t[a.n]||1); }
+  return s;
+}
+
+const MAXS = {street:1, app:1, streetC:1, appC:1};
+AREAS.forEach(a=>{ for(const d in DAYS) for(let h=HS;h<=HE;h++){
+  MAXS.street = Math.max(MAXS.street, score(a,h,d,"street",false));
+  MAXS.app = Math.max(MAXS.app, score(a,h,d,"app",false));
+  MAXS.streetC = Math.max(MAXS.streetC, score(a,h,d,"street",true));
+  MAXS.appC = Math.max(MAXS.appC, score(a,h,d,"app",true));
+}});
+function maxKey(){ return mode + (calOn?"C":""); }
+
+function heat(v){
+  const stops = [[0,[43,63,92]],[.35,[63,111,168]],[.7,[242,178,51]],[1,[226,72,61]]];
+  for(let i=0;i<stops.length-1;i++){
+    const [p0,c0]=stops[i],[p1,c1]=stops[i+1];
+    if(v<=p1){ const t=(v-p0)/(p1-p0);
+      return "rgb("+c0.map((c,j)=>Math.round(c+(c1[j]-c)*t)).join(",")+")"; }
+  }
+  return "rgb(226,72,61)";
+}
+function fmt(h){ return h<24 ? h+":00" : '<span class="nx">翌</span>'+(h-24)+":00"; }
+function supLabel(s){ return s>=.8?"とても多い":s>=.6?"多い":s>=.4?"普通":"少ない"; }
+
+const map = FS_$("map");
+const nodes = AREAS.map((a,idx)=>{
+  const b = document.createElement("button");
+  b.className="node"; b.style.left=a.x+"%"; b.style.top=a.y+"%";
+  b.innerHTML = '<span class="dot"></span><span class="nm">'+a.n.replace("（","<br>（")+'</span>';
+  b.addEventListener("click",()=>{ sel=idx; render(); FS_$("detail").scrollIntoView({behavior:"smooth",block:"nearest"}); });
+  map.appendChild(b);
+  return b;
+});
+
+const BASE = "エリアの重み付けは、駅別乗降客数（国土数値情報 令和5年度＋東京メトロ2024年度）と昼夜間人口比率（東京都統計）から作成。鉄道データが取れないエリア（世田谷・羽田空港）と、鉄道の規模が需要を表さない繁華街（六本木など）は従来の設定を残しています。";
+const SRC = "実績データ：2026年4月15日〜9月5日／全1,557本（うち1,426本を22エリアに割り当て、アプリ745本・流し681本）。";
+const CAVEAT = "「実績で補正」は、実際に乗車があった場所へモデルを寄せる補正です。ただし実績は“その場所にいたから拾えた”記録でもあるので、走っていないエリア（中野・世田谷・吉祥寺・蒲田・羽田）は自動的に低く出ます。未開拓のエリアを検討するときは補正をオフにして見比べてください。";
+const NIGHT_NOTE = "アプリモードの19時以降は、夜もアプリを開けている他の乗務員の実績だけを基準にしています（41本と少ないため、ほぼモデルどおりの値です）。夜にアプリを切っている記録で補正すると、夜のアプリ需要がゼロに見えてしまうためです。";
+const NOTES = {
+  street:"流しと付け待ちのモードです。"+BASE+" "+SRC+" "+CAVEAT+" 武蔵野市・三鷹市は吉祥寺・三鷹駅周辺として1つにまとめています。",
+  app:"アプリ配車のモードです。数値は「リクエストの多さ ÷ 周りの待機台数」で、需要そのものではなく“自分が受注できる確率”に近い指標です。"+BASE+" "+SRC+" "+CAVEAT+" "+NIGHT_NOTE
+};
+
+function render(){
+  FS_ROOT.classList.toggle("app", mode==="app");
+  FS_$("clock").innerHTML = fmt(hour);
+  const b = bandOf(hour);
+  FS_$("bandName").textContent = b.name;
+  FS_$("dayName").textContent = DAYS[day].label;
+  FS_$("hour").value = hour;
+  FS_$("flowHour").textContent = (hour<24?hour:hour-24)+"時台";
+  FS_$("flowTitle").childNodes[0].nodeValue = mode==="app" ? "この時間のアプリの流れ" : "この時間の人の流れ";
+  FS_$("rankTitle").childNodes[0].nodeValue = mode==="app" ? "待機したいエリア" : "需要の高いエリア";
+  FS_$("legLo").textContent = mode==="app" ? "鳴りにくい" : "閑散";
+  FS_$("legHi").textContent = mode==="app" ? "鳴りやすい" : "繁忙";
+  FS_$("note").textContent = NOTES[mode];
+
+  const list = AREAS.map((a,i)=>({i,a,s:score(a,hour,day,mode,calOn)})).sort((p,q)=>q.s-p.s);
+  const top = new Set(list.slice(0,6).map(o=>o.i));
+
+  list.forEach(({i,a,s})=>{
+    const v = Math.min(1, s/MAXS[maxKey()]);
+    const el = nodes[i], d = el.querySelector(".dot");
+    const size = 9 + v*24;
+    d.style.width=size+"px"; d.style.height=size+"px";
+    d.style.background=heat(v);
+    d.style.boxShadow = v>.7 ? "0 0 "+(8+v*14)+"px "+heat(v) : "none";
+    el.classList.toggle("hot", top.has(i));
+    el.classList.toggle("sel", sel===i);
+    el.setAttribute("aria-label", a.n+" "+Math.round(v*100));
+  });
+
+  const txt = mode==="app" ? b.app : b.text;
+  const arr = mode==="app" ? b.appArrows : b.arrows;
+  const hd = HOURS[hour];
+  const real = hd
+    ? "<div class='real'>この時間の実績　<b>"+hd.n+"本</b>　平均 <b>¥"+hd.avg.toLocaleString()+"</b>　アプリ比率 <b>"+hd.ap+"%</b></div>"
+    : "<div class='real'>この時間の実績データはありません（記録上、乗務していない時間帯）</div>";
+  FS_$("flow").innerHTML =
+    "<p>"+txt+"</p><div class='arrows'>" +
+    arr.map(function(p){ return "<div class='arw'><b>"+p[0]+"</b><span class='a'>▶</span><b>"+p[1]+"</b></div>"; }).join("") +
+    "</div>" + real;
+
+  FS_$("rank").innerHTML = list.slice(0,6).map(function(o,n){
+    const v = Math.min(1,o.s/MAXS[maxKey()]);
+    return "<li data-i='"+o.i+"'><span class='pos'>"+(n+1)+"</span><span class='nm2'>"+o.a.n+"</span>"+
+      "<span class='bar'><i style='width:"+Math.round(v*100)+"%;background:"+heat(v)+"'></i></span>"+
+      "<span class='sc'>"+Math.round(v*100)+"</span></li>";
+  }).join("");
+
+  const dt = FS_$("detail");
+  if(sel===null){ dt.hidden=true; return; }
+  const a = AREAS[sel], v = Math.min(1,score(a,hour,day,mode,calOn)/MAXS[maxKey()]), p = Math.round(v*100);
+  const hh = (hour<24?hour:"翌"+(hour-24))+"時台";
+  const st = STATS[a.n] || {app:0,st:0,avg:0,appAvg:0};
+  const n = st.app + st.st;
+  const tbl = mode==="app" ? (hour<19?CAL.app.day:CAL.app.night) : CAL.street;
+  const cm = tbl[a.n] || 1;
+  const cmTxt = calOn ? "　実績補正 ×"+cm.toFixed(2) : "　補正オフ";
+  const sd = a.st || {};
+  const railTxt = sd.r
+    ? "鉄道乗降 <b>"+Math.round(sd.r/10000)+"万人/日</b>"+(sd.c==="partial"?"（一部事業者は非公表／乗換ハブは重複分を割引）":"")
+    : "鉄道の乗降客数データなし";
+  const statHtml = "<div class='real'>"+railTxt+"　昼夜間人口比率 <b>"+sd.d+"</b></div>";
+  const realHtml = n>0
+    ? "<div class='real'>実績　アプリ <b>"+st.app+"本</b>／流し <b>"+st.st+"本</b>　平均 <b>¥"+st.avg.toLocaleString()+"</b>"
+      + (st.appAvg? "（アプリ ¥"+st.appAvg.toLocaleString()+"）":"") + cmTxt
+      + (n<10 ? "<br>実績が少ないので補正は参考値です。" : "")
+      + (mode==="app"&&hour>=19 ? "<br>夜のアプリ実績はほぼないため、ここはモデルの予測に近い値です。" : "") + "</div>"
+    : "<div class='real'>このエリアの乗車実績はまだありません。"+(calOn?"補正で低めに出ています。":"")+"</div>";
+  dt.hidden=false;
+  if(mode==="app"){
+    const lv = p>=75?"よく鳴る":p>=50?"狙える":p>=28?"ぼちぼち":"薄い";
+    dt.innerHTML = "<h3>"+a.n+"</h3><div class='lv'>"+hh+"の受注しやすさ "+p+" ／ "+lv+"　・　周りの待機台数："+supLabel(a.app.s)+"</div>"+
+      "<dl><dt>なぜ鳴る</dt><dd>"+a.app.why+"</dd>"+
+      "<dt>待機の場所</dt><dd>"+a.app.wait+"</dd>"+
+      "<dt>降車先</dt><dd>"+a.drop+"</dd>"+
+      "<dt>アプリの注意</dt><dd>"+a.app.care+"</dd></dl>" + statHtml + realHtml;
+  }else{
+    const lv = p>=75?"かなり強い":p>=50?"狙える":p>=28?"ぼちぼち":"薄い";
+    dt.innerHTML = "<h3>"+a.n+"</h3><div class='lv'>"+hh+"の需要 "+p+" ／ "+lv+"</div>"+
+      "<dl><dt>なぜ出る</dt><dd>"+a.why+"</dd>"+
+      "<dt>待ち方</dt><dd>"+a.wait+"</dd>"+
+      "<dt>降車先</dt><dd>"+a.drop+"</dd>"+
+      "<dt>注意点</dt><dd>"+a.care+"</dd></dl>" + statHtml + realHtml;
+  }
+}
+
+FS_$("hour").addEventListener("input",function(e){ hour=+e.target.value; render(); });
+FS_$("days").addEventListener("click",function(e){
+  const btn = e.target.closest("button[data-day]"); if(!btn) return;
+  day = btn.dataset.day;
+  FS_$$("#days button[data-day]").forEach(function(x){ x.setAttribute("aria-pressed", x===btn); });
+  render();
+});
+FS_$("modes").addEventListener("click",function(e){
+  const btn = e.target.closest("button[data-mode]"); if(!btn) return;
+  mode = btn.dataset.mode;
+  FS_$$("#modes button").forEach(function(x){ x.setAttribute("aria-pressed", x===btn); });
+  render();
+});
+FS_$("rank").addEventListener("click",function(e){
+  const li = e.target.closest("li[data-i]"); if(!li) return;
+  sel = +li.dataset.i; render();
+});
+FS_$("calBtn").addEventListener("click",function(){
+  calOn = !calOn;
+  this.setAttribute("aria-pressed", calOn);
+  this.textContent = calOn ? "実績で補正" : "モデルのみ";
+  render();
+});
+const playBtn = FS_$("play");
+playBtn.addEventListener("click",function(){
+  if(timer){ clearInterval(timer); timer=null; playBtn.setAttribute("aria-pressed","false"); playBtn.textContent="時間を進める"; return; }
+  playBtn.setAttribute("aria-pressed","true"); playBtn.textContent="停止";
+  timer = setInterval(function(){ hour = hour>=HE ? HS : hour+1; render(); }, 900);
+});
+
+render();
+
+}
+
 function sectionTitle(t){ return `<div style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber);">${t}</div>`; }
 
 // ===== 月度(各月16日〜翌月15日など)の設定 =====
@@ -4672,7 +5290,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 });
 // ===== 下部タブによる画面切替 =====
 function showTab(name){
-  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel"};
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
   document.querySelectorAll(".tab-btn").forEach(b=>{
@@ -4687,9 +5305,14 @@ function showTab(name){
   if(name==="review") renderReview();
   if(name==="brief") buildBrief(false);
   if(name==="settings") renderSettings();
+  if(name==="flow"){
+    const mt=document.getElementById("flowMount");
+    if(!mt.dataset.ready){ mt.innerHTML=FLOW_HTML; mt.dataset.ready="1"; FS_INIT=false; }
+    setTimeout(initFlowSim,0);
+  }
 }
 document.querySelectorAll(".tab-btn").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
-["diaryClose","reviewClose","briefClose","settingsClose"].forEach(id=>{
+["diaryClose","reviewClose","briefClose","settingsClose","flowClose"].forEach(id=>{
   const el=document.getElementById(id);
   if(el) el.onclick=()=>showTab("map");
 });
