@@ -261,6 +261,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span id="briefClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
   <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
+  <div id="demandBoard"></div>
+  <div style="border-top:1px solid var(--line);margin:14px 0 10px;"></div>
   <div id="briefBody" style="font-size:13px;"></div>
   <div style="font-size:10px;color:var(--muted);margin-top:8px;">天気: Open-Meteo / イベント: AI検索(内容は必ず公式情報で確認を)</div>
 </div>
@@ -829,7 +831,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.06-8";
+const APP_VER = "2026.09.11-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1564,6 +1566,135 @@ function briefFormat(t){
   });
   return out || "生成できませんでした。";
 }
+// ===== 需要ダッシュボード(誰が・いつ・何の目的で動くか) =====
+const DEMAND_TYPES=[
+  {k:"biz", n:"ビジネス", ic:"💼", c:"#4fc3f7",
+   where:"大手町・丸の内・虎ノ門・日本橋・八重洲・品川",
+   when:"平日 7-10時 / 17-20時",
+   note:"朝は駅からオフィスへ、夕方は会議・移動。単価は中距離が中心"},
+  {k:"ent", n:"接待・会食", ic:"🍶", c:"#f5a623",
+   where:"銀座・新橋・赤坂・六本木・日本橋・人形町・神楽坂",
+   when:"平日 19-24時(ピークは20-22時)",
+   note:"経費で払う客。深夜のロングにつながる本命。金曜と月末が濃い"},
+  {k:"tour", n:"観光・レジャー", ic:"✈️", c:"#7dd87d",
+   where:"東京駅・浅草・お台場・豊洲・有明・羽田空港・新宿・渋谷",
+   when:"休日・連休 10-20時",
+   note:"荷物の多い客は空港・ホテルへ。連休は特に強い"},
+  {k:"shop", n:"買い物・イベント", ic:"🛍", c:"#ba68c8",
+   where:"銀座・新宿・渋谷・池袋・有明アリーナ・東京ドーム",
+   when:"休日 13-18時 / イベント終演後",
+   note:"終演直後は一斉に出る。二次会・帰宅の二段構えを読む"},
+  {k:"resi", n:"住宅・帰宅", ic:"🏠", c:"#9ccc65",
+   where:"世田谷・目黒・杉並・練馬・足立・葛飾の住宅地",
+   when:"22時以降(終電後が本番)",
+   note:"郊外へのロングが出る。降ろした後の戻りを計算に入れる"},
+  {k:"stn", n:"駅前・終電後", ic:"🚉", c:"#ffb74d",
+   where:"新宿・渋谷・池袋・上野・北千住・品川・東京駅",
+   when:"終電前後(0時前後)〜2時",
+   note:"終電を逃した客。行き先は郊外。0時台が最大の山"}
+];
+// 今日どの需要が強いか(暦と時刻から)
+function demandToday(){
+  const d=new Date(); if(d.getHours()<5) d.setDate(d.getDate()-1);
+  const dw=d.getDay(), day=d.getDate(), m=d.getMonth()+1;
+  const ds=dsOf(d);
+  const hol=isHoliday(ds);
+  const nx=dsOf(new Date(d.getTime()+86400000));
+  const holEve=isHoliday(nx);
+  const weekend = dw===0||dw===6||hol;
+  const sc={biz:0, ent:0, tour:0, shop:0, resi:0, stn:0};
+  if(weekend){ sc.tour+=3; sc.shop+=2; sc.stn+=1; sc.biz-=2; sc.ent-=1; }
+  else { sc.biz+=3; sc.ent+=2; sc.stn+=1; sc.tour-=1; }
+  if(dw===5){ sc.ent+=2; sc.stn+=2; sc.resi+=1; }          // 金曜
+  if(dw===4){ sc.ent+=1; }
+  if(dw===1){ sc.biz+=1; sc.ent-=1; }
+  if(holEve){ sc.ent+=2; sc.stn+=1; }
+  if(day>=25){ sc.ent+=1; }                                 // 給料日後
+  if(day<=5){ sc.ent-=1; }
+  if(m===12&&day>=15){ sc.ent+=3; }
+  if(m===8&&day>=11&&day<=16){ sc.biz-=3; sc.tour+=1; }     // お盆
+  if(m===1&&day<=3){ sc.biz-=3; sc.ent-=2; sc.tour+=1; }
+  // 連休判定(前後に休みが続くか)
+  let run=0;
+  for(let i=-2;i<=2;i++){
+    const t=new Date(d.getTime()+i*86400000);
+    const s=dsOf(t);
+    if(t.getDay()===0||t.getDay()===6||isHoliday(s)) run++;
+  }
+  const longVac = run>=3;
+  if(longVac){ sc.tour+=2; sc.biz-=1; }
+  const ranked=Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+  return {sc, ranked, weekend, hol, holEve, longVac, dw, day, m, run};
+}
+// 期間の性格(前半・連休・連休明けなど)
+function periodCharacter(info){
+  const {m, day, longVac, weekend, hol, holEve}=info;
+  const parts=[];
+  if(longVac) parts.push({t:"連休中", d:"観光・レジャー需要が主役。駅・空港・浅草・お台場・有明を意識。ビジネス需要は薄い"});
+  else if(holEve) parts.push({t:"休前日", d:"終電を気にしない客が増える。接待・会食帰りのロングが伸びる"});
+  else if(hol) parts.push({t:"祝日", d:"日曜と同じ動き。ビジネス需要が消えるぶん観光・買い物へ"});
+  else if(weekend) parts.push({t:"休日", d:"タクシー台数が減る。昼間がやりやすく、空港案件も期待できる"});
+  else parts.push({t:"平日", d:"ビジネス需要が土台。朝夕のオフィス街と、夜の接待が二本柱"});
+  if(day<=10) parts.push({t:m+"月前半", d:"月初は財布が締まりやすい。数を積む組み立てで"});
+  else if(day<=20) parts.push({t:m+"月中旬", d:"平常運転。曜日の特性がそのまま出る"});
+  else parts.push({t:m+"月下旬", d:"給料日後で懐が緩む。月末の締め会・接待も増える"});
+  if(m===11||m===12||m===3) parts.push({t:"繁忙期", d:m+"月は年間でも忙しい月。強気の目標で"});
+  if(m===1||m===2) parts.push({t:"閑散期", d:m+"月は年間で最も薄い。無理をせず堅実に"});
+  return parts;
+}
+// 時間帯ごとの主役
+function demandByHour(info){
+  const w=info.weekend;
+  return [
+    {h:"7-10時",  k:w?"tour":"biz",  t:w?"観光・移動":"ビジネス", d:w?"駅・空港へ向かう客。荷物のある人を意識":"駅からオフィスへ。荒川区・文京区で拾って都心へ"},
+    {h:"10-13時", k:w?"tour":"biz",  t:w?"観光・買い物":"ビジネス・所用", d:w?"浅草・お台場・豊洲。空港案件もこの時間":"病院・商談。空港送迎もこの時間帯"},
+    {h:"13-18時", k:w?"shop":"biz",  t:w?"買い物・レジャー":"ビジネス移動", d:w?"銀座・新宿・渋谷。イベント会場周辺も":"港区南部(芝浦・芝・港南)で回転。16時台は谷なので休憩"},
+    {h:"18-22時", k:"ent",           t:"接待・会食", d:"銀座・日本橋・京橋。20-22時がピーク。20時台は谷なので休憩を"},
+    {h:"22-24時", k:"ent",           t:"会食帰り", d:"都心に位置取り。無理に拾わず0時に備える"},
+    {h:"0-2時",   k:"stn",           t:"終電後・帰宅", d:"新橋2・六本木4・上野2。ここが最大の山。動かず張る"},
+    {h:"2時-",    k:"resi",          t:"帰庫方向", d:"北東(足立・葛飾)方向の客を優先"}
+  ];
+}
+function renderDemandBoard(){
+  const box=document.getElementById("demandBoard");
+  if(!box) return;
+  const info=demandToday();
+  const chars=periodCharacter(info);
+  const now=new Date(); const nh=now.getHours()<5?now.getHours()+24:now.getHours();
+  let h='';
+  // 今日の性格
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">`
+    + chars.map(c=>`<span style="background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-size:11px;"><b style="color:var(--amber);">${c.t}</b></span>`).join("")
+    + `</div>`;
+  h+=chars.map(c=>`<div style="font-size:11px;color:var(--muted);line-height:1.6;">・${c.d}</div>`).join("");
+
+  // 今日動く需要トップ3
+  h+=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:12px 0 6px;">今日動く需要</div>`;
+  info.ranked.slice(0,3).forEach(([k,v],i)=>{
+    const t=DEMAND_TYPES.find(x=>x.k===k);
+    h+=`<div style="border-left:3px solid ${t.c};background:var(--panel2);border-radius:0 8px 8px 0;padding:7px 9px;margin-bottom:5px;">
+      <div style="font-size:13px;"><b>${t.ic} ${t.n}</b> <span style="font-size:10px;color:var(--muted);">${i===0?"主役":i===1?"次点":"補助"}</span></div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:2px;">${t.where}<br>${t.note}</div>
+    </div>`;
+  });
+
+  // 時間帯ごとの主役(現在の時間帯を強調)
+  h+=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:12px 0 6px;">時間帯ごとの主役</div>`;
+  const hb=demandByHour(info);
+  const idx=[[5,10],[10,13],[13,18],[18,22],[22,24],[24,26],[26,30]].findIndex(([a,b])=>nh>=a&&nh<b);
+  hb.forEach((x,i)=>{
+    const t=DEMAND_TYPES.find(y=>y.k===x.k);
+    const cur=i===idx;
+    h+=`<div style="display:flex;gap:8px;padding:6px 0;border-top:1px solid var(--line);${cur?"background:rgba(245,166,35,.07);":""}">
+      <span style="width:52px;font-size:11px;color:${cur?"var(--amber)":"var(--muted)"};font-weight:${cur?800:400};">${x.h}</span>
+      <span style="flex:1;font-size:11px;line-height:1.55;">
+        <b style="color:${t.c};">${t.ic} ${x.t}</b>${cur?' <span style="color:var(--amber);font-size:10px;">← いま</span>':''}
+        <br><span style="color:var(--muted);">${x.d}</span></span>
+    </div>`;
+  });
+  box.innerHTML=h;
+}
+
 async function buildBrief(force){
   const key=getAIKey();
   if(!key) return;
@@ -1600,7 +1731,8 @@ async function buildBrief(force){
 以下の会社の研修方針を助言の土台にしてください。
 ${COACH_TIPS}${kbForPrompt()}
 形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。
-「狙い」はクールの流れ(第1→第2→第3→青タン)で構成し、研修方針の推奨エリア・連続配車の使い分け・今日の曜日特性・イベント終演を織り込むこと。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
+「狙い」はクールの流れ(第1→第2→第3→青タン)で構成し、研修方針の推奨エリア・連続配車の使い分け・今日の曜日特性・イベント終演を織り込むこと。
+イベントがある場合は「終演後どこへ流れるか」と「その後の二次需要(二次会・帰宅)がどこで出るか」まで一手先を書くこと。会場前で長時間待つのではなく、流れの先回りをする前提で。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
 最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","s":"18:00","f":"21:20","lat":35.7056,"lng":139.7519}]`;
     const r=await callSearchAI(key, promptText);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
@@ -1620,7 +1752,7 @@ ${COACH_TIPS}${kbForPrompt()}
   }
 }
 document.getElementById("btnBrief").onclick=()=>showTab("brief");
-document.getElementById("briefReload").onclick=()=>buildBrief(true);
+document.getElementById("briefReload").onclick=()=>{ renderDemandBoard(); buildBrief(true); };
 document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
 
 // ===== タクシー乗り場(OpenStreetMapのデータ・初回のみ取得して端末に保存) =====
@@ -5384,7 +5516,7 @@ function showTab(name){
   if(el) el.style.display="block";
   if(name==="diary"){ const on=document.querySelector(".diary-tab.on"); renderDiary(on?on.dataset.t:"y"); }
   if(name==="review") renderReview();
-  if(name==="brief") buildBrief(false);
+  if(name==="brief"){ renderDemandBoard(); buildBrief(false); }
   if(name==="settings") renderSettings();
   if(name==="flow"){
     const mt=document.getElementById("flowMount");
