@@ -265,7 +265,11 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="bdToday" style="flex:1;padding:8px 0;font-size:12px;">今日</button>
     <button class="btn" id="bdNext" style="padding:8px 13px;font-size:15px;">▶</button>
   </div>
-  <div id="bdLabel" style="font-size:13px;font-weight:700;margin-bottom:6px;"></div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+    <div id="bdLabel" style="font-size:13px;font-weight:700;flex:1;"></div>
+    <button class="chip bd-mode on" data-m="st" style="font-size:11px;padding:6px 10px;">🚕 流し</button>
+    <button class="chip bd-mode" data-m="app" style="font-size:11px;padding:6px 10px;">📲 アプリ</button>
+  </div>
   <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
   <div id="demandBoard"></div>
   <div style="border-top:1px solid var(--line);margin:14px 0 10px;"></div>
@@ -838,7 +842,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.11-3";
+const APP_VER = "2026.09.11-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1693,8 +1697,27 @@ function periodCharacter(info){
   return parts;
 }
 // 時間帯ごとの主役
+let bdMode="st";   // "st"=流し / "app"=アプリ配車
+// アプリ配車向けの狙い場所(待機台数が少なく鳴りやすい場所)
+const DEMAND_APP={
+  biz:{where:"番町・麹町・大手町の裏手、港南・東品川・豊洲のオフィス前", note:"ビル街は流しで手が挙がりにくいぶん、アプリが安定して鳴る"},
+  ent:{where:"銀座は「スマ配」のみ。日本橋・人形町・神楽坂・西新橋・赤坂", note:"繁華街のど真ん中は待機台数が多い。少し外して待つと先に入る"},
+  tour:{where:"ホテル周辺、豊洲・有明・お台場、駅から離れた観光地", note:"荷物のある客はアプリを使う。ホテルの車寄せ指定が多い"},
+  shop:{where:"会場の周辺ではなく、1本外した通り沿い", note:"終演直後は会場前に車が集まる。少し離れて受けるほうが早い"},
+  resi:{where:"世田谷・目黒・杉並・練馬の住宅地、マンション前", note:"流しでは拾えない住宅地が本領。迎車距離3km超は見送る判断も"},
+  stn:{where:"駅前ロータリーより、駅から300m〜1km外した場所", note:"駅前は待機の列ができる。外して待つと先にリクエストが入る"}
+};
 function demandByHour(info){
   const w=info.weekend;
+  if(bdMode==="app") return [
+    {h:"7-10時",  k:w?"tour":"biz",  t:w?"観光・移動":"ビジネス", d:w?"ホテル・駅周辺で待機。空港送迎のリクエストが入りやすい":"足立・荒川の住宅地で待つ。都心向けの長距離を先に押さえられる"},
+    {h:"10-13時", k:w?"tour":"biz",  t:w?"観光・買い物":"ビジネス・所用", d:w?"浅草・豊洲・お台場。観光地は駅から少し外して待つ":"病院・オフィス周辺。番町・麹町・港南あたりが堅い"},
+    {h:"13-18時", k:w?"shop":"biz",  t:w?"買い物・レジャー":"ビジネス移動", d:w?"商業施設の裏手や1本外した通りで待機":"港区南部(芝浦・港南・東品川)。13時までは特によく鳴る"},
+    {h:"18-22時", k:"ent",           t:"接待・会食", d:"日本橋・人形町・西新橋・赤坂。銀座はスマ配のみ。18時まではよく鳴る"},
+    {h:"22-24時", k:"ent",           t:"会食帰り", d:"この時間は鳴りが落ちる。切って流しに回すか、住宅地寄りで待つ"},
+    {h:"0-2時",   k:"stn",           t:"終電後・帰宅", d:"25時過ぎから鳴り出す。上野の春日通り沿い、神田美土代町、日本橋のスマ配"},
+    {h:"2時-",    k:"resi",          t:"帰庫方向", d:"足立・葛飾方向で受ける。迎車距離が長いものは見送る"}
+  ];
   return [
     {h:"7-10時",  k:w?"tour":"biz",  t:w?"観光・移動":"ビジネス", d:w?"駅・空港へ向かう客。荷物のある人を意識":"駅からオフィスへ。荒川区・文京区で拾って都心へ"},
     {h:"10-13時", k:w?"tour":"biz",  t:w?"観光・買い物":"ビジネス・所用", d:w?"浅草・お台場・豊洲。空港案件もこの時間":"病院・商談。空港送迎もこの時間帯"},
@@ -1732,12 +1755,14 @@ function renderDemandBoard(){
   h+=chars.map(c=>`<div style="font-size:11px;color:var(--muted);line-height:1.6;">・${c.d}</div>`).join("");
 
   // 今日動く需要トップ3
-  h+=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:12px 0 6px;">今日動く需要</div>`;
+  h+=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:12px 0 6px;">今日動く需要
+    <span style="font-weight:400;color:var(--muted);font-size:10px;">${bdMode==="app"?"— アプリ配車で待つ場所":"— 流しで拾う場所"}</span></div>`;
   info.ranked.slice(0,3).forEach(([k,v],i)=>{
     const t=DEMAND_TYPES.find(x=>x.k===k);
+    const a=(bdMode==="app")?DEMAND_APP[k]:null;
     h+=`<div style="border-left:3px solid ${t.c};background:var(--panel2);border-radius:0 8px 8px 0;padding:7px 9px;margin-bottom:5px;">
       <div style="font-size:13px;"><b>${t.ic} ${t.n}</b> <span style="font-size:10px;color:var(--muted);">${i===0?"主役":i===1?"次点":"補助"}</span></div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:2px;">${t.where}<br>${t.note}</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:2px;">${a?a.where:t.where}<br>${a?a.note:t.note}</div>
     </div>`;
   });
 
@@ -1751,9 +1776,13 @@ function renderDemandBoard(){
       const avg=Math.round(tots.reduce((a,b)=>a+b,0)/tots.length);
       const best=Math.max(...tots);
       const bigs=(same.reduce((s,x)=>s+byDay.get(x).filter(r=>r.f>=10000).length,0)/same.length).toFixed(1);
+      const rs=same.flatMap(x=>byDay.get(x));
+      const sel=(bdMode==="app")? rs.filter(r=>(r.m||"app")==="app") : rs.filter(r=>(r.m||"app")==="st");
+      const selAvg = sel.length? Math.round(sel.reduce((s,r)=>s+r.f,0)/sel.length) : 0;
       h+=`<div style="border-top:1px solid var(--amber);margin-top:12px;padding-top:8px;font-size:12px;">
         <b style="color:var(--amber);">${D_DN[dw]}曜の自分の実績</b>(${same.length}日)　
-        平均 <b>${yen(avg)}</b>　ベスト <b>${yen(best)}</b>　万収 <b>${bigs}本/日</b></div>`;
+        平均 <b>${yen(avg)}</b>　ベスト <b>${yen(best)}</b>　万収 <b>${bigs}本/日</b>
+        ${sel.length?`<div style="color:var(--muted);font-size:11px;margin-top:3px;">${bdMode==="app"?"📲 アプリ":"🚕 流し"}に限ると ${sel.length}本・1本平均 <b style="color:var(--text)">${yen(selAvg)}</b>(全体の${Math.round(sel.length/rs.length*100)}%)</div>`:""}</div>`;
     }
   }catch(e){}
 
@@ -1850,6 +1879,11 @@ function bdShift(n){
     buildBrief(false);
   }
 }
+document.querySelectorAll(".bd-mode").forEach(b=>b.onclick=()=>{
+  bdMode=b.dataset.m;
+  document.querySelectorAll(".bd-mode").forEach(x=>x.classList.toggle("on", x.dataset.m===bdMode));
+  renderDemandBoard();
+});
 document.getElementById("evAdd").onclick=()=>{
   const v=prompt("イベントを追加(会場 内容 開始-終了)\n例: 東京ドーム 巨人vs阪神 18:00-21:20");
   if(!v) return;
