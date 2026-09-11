@@ -842,7 +842,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.11-4";
+const APP_VER = "2026.09.11-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3460,7 +3460,40 @@ const BANDS = [
 
 let hour = 23, day = "weekday", mode = "app", calOn = true, sel = null, timer = null;
 
-function bandOf(h){ return BANDS.find(b=>h>=b.f&&h<=b.t) || BANDS[BANDS.length-1]; }
+// 休日(土日)の時間帯名と解説。平日のBANDSを上書きする
+const BANDS_HOL={
+  5:{name:"早朝・空港便", text:"始発前に動く人と、朝いちの便に乗る客が主役。数は少ないが1本が長い。",
+     app:"予約がなければ住宅地で停まって待つ。空港行きは余裕をもった動線で。"},
+  7:{name:"休日の朝・ゆるやか", text:"通勤がないぶん街は静か。早い時間はほとんど動かない。ゴルフ・旅行など荷物のある客がまれに出る。",
+     app:"リクエストは薄い。住宅地で待つか、都心へ移動しておく時間。"},
+  10:{name:"外出のはじまり", text:"買い物・レジャーへ向かう人が動き出す。駅・商業施設・観光地へ。空港案件もこの時間から。",
+     app:"ホテル・住宅地からのリクエストが増える。駅周辺は待機が多いので少し外して待つ。"},
+  12:{name:"昼の移動・観光", text:"浅草・お台場・豊洲など観光地が動く。休日はタクシーの台数が減るぶん、昼間がいちばんやりやすい。",
+     app:"観光地の周辺と、駅から離れた住宅地。空港送迎のリクエストも入りやすい。"},
+  15:{name:"買い物・レジャー帰り", text:"商業施設からの帰宅、イベント終演後の移動が中心。銀座・新宿・渋谷・池袋。",
+     app:"会場や施設の前ではなく、1本外した通りで待つと先に入る。"},
+  18:{name:"夕方の外食・移動", text:"平日ほどの接待需要はないが、家族連れ・友人同士の外食移動が出る。",
+     app:"繁華街のど真ん中は待機が多い。少し外した住宅地寄りで待つ。"},
+  20:{name:"夜の繁華街", text:"休日の飲みは早く終わる傾向。22時前後から帰宅の流れが出はじめる。",
+     app:"この時間から鳴りが戻る。繁華街の外周で待つ。"},
+  22:{name:"帰宅の入り口", text:"終電までまだ余裕があり、動きは鈍い。都心に位置取りしておく時間。",
+     app:"鳴りは落ちる。切って流しに回すか、住宅地寄りで待つ。"},
+  24:{name:"終電後・勝負の時間", text:"終電を逃した客が一斉に出る。行き先は郊外。ここが休日の最大の山。",
+     app:"25時過ぎから鳴り出す。駅から300m〜1km外して待つ。"},
+  26:{name:"深夜の終わり", text:"客は減るが、2時以降も繁華街から郊外へ帰る客は残る。帰庫方向を意識する時間。",
+     app:"迎車距離が長くなりがち。3km超は見送る判断も。"}
+};
+function bandOf(h, d){
+  const b = BANDS.find(x=>h>=x.f&&h<=x.t) || BANDS[BANDS.length-1];
+  const isHol = (typeof d!=="undefined") && (d==="saturday"||d==="sunday");
+  if(!isHol) return b;
+  // 休日は該当する開始時刻の定義で上書き
+  const keys=Object.keys(BANDS_HOL).map(Number).sort((a,b2)=>a-b2);
+  let hit=keys[0];
+  keys.forEach(k=>{ if(h>=k) hit=k; });
+  const o=BANDS_HOL[hit];
+  return Object.assign({}, b, {name:o.name, text:o.text, app:o.app});
+}
 
 function score(a,h,d,md,cal){
   const mult = DAYS[d].m(h), i = h - HS;
@@ -3519,7 +3552,7 @@ const NOTES = {
 function render(){
   FS_ROOT.classList.toggle("app", mode==="app");
   FS_$("clock").innerHTML = fmt(hour);
-  const b = bandOf(hour);
+  const b = bandOf(hour, day);
   FS_$("bandName").textContent = b.name;
   FS_$("dayName").textContent = DAYS[day].label;
   FS_$("hour").value = hour;
