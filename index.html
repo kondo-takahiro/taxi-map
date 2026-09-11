@@ -842,7 +842,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.11-5";
+const APP_VER = "2026.09.11-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3064,7 +3064,7 @@ const FLOW_HTML = `<div id="flowSim">
   </div>
 
   <div class="legend"><span id="legLo">鳴りにくい</span><i></i><span id="legHi">鳴りやすい</span></div>
-  <div class="map" id="map"><div class="loop"></div></div>
+  <div class="map" id="fsMap"><div class="loop"></div></div>
 
   <h2 id="flowTitle">この時間のアプリの流れ<span id="flowHour">23時台</span></h2>
   <div class="flow" id="flow"></div>
@@ -3530,13 +3530,13 @@ function heat(v){
 function fmt(h){ return h<24 ? h+":00" : '<span class="nx">翌</span>'+(h-24)+":00"; }
 function supLabel(s){ return s>=.8?"とても多い":s>=.6?"多い":s>=.4?"普通":"少ない"; }
 
-const map = FS_$("map");
+const fsMap = FS_$("fsMap");
 const nodes = AREAS.map((a,idx)=>{
   const b = document.createElement("button");
   b.className="node"; b.style.left=a.x+"%"; b.style.top=a.y+"%";
   b.innerHTML = '<span class="dot"></span><span class="nm">'+(a.s||a.n)+'</span>';
   b.addEventListener("click",()=>{ sel=idx; render(); FS_$("detail").scrollIntoView({behavior:"smooth",block:"nearest"}); });
-  map.appendChild(b);
+  fsMap.appendChild(b);
   return b;
 });
 
