@@ -260,10 +260,17 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span id="briefReload" style="cursor:pointer;font-size:12px;color:var(--muted);padding:0 6px;">再取得</span>
     <span id="briefClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+    <button class="btn" id="bdPrev" style="padding:8px 13px;font-size:15px;">◀</button>
+    <button class="btn" id="bdToday" style="flex:1;padding:8px 0;font-size:12px;">今日</button>
+    <button class="btn" id="bdNext" style="padding:8px 13px;font-size:15px;">▶</button>
+  </div>
+  <div id="bdLabel" style="font-size:13px;font-weight:700;margin-bottom:6px;"></div>
   <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
   <div id="demandBoard"></div>
   <div style="border-top:1px solid var(--line);margin:14px 0 10px;"></div>
   <div id="briefBody" style="font-size:13px;"></div>
+  <button class="btn" id="evAdd" style="width:100%;padding:10px;margin-top:10px;">🎪 イベントを手で追加</button>
   <div style="font-size:10px;color:var(--muted);margin-top:8px;">天気: Open-Meteo / イベント: AI検索(内容は必ず公式情報で確認を)</div>
 </div>
 
@@ -831,7 +838,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.11-1";
+const APP_VER = "2026.09.11-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1480,6 +1487,43 @@ function showEventMarkers(events){
 // 5分ごとに残り時間と色を更新
 setInterval(()=>{ if(lastEvents.length) showEventMarkers(lastEvents); }, 300000);
 const VENUES=["東京ドーム(水道橋)","明治神宮球場","有明アリーナ","東京ガーデンシアター(有明)","日本武道館(九段下)","国立競技場(千駄ヶ谷)","代々木第一体育館","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
+async function fetchForecastDay(ds){
+  const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
+    +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=8";
+  const j=await fetch(url).then(r=>r.ok?r.json():null);
+  if(!j||!j.hourly) return null;
+  const h=j.hourly;
+  // 対象日の7時〜翌3時を拾う
+  const rows=[];
+  h.time.forEach((t,i)=>{
+    const d=t.slice(0,10), hh=+t.slice(11,13);
+    const nextDs=(()=>{ const x=new Date(ds+"T12:00:00"); x.setDate(x.getDate()+1); return dsOf(x); })();
+    if((d===ds && hh>=6) || (d===nextDs && hh<=4))
+      rows.push({h:hh + (d===nextDs?24:0), p:h.precipitation[i]||0, pp:h.precipitation_probability?.[i]||0, t:h.temperature_2m[i]});
+  });
+  if(!rows.length) return null;
+  const rain=rows.filter(r=>r.p>=0.5||r.pp>=60);
+  const temps=rows.map(r=>r.t).filter(x=>x!=null);
+  return {rows, rain, min:Math.min(...temps), max:Math.max(...temps)};
+}
+function renderWxDay(f, ds){
+  const el=document.getElementById("briefWx");
+  if(!el) return;
+  if(!f){ el.textContent="天気を取得できませんでした"; return; }
+  // 時間帯別の降水確率を棒で
+  const bars=f.rows.filter(r=>r.h%2===0).map(r=>{
+    const p=r.pp||0;
+    const col = p>=70?"#4fc3f7" : p>=40?"#7db3f0" : p>=20?"#5a6a85" : "#2a3547";
+    return `<span style="display:inline-flex;flex-direction:column;align-items:center;width:22px;">
+      <span style="font-size:8px;color:var(--muted);">${p}</span>
+      <span style="width:10px;height:${Math.max(3,Math.round(p/100*22))}px;background:${col};border-radius:2px;"></span>
+      <span style="font-size:8px;color:var(--muted);margin-top:1px;">${r.h%24}</span></span>`;
+  }).join("");
+  el.innerHTML=`<div style="font-size:12px;">${f.rain.length? "☔ 雨の時間帯: "+f.rain.map(r=>(r.h%24)+"時").join("、") : "☀ 雨の予報なし"}
+      <span style="color:var(--muted);font-size:11px;margin-left:6px;">${Math.round(f.min)}〜${Math.round(f.max)}℃</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:1px;margin-top:4px;background:var(--panel2);border-radius:8px;padding:5px 6px;">${bars}</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:2px;">降水確率(%)と時刻</div>`;
+}
 async function fetchForecastToday(){
   const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
     +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=2";
@@ -1520,15 +1564,18 @@ async function callSearchAI(key, promptText){
     return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("").trim()};
   }
   // OpenAI: 検索対応モデルを試し、非対応なら通常モデル(天気+実績のみ)に切り替え
-  let res=await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",
-    headers:{"content-type":"application/json","Authorization":"Bearer "+key},
-    body:JSON.stringify({model:"gpt-4o-mini-search-preview",
-      web_search_options:{},
-      messages:[{role:"user",content:promptText}]})
-  });
-  if(res.status===401) return {auth:false};
-  let data=await res.json();
+  let res=null, data=null;
+  for(const mdl of ["gpt-4o-search-preview","gpt-4o-mini-search-preview"]){
+    res=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",
+      headers:{"content-type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model:mdl, web_search_options:{},
+        messages:[{role:"user",content:promptText}]})
+    });
+    if(res.status===401) return {auth:false};
+    data=await res.json();
+    if(!data.error) break;
+  }
   if(data.error){
     res=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",
@@ -1594,8 +1641,11 @@ const DEMAND_TYPES=[
    note:"終電を逃した客。行き先は郊外。0時台が最大の山"}
 ];
 // 今日どの需要が強いか(暦と時刻から)
-function demandToday(){
-  const d=new Date(); if(d.getHours()<5) d.setDate(d.getDate()-1);
+let boardDay=null;   // null=今日
+function demandToday(pick){
+  let d;
+  if(pick){ d=new Date(pick+"T12:00:00"); }
+  else { d=new Date(); if(d.getHours()<5) d.setDate(d.getDate()-1); }
   const dw=d.getDay(), day=d.getDate(), m=d.getMonth()+1;
   const ds=dsOf(d);
   const hol=isHoliday(ds);
@@ -1658,9 +1708,22 @@ function demandByHour(info){
 function renderDemandBoard(){
   const box=document.getElementById("demandBoard");
   if(!box) return;
-  const info=demandToday();
+  const info=demandToday(boardDay);
   const chars=periodCharacter(info);
-  const now=new Date(); const nh=now.getHours()<5?now.getHours()+24:now.getHours();
+  const isToday=!boardDay;
+  const now=new Date(); const nh=isToday ? (now.getHours()<5?now.getHours()+24:now.getHours()) : -1;
+  // 見出し(日付・曜日・勤務区分)
+  const lab=document.getElementById("bdLabel");
+  if(lab){
+    const d=boardDay? new Date(boardDay+"T12:00:00") : (()=>{const t=new Date(); if(t.getHours()<5)t.setDate(t.getDate()-1); return t;})();
+    const ds2=dsOf(d);
+    const st=(typeof shiftTypeOf==="function")?shiftTypeOf(ds2):"";
+    const stCol = st==="出番"?"var(--amber)":st==="明け"?"#7db3f0":"#f08080";
+    lab.innerHTML=`${d.getMonth()+1}/${d.getDate()}(${D_DN[d.getDay()]})`
+      + (isHoliday(ds2)?' <span style="color:#f08080;font-size:11px;">祝日</span>':'')
+      + (st?` <span style="color:${stCol};font-size:12px;">${st}</span>`:'')
+      + (isToday?' <span style="color:var(--muted);font-size:11px;">今日</span>':'');
+  }
   let h='';
   // 今日の性格
   h+=`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">`
@@ -1678,10 +1741,26 @@ function renderDemandBoard(){
     </div>`;
   });
 
+  // その曜日の自分の実績
+  try{
+    const byDay=diaryByDay();
+    const dw=info.dw;
+    const same=[...byDay.keys()].filter(x=>dDow(x)===dw);
+    if(same.length){
+      const tots=same.map(x=>dTotal(byDay.get(x)));
+      const avg=Math.round(tots.reduce((a,b)=>a+b,0)/tots.length);
+      const best=Math.max(...tots);
+      const bigs=(same.reduce((s,x)=>s+byDay.get(x).filter(r=>r.f>=10000).length,0)/same.length).toFixed(1);
+      h+=`<div style="border-top:1px solid var(--amber);margin-top:12px;padding-top:8px;font-size:12px;">
+        <b style="color:var(--amber);">${D_DN[dw]}曜の自分の実績</b>(${same.length}日)　
+        平均 <b>${yen(avg)}</b>　ベスト <b>${yen(best)}</b>　万収 <b>${bigs}本/日</b></div>`;
+    }
+  }catch(e){}
+
   // 時間帯ごとの主役(現在の時間帯を強調)
   h+=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:12px 0 6px;">時間帯ごとの主役</div>`;
   const hb=demandByHour(info);
-  const idx=[[5,10],[10,13],[13,18],[18,22],[22,24],[24,26],[26,30]].findIndex(([a,b])=>nh>=a&&nh<b);
+  const idx=isToday ? [[5,10],[10,13],[13,18],[18,22],[22,24],[24,26],[26,30]].findIndex(([a,b])=>nh>=a&&nh<b) : -1;
   hb.forEach((x,i)=>{
     const t=DEMAND_TYPES.find(y=>y.k===x.k);
     const cur=i===idx;
@@ -1721,7 +1800,7 @@ async function buildBrief(force){
     const promptText=
 `あなたは東京のタクシー乗務員の営業参謀です。今日は${today}(${dow}曜)、現在${now.getHours()}時です。
 最初に「tokyo-taxidriver.com イベントまとめ ${today.replace(/-/g,"")}」と「tokyo-taxidriver.com タクシー需要 イベント ${+today.slice(5,7)}月${+today.slice(8)}日」をWeb検索し、タクシー運転手向けの本日のイベント需要まとめ記事を探して参照してください。見つかった場合はその記事を最優先の情報源とし、会場・時間・需要規模の記載を反映してください。
-そのうえで、次の主要会場について今日の開催情報を必ず1つずつ確認してください(まとめ記事に記載があればそれを使い、なければ個別に検索): 東京ドーム、明治神宮球場、有明アリーナ、東京ガーデンシアター、日本武道館、国立競技場、代々木第一体育館。
+そのうえで、次の主要会場について今日の開催情報を確認してください: 東京ドーム、明治神宮球場、有明アリーナ、東京ガーデンシアター、日本武道館、国立競技場、代々木第一体育館。
 東京ドームと明治神宮球場はプロ野球の試合の有無を必ず確認してください(試合終了は開始の約3時間20分後が目安)。
 さらに、次の会場のイベントと、都内の花火大会・大規模な祭り・大型展示会・マラソン等の交通規制を伴う行事も調べてください: ${VENUES.slice(7).join("、")}
 そのうえで、以下を踏まえて今日これからの営業ブリーフィングを日本語で書いてください。
@@ -1730,7 +1809,7 @@ async function buildBrief(force){
 - 深夜(22時以降)に強いエリア: ${night.join("、")||"データ少"}
 以下の会社の研修方針を助言の土台にしてください。
 ${COACH_TIPS}${kbForPrompt()}
-形式: 前置きなし。「イベント」: 主要7会場は開催の有無にかかわらず必ず1行ずつ記載(開催ありは内容と開始/終了目安、なければ「なし」、調べても分からなければ「不明」)。花火・祭り・その他会場は開催があるものだけ追記。
+形式: 前置きなし。「イベント」: **開催が確認できた会場だけ**を記載し、内容と開始/終了目安を書く(「不明」「なし」の会場は一切書かない)。1件も確認できなければ「イベント: 確認できたものなし」の1行のみ。花火・祭り・その他会場も開催があるものだけ書く。
 「狙い」はクールの流れ(第1→第2→第3→青タン)で構成し、研修方針の推奨エリア・連続配車の使い分け・今日の曜日特性・イベント終演を織り込むこと。
 イベントがある場合は「終演後どこへ流れるか」と「その後の二次需要(二次会・帰宅)がどこで出るか」まで一手先を書くこと。会場前で長時間待つのではなく、流れの先回りをする前提で。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
 最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","s":"18:00","f":"21:20","lat":35.7056,"lng":139.7519}]`;
@@ -1753,6 +1832,45 @@ ${COACH_TIPS}${kbForPrompt()}
 }
 document.getElementById("btnBrief").onclick=()=>showTab("brief");
 document.getElementById("briefReload").onclick=()=>{ renderDemandBoard(); buildBrief(true); };
+function bdShift(n){
+  const base = boardDay ? new Date(boardDay+"T12:00:00") : (()=>{const t=new Date(); if(t.getHours()<5)t.setDate(t.getDate()-1); return t;})();
+  base.setDate(base.getDate()+n);
+  const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1);
+  boardDay = (dsOf(base)===dsOf(t)) ? null : dsOf(base);
+  renderDemandBoard();
+  const el=document.getElementById("briefBody");
+  const wx=document.getElementById("briefWx");
+  if(boardDay){
+    if(wx) wx.textContent="天気を取得中…";
+    fetchForecastDay(boardDay).then(f=>renderWxDay(f, boardDay)).catch(()=>{ if(wx) wx.textContent=""; });
+    if(el) el.innerHTML=`<div style="font-size:12px;color:var(--muted);line-height:1.7;">
+      イベントと「狙い」は当日のみ取得できます(「今日」に戻すと表示されます)。<br>
+      天気は7日先まで表示できます。</div>`;
+  }else{
+    buildBrief(false);
+  }
+}
+document.getElementById("evAdd").onclick=()=>{
+  const v=prompt("イベントを追加(会場 内容 開始-終了)\n例: 東京ドーム 巨人vs阪神 18:00-21:20");
+  if(!v) return;
+  const times=(v.match(/\d{1,2}[::]\d{2}/g)||[]);
+  let venue=null;
+  for(const k in VENUE_LL){ if(v.includes(k)){ venue=k; break; } }
+  if(!venue){ alert("収録済みの会場名を含めてください(例: 東京ドーム、有明アリーナ、日本武道館 など)"); return; }
+  const ev={n:venue, e:v.replace(venue,"").replace(/\d{1,2}[::]\d{2}/g,"").replace(/[-〜~]/g,"").trim()||"開催あり",
+    s:times[0]||"", f:times[1]||"", lat:VENUE_LL[venue][0], lng:VENUE_LL[venue][1]};
+  lastEvents=[...(lastEvents||[]), ev];
+  showEventMarkers(lastEvents);
+  try{
+    const key="brief-"+new Date().toISOString().slice(0,10);
+    const o=JSON.parse(localStorage.getItem(key))||{};
+    o.events=lastEvents; localStorage.setItem(key, JSON.stringify(o));
+  }catch(e){}
+  alert(venue+" を地図に追加しました");
+};
+document.getElementById("bdPrev").onclick=()=>bdShift(-1);
+document.getElementById("bdNext").onclick=()=>bdShift(1);
+document.getElementById("bdToday").onclick=()=>{ boardDay=null; renderDemandBoard(); buildBrief(false); };
 document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
 
 // ===== タクシー乗り場(OpenStreetMapのデータ・初回のみ取得して端末に保存) =====
