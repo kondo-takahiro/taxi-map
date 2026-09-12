@@ -842,7 +842,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.12-1";
+const APP_VER = "2026.09.12-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3080,7 +3080,7 @@ const FLOW_HTML = `<div id="flowSim">
 </div>`;
 
 // ===== 人の流れシミュレーター =====
-let FS_INIT=false, FS_ROOT=null;
+let FS_INIT=false, FS_ROOT=null, FS_RESTORE=null;
 function FS_$(id){ return FS_ROOT ? FS_ROOT.querySelector("#"+id) : null; }
 function FS_$$(s){ return FS_ROOT ? FS_ROOT.querySelectorAll(s) : []; }
 function initFlowSim(){
@@ -3539,13 +3539,20 @@ function heat(v){
 function fmt(h){ return h<24 ? h+":00" : '<span class="nx">翌</span>'+(h-24)+":00"; }
 function supLabel(s){ return s>=.8?"とても多い":s>=.6?"多い":s>=.4?"普通":"少ない"; }
 
-  // 保存済みの設定をUIに反映
-  setTimeout(()=>{
+  // 保存済みの設定をUIに反映(外からも呼べるようにする)
+  FS_RESTORE=function(){
+    let s={}; try{ s=JSON.parse(localStorage.getItem("flowsim-v1"))||{}; }catch(e){}
+    if(s.hour!=null) hour=s.hour;
+    if(s.day) day=s.day;
+    if(s.mode) mode=s.mode;
+    if(s.calOn!=null) calOn=s.calOn;
     const hv=FS_$("hour"); if(hv) hv.value=hour;
     FS_ROOT.querySelectorAll('[data-day]').forEach(b=>b.setAttribute("aria-pressed", b.dataset.day===day?"true":"false"));
     FS_ROOT.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute("aria-pressed", b.dataset.mode===mode?"true":"false"));
     const cb=FS_$("calBtn"); if(cb){ cb.setAttribute("aria-pressed", calOn?"true":"false"); cb.textContent=calOn?"実績で補正":"モデルのみ"; }
-  },0);
+    render();
+  };
+  setTimeout(FS_RESTORE,0);
 const fsMap = FS_$("fsMap");
 const nodes = AREAS.map((a,idx)=>{
   const b = document.createElement("button");
@@ -5723,8 +5730,12 @@ function showTab(name){
   if(name==="settings") renderSettings();
   if(name==="flow"){
     const mt=document.getElementById("flowMount");
-    if(!mt.dataset.ready){ mt.innerHTML=FLOW_HTML; mt.dataset.ready="1"; FS_INIT=false; }
-    setTimeout(initFlowSim,0);
+    if(!mt.dataset.ready){
+      mt.innerHTML=FLOW_HTML; mt.dataset.ready="1"; FS_INIT=false;
+      setTimeout(initFlowSim,0);
+    }else if(typeof FS_RESTORE==="function"){
+      FS_RESTORE();   // 2回目以降は保存済みの状態を復元して再描画
+    }
   }
 }
 document.querySelectorAll(".tab-btn").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
