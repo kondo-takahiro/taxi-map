@@ -842,7 +842,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.13-2";
+const APP_VER = "2026.09.14-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -4409,6 +4409,46 @@ function renderDiaryY(pick){
   }else{
     h+=`<div style="font-size:11px;color:#7dd87d;margin-top:5px;">60分以上の空白なし。途切れずつなげた1日です</div>`;
   }
+
+  // ===== 日報の表(全乗車) =====
+  h+=sectionTitle("この日の営業日報");
+  const seqT=[...rs].sort((a,b)=>shiftHour(a.t)-shiftHour(b.t)||a.t.localeCompare(b.t));
+  const CB2=[[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,30,"青タン"]];
+  h+=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="border-collapse:collapse;font-size:11px;width:100%;white-space:nowrap;">
+    <tr style="color:var(--muted);font-size:10px;">
+      <th style="padding:3px 4px;text-align:left;">時刻</th>
+      <th style="padding:3px 4px;text-align:left;">乗車地</th>
+      <th style="padding:3px 4px;text-align:left;">降車地</th>
+      <th style="padding:3px 4px;text-align:right;">料金</th>
+      <th style="padding:3px 2px;"></th></tr>`;
+  let prevCool=null, run=0;
+  seqT.forEach((r,i)=>{
+    const c=CB2.find(x=>shiftHour(r.t)>=x[0]&&shiftHour(r.t)<x[1]);
+    const cn=c?c[2]:"";
+    if(cn!==prevCool){
+      if(prevCool!==null){
+        h+=`<tr><td colspan="5" style="padding:2px 4px;text-align:right;font-size:10px;color:var(--amber);border-bottom:1px solid var(--line);">${prevCool} 小計 ${yen(run)}</td></tr>`;
+      }
+      h+=`<tr><td colspan="5" style="padding:5px 4px 2px;font-size:10px;color:var(--amber);font-weight:700;">${cn}クール</td></tr>`;
+      prevCool=cn; run=0;
+    }
+    run+=r.f;
+    const big=r.f>=10000;
+    h+=`<tr style="border-top:1px solid var(--line);${big?'background:rgba(255,213,79,.08);':''}">
+      <td style="padding:4px;color:var(--muted);">${r.t.slice(0,5)}</td>
+      <td style="padding:4px;max-width:96px;overflow:hidden;text-overflow:ellipsis;">${r.p}</td>
+      <td style="padding:4px;max-width:96px;overflow:hidden;text-overflow:ellipsis;color:var(--muted);">${r.dst||"—"}</td>
+      <td style="padding:4px;text-align:right;font-weight:${big?800:400};color:${big?"#ffd54f":"var(--text)"};font-variant-numeric:tabular-nums;">${yen(r.f)}</td>
+      <td style="padding:4px 2px;font-size:9px;color:var(--muted);">${(r.m||"app")==="app"?"配":"流"}</td></tr>`;
+  });
+  if(prevCool!==null){
+    h+=`<tr><td colspan="5" style="padding:2px 4px;text-align:right;font-size:10px;color:var(--amber);border-bottom:1px solid var(--line);">${prevCool} 小計 ${yen(run)}</td></tr>`;
+  }
+  h+=`<tr><td colspan="3" style="padding:6px 4px;font-weight:700;">合計 ${seqT.length}回</td>
+      <td colspan="2" style="padding:6px 4px;text-align:right;font-weight:800;color:var(--amber);font-size:13px;">${yen(total)}</td></tr>`;
+  h+=`</table></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています</div>`;
 
   h+=`<button class="btn" id="diaryRoads" style="width:100%;padding:10px;margin-top:14px;">🛣 この日の道を復習</button>`;
   h+=`<button class="btn" id="diaryAI" style="width:100%;padding:10px;margin-top:8px;">🤖 この日の立ち回りをAI分析</button>
