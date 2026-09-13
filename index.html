@@ -842,7 +842,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.13-1";
+const APP_VER = "2026.09.13-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5105,7 +5105,7 @@ const ROAD_DEFS=[
     {n:"第一京浜(R15)", q:'["name"~"第一京浜"]', c:"#ffb74d"},
     {n:"第二京浜(R1)", q:'["name"~"第二京浜"]', c:"#ffb74d"},
     {n:"中原街道", q:'["name"~"中原街道"]', c:"#ffb74d"},
-    {n:"目黒通り", q:'["name"="目黒通り"]', c:"#ffb74d"},
+    {n:"目黒通り", q:'["name"~"目黒通"]', c:"#ffb74d"},
     {n:"駒沢通り", q:'["name"="駒沢通り"]', c:"#ffb74d"},
     {n:"淡島通り", q:'["name"="淡島通り"]', c:"#ffb74d"},
     {n:"池上通り", q:'["name"="池上通り"]', c:"#ffb74d"},
@@ -5115,20 +5115,20 @@ const ROAD_DEFS=[
   {g:"世田谷", items:[
   {n:"淡島通り", q:'["name"="淡島通り"]', c:"#ce93d8"},
   {n:"茶沢通り", q:'["name"~"茶沢通"]', c:"#ce93d8"},
-  {n:"三宿通り", q:'["name"~"三宿通"]', c:"#ce93d8"},
-  {n:"用賀中町通り", q:'["name"~"用賀中町通"]', c:"#ce93d8"},
+  {n:"三宿通り", q:'["name"~"三宿"]', c:"#ce93d8"},
+  {n:"用賀中町通り", q:'["name"~"用賀中町"]', c:"#ce93d8"},
   {n:"世田谷通り", q:'["name"="世田谷通り"]', c:"#ce93d8"},
   {n:"品川通り", q:'["name"~"品川通"]', c:"#ce93d8"},
-  {n:"目黒通り(世田谷)", q:'["name"="目黒通り"]', c:"#ce93d8"},
+  {n:"目黒通り(世田谷)", q:'["name"~"目黒通"]', c:"#ce93d8"},
   {n:"駒沢通り", q:'["name"="駒沢通り"]', c:"#ce93d8"},
-  {n:"筑波大通り", q:'["name"~"筑波大通"]', c:"#ce93d8"},
-  {n:"補助154号(北沢)", q:'["name"~"補助154"]', c:"#ce93d8"},
-  {n:"井の頭通り(西)", q:'["name"~"井ノ頭通り|井の頭通り"]', c:"#ce93d8"},
+  {n:"城山通り", q:'["name"~"城山通"]', c:"#ce93d8"},
+  {n:"下北沢一番街", q:'["name"~"北沢|下北沢"]', c:"#ce93d8"},
+  {n:"井の頭通り(西)", q:'["name"~"井ノ頭|井の頭"]', c:"#ce93d8"},
   {n:"甲州街道(世田谷)", q:'["name"~"甲州街道"]', c:"#ce93d8"},
-  {n:"環八(世田谷)", q:'["name"~"環八|環状八号"]', c:"#ce93d8"},
-  {n:"多摩堤通り", q:'["name"~"多摩堤通"]', c:"#ce93d8"},
+  {n:"環八(世田谷)", q:'["name"~"環八|環状八"]', c:"#ce93d8"},
+  {n:"多摩堤通り", q:'["name"~"多摩堤"]', c:"#ce93d8"},
   {n:"中原街道(世田谷)", q:'["name"~"中原街道"]', c:"#ce93d8"},
-  {n:"246旧道(大山道)", q:'["name"~"大山道"]', c:"#ce93d8"}
+  {n:"大山道(246旧道)", q:'["name"~"大山道|旧大山"]', c:"#ce93d8"}
   ]},
   {g:"高速", items:[
     {n:"首都高 都心環状(C1)", q:'["ref"~"C1"]', c:"#ff8a65"},
@@ -5180,8 +5180,9 @@ async function fetchRoad(def){
   for(const qq of qs){
     const r=await fetchRoadQ(def, qq, key);
     if(r) return r;
+    await new Promise(res=>setTimeout(res,400));   // サーバーへの配慮
   }
-  throw new Error("該当する道路が見つかりませんでした");
+  throw new Error("地図データに該当する道路名が見つかりませんでした");
 }
 async function toggleRoad(def, btn){
   if(roadOn[def.n]){
@@ -5196,9 +5197,9 @@ async function toggleRoad(def, btn){
       const lines=await fetchRoad(def);
       const cv=L.canvas({padding:0.3});
       roadLayers[def.n]=L.layerGroup(lines.flatMap(l=>[
-        L.polyline(l,{renderer:cv, color:"#0d1220", weight:7, opacity:.35}),
-        L.polyline(l,{renderer:cv, color:def.c, weight:3.5, opacity:.95})
-      ])).bindTooltip(def.n,{sticky:true});
+        L.polyline(l,{renderer:cv, color:"#0d1220", weight:12, opacity:.28}).bindPopup(`<b>${def.n}</b>`),
+        L.polyline(l,{renderer:cv, color:def.c, weight:3.5, opacity:.95}).bindPopup(`<b>${def.n}</b>`)
+      ]));
     }catch(e){
       btn.classList.remove("on"); btn.style.opacity="";
       roadStatus(def.n+" を取得できませんでした("+e.message+")");
@@ -6314,9 +6315,9 @@ function restoreViewState(){
         const lines=JSON.parse(localStorage.getItem("road-"+n));
         const cv=L.canvas({padding:0.3});
         roadLayers[n]=L.layerGroup(lines.flatMap(l=>[
-          L.polyline(l,{renderer:cv,color:"#0d1220",weight:7,opacity:.35}),
-          L.polyline(l,{renderer:cv,color:def.c,weight:3.5,opacity:.95})
-        ])).bindTooltip(n,{sticky:true});
+          L.polyline(l,{renderer:cv,color:"#0d1220",weight:12,opacity:.28}).bindPopup(`<b>${n}</b>`),
+          L.polyline(l,{renderer:cv,color:def.c,weight:3.5,opacity:.95}).bindPopup(`<b>${n}</b>`)
+        ]));
         roadLayers[n].addTo(map); roadOn[n]=true;
       }catch(e){}
     });
