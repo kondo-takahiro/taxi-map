@@ -843,7 +843,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.14-2";
+const APP_VER = "2026.09.14-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5013,14 +5013,19 @@ async function loadLand(b){
   const key=landTileKey(b);
   if(landCache.has(key)) return landCache.get(key);
   const bbox=[b.getSouth().toFixed(4),b.getWest().toFixed(4),b.getNorth().toFixed(4),b.getEast().toFixed(4)].join(",");
-  const q=`[out:json][timeout:30];(way["landuse"~"^(commercial|retail|residential|industrial)$"](${bbox}););out geom;`;
+  const q='[out:json][timeout:25];('
+    + ['commercial','retail','residential','industrial']
+        .map(k=>`way["landuse"="${k}"](${bbox});`).join('')
+    + ');out geom;';
   const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  let why="";
   for(const url of servers){
     try{
       const res=await fetchT(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
-        body:"data="+encodeURIComponent(q)}, 35000);
-      if(!res.ok) continue;
+        body:"data="+encodeURIComponent(q)}, 30000);
+      if(!res.ok){ why="HTTP "+res.status; continue; }
       const j=await res.json();
+      if(!j.elements){ why="データが空"; continue; }
       const polys=(j.elements||[]).filter(e=>e.geometry&&e.geometry.length>2).map(e=>({
         k:(e.tags&&e.tags.landuse)||"residential",
         n:(e.tags&&(e.tags["name:ja"]||e.tags.name))||"",
@@ -5028,9 +5033,9 @@ async function loadLand(b){
       }));
       landCache.set(key, polys);
       return polys;
-    }catch(e){}
+    }catch(e){ why=e.name==="AbortError"?"時間切れ":(e.message||"通信エラー"); }
   }
-  throw new Error("取得できませんでした");
+  throw new Error(why||"取得できませんでした");
 }
 async function drawLand(){
   if(landLayer){ map.removeLayer(landLayer); landLayer=null; }
@@ -5044,7 +5049,7 @@ async function drawLand(){
   if(landBusy) return;
   landBusy=true;
   try{
-    const polys=await loadLand(map.getBounds().pad(0.1));
+    const polys=await loadLand(map.getBounds().pad(0.02));
     if(!landOn){ landBusy=false; return; }
     const cv=L.canvas({padding:0.2});
     const items=polys.slice(0,700).map(p=>{
@@ -5053,9 +5058,18 @@ async function drawLand(){
         .bindPopup(`<b style="color:${k.c}">${k.n}</b>${p.n?"<br>"+p.n:""}`);
     });
     landLayer=L.layerGroup(items).addTo(map);
-    if(landLayer.getLayers().length) landLayer.eachLayer(l=>l.bringToBack&&l.bringToBack());
+    if(landLayer.getLayers().length){ landLayer.eachLayer(l=>l.bringToBack&&l.bringToBack()); }
+    else {
+      const h=document.getElementById("hint");
+      h.textContent="この範囲には土地利用の登録がありません";
+      h.classList.add("show");
+      setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2500);
+    }
   }catch(e){
-    alert("土地利用データを取得できませんでした。電波状況を確認してもう一度お試しください。");
+    const h=document.getElementById("hint");
+    h.textContent="土地利用データを取得できませんでした("+e.message+")";
+    h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },4000);
   }
   landBusy=false;
 }
