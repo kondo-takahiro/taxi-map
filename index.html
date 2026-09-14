@@ -565,6 +565,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnStands">🚕 乗り場</button>
     <button class="btn" id="btnToilet">🚻 トイレ</button>
     <button class="btn" id="btnHotel">🏨 ホテル</button>
+    <button class="btn" id="btnLand">🏙 住宅/繁華街</button>
     <button class="btn" id="btnMemo">📝 メモ</button>
     <button class="btn" id="btnRoads">🛣 道路</button>
     <button class="btn" id="btnKB">📚 ノウハウ</button>
@@ -842,7 +843,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.14-1";
+const APP_VER = "2026.09.14-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -4676,7 +4677,7 @@ async function showRoads(d){
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
   {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
-  {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
+  {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
 ];
@@ -4994,6 +4995,80 @@ function airFareOf(addr){
 function isAirportRide(dst){
   return /空港|成田市|羽田/.test(dst||"");
 }
+
+// ===== 住宅地 / 繁華街(OpenStreetMapの土地利用) =====
+const LAND_KIND={
+  commercial:{n:"商業・繁華街", c:"#f5a623", o:.22},
+  retail:    {n:"商店街・店舗", c:"#ff8a65", o:.22},
+  residential:{n:"住宅地",      c:"#7dd87d", o:.16},
+  industrial:{n:"工業・倉庫",   c:"#78909c", o:.14}
+};
+let landLayer=null, landOn=false, landBusy=false;
+const landCache=new Map();   // タイル単位で保持
+function landTileKey(b){
+  return [Math.floor(b.getSouth()*50), Math.floor(b.getWest()*50),
+          Math.ceil(b.getNorth()*50),  Math.ceil(b.getEast()*50)].join("_");
+}
+async function loadLand(b){
+  const key=landTileKey(b);
+  if(landCache.has(key)) return landCache.get(key);
+  const bbox=[b.getSouth().toFixed(4),b.getWest().toFixed(4),b.getNorth().toFixed(4),b.getEast().toFixed(4)].join(",");
+  const q=`[out:json][timeout:30];(way["landuse"~"^(commercial|retail|residential|industrial)$"](${bbox}););out geom;`;
+  const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  for(const url of servers){
+    try{
+      const res=await fetchT(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(q)}, 35000);
+      if(!res.ok) continue;
+      const j=await res.json();
+      const polys=(j.elements||[]).filter(e=>e.geometry&&e.geometry.length>2).map(e=>({
+        k:(e.tags&&e.tags.landuse)||"residential",
+        n:(e.tags&&(e.tags["name:ja"]||e.tags.name))||"",
+        g:e.geometry.map(p=>[p.lat,p.lon])
+      }));
+      landCache.set(key, polys);
+      return polys;
+    }catch(e){}
+  }
+  throw new Error("取得できませんでした");
+}
+async function drawLand(){
+  if(landLayer){ map.removeLayer(landLayer); landLayer=null; }
+  if(!landOn) return;
+  if(map.getZoom()<13){
+    const h=document.getElementById("hint");
+    h.textContent="地図を拡大すると住宅地・繁華街が表示されます"; h.classList.add("show");
+    setTimeout(()=>h.classList.remove("show"),2500);
+    return;
+  }
+  if(landBusy) return;
+  landBusy=true;
+  try{
+    const polys=await loadLand(map.getBounds().pad(0.1));
+    if(!landOn){ landBusy=false; return; }
+    const cv=L.canvas({padding:0.2});
+    const items=polys.slice(0,700).map(p=>{
+      const k=LAND_KIND[p.k]||LAND_KIND.residential;
+      return L.polygon(p.g,{renderer:cv, stroke:false, fillColor:k.c, fillOpacity:k.o, interactive:true})
+        .bindPopup(`<b style="color:${k.c}">${k.n}</b>${p.n?"<br>"+p.n:""}`);
+    });
+    landLayer=L.layerGroup(items).addTo(map);
+    if(landLayer.getLayers().length) landLayer.eachLayer(l=>l.bringToBack&&l.bringToBack());
+  }catch(e){
+    alert("土地利用データを取得できませんでした。電波状況を確認してもう一度お試しください。");
+  }
+  landBusy=false;
+}
+map.on("moveend zoomend",()=>{ if(landOn) drawLand(); });
+document.getElementById("btnLand").onclick=e=>{
+  landOn=!landOn; e.target.classList.toggle("on",landOn);
+  if(landOn){
+    const h=document.getElementById("hint");
+    h.textContent="🟠商業・繁華街 / 🟢住宅地 / ⚪工業"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },3000);
+  }
+  drawLand();
+};
 
 // ===== ホテル(料金帯で色分け) =====
 const HOTEL_TIERS=[
