@@ -843,7 +843,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.14-3";
+const APP_VER = "2026.09.14-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5004,6 +5004,13 @@ const LAND_KIND={
   industrial:{n:"工業・倉庫",   c:"#78909c", o:.14}
 };
 let landLayer=null, landOn=false, landBusy=false;
+function landStatus(msg, ms){
+  const h=document.getElementById("hint");
+  if(!h) return;
+  if(msg){ h.textContent=msg; h.classList.add("show");
+    if(ms) setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }, ms);
+  }else{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }
+}
 const landCache=new Map();   // タイル単位で保持
 function landTileKey(b){
   return [Math.floor(b.getSouth()*50), Math.floor(b.getWest()*50),
@@ -5019,8 +5026,10 @@ async function loadLand(b){
     + ');out geom;';
   const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
   let why="";
-  for(const url of servers){
+  for(let si=0; si<servers.length; si++){
+    const url=servers[si];
     try{
+      landStatus(`土地利用を取得中… (サーバー${si+1}/${servers.length})`);
       const res=await fetchT(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
         body:"data="+encodeURIComponent(q)}, 30000);
       if(!res.ok){ why="HTTP "+res.status; continue; }
@@ -5032,8 +5041,10 @@ async function loadLand(b){
         g:e.geometry.map(p=>[p.lat,p.lon])
       }));
       landCache.set(key, polys);
+      landStatus("");
       return polys;
     }catch(e){ why=e.name==="AbortError"?"時間切れ":(e.message||"通信エラー"); }
+    await new Promise(r=>setTimeout(r,500));
   }
   throw new Error(why||"取得できませんでした");
 }
@@ -5058,6 +5069,7 @@ async function drawLand(){
         .bindPopup(`<b style="color:${k.c}">${k.n}</b>${p.n?"<br>"+p.n:""}`);
     });
     landLayer=L.layerGroup(items).addTo(map);
+    if(!items.length) landStatus("この範囲には土地利用の登録がありません", 3000);
     if(landLayer.getLayers().length){ landLayer.eachLayer(l=>l.bringToBack&&l.bringToBack()); }
     else {
       const h=document.getElementById("hint");
