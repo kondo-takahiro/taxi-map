@@ -843,7 +843,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.14-4";
+const APP_VER = "2026.09.20-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3043,6 +3043,10 @@ const FLOW_HTML = `<div id="flowSim">
     <button data-mode="street" aria-pressed="false">流し・付け待ち</button>
     <button data-mode="app" aria-pressed="true">アプリ配車</button>
   </div>
+  <div style="text-align:center;margin:8px 0 0;">
+    <button id="fsDig" style="background:none;border:1px solid var(--fs-line);color:var(--fs-amber);
+      border-radius:999px;padding:7px 18px;font-size:13px;cursor:pointer;">🔍 開拓できる場所を探す</button>
+  </div>
 
   <div class="meter">
     <div class="meter-row">
@@ -3065,7 +3069,7 @@ const FLOW_HTML = `<div id="flowSim">
   </div>
 
   <div class="legend"><span id="legLo">鳴りにくい</span><i></i><span id="legHi">鳴りやすい</span></div>
-  <div class="map" id="fsMap"><div class="loop"></div></div>
+  <div id="digPanel" style="display:none;background:var(--fs-panel);border:1px solid var(--fs-line);border-radius:14px;padding:14px 16px;margin:10px 0;"></div><div class="map" id="fsMap"><div class="loop"></div></div>
 
   <h2 id="flowTitle">この時間のアプリの流れ<span id="flowHour">23時台</span></h2>
   <div class="flow" id="flow"></div>
@@ -3385,6 +3389,7 @@ const AREAS = [
 
 
 // ==== 実績データによる補正（2026/04/15〜09/05・1,557本 うち1,426本をエリアに割り当て） ====
+const FLOW_REAL={"app": {"day": {"六本木・西麻布": {"n": 19, "avg": 2316}, "新橋・汐留": {"n": 45, "avg": 3228}, "赤坂・虎ノ門": {"n": 40, "avg": 2302}, "恵比寿・中目黒": {"n": 17, "avg": 2629}, "日本橋・人形町": {"n": 29, "avg": 3348}, "新宿": {"n": 46, "avg": 2141}, "高田馬場・早稲田": {"n": 5, "avg": 3320}, "神楽坂・飯田橋": {"n": 23, "avg": 2265}, "浅草": {"n": 53, "avg": 2827}, "銀座・有楽町": {"n": 41, "avg": 2688}, "五反田・大崎": {"n": 10, "avg": 3370}, "上野・御徒町": {"n": 29, "avg": 3151}, "秋葉原": {"n": 34, "avg": 2441}, "丸の内・大手町・東京駅": {"n": 22, "avg": 2924}, "品川・港南": {"n": 43, "avg": 2917}, "渋谷": {"n": 27, "avg": 3470}, "豊洲・お台場": {"n": 53, "avg": 3190}, "錦糸町": {"n": 18, "avg": 1866}, "北千住・足立": {"n": 41, "avg": 3736}, "門前仲町・木場": {"n": 10, "avg": 2580}, "赤羽・王子": {"n": 3, "avg": 1900}, "蒲田・大井町": {"n": 1, "avg": 1340}, "葛飾・江戸川": {"n": 5, "avg": 2160}, "池袋": {"n": 13, "avg": 3138}, "練馬・板橋": {"n": 5, "avg": 2080}, "目黒・白金": {"n": 11, "avg": 2745}, "世田谷（三軒茶屋・二子玉川）": {"n": 4, "avg": 3075}, "中野・高円寺": {"n": 3, "avg": 2267}}, "night": {"上野・御徒町": {"n": 5, "avg": 6070}, "六本木・西麻布": {"n": 7, "avg": 2043}, "錦糸町": {"n": 2, "avg": 4250}, "新宿": {"n": 15, "avg": 3193}, "新橋・汐留": {"n": 8, "avg": 5861}, "銀座・有楽町": {"n": 1, "avg": 4900}, "北千住・足立": {"n": 18, "avg": 4672}, "丸の内・大手町・東京駅": {"n": 1, "avg": 2900}, "秋葉原": {"n": 1, "avg": 1700}, "神楽坂・飯田橋": {"n": 2, "avg": 6750}, "世田谷（三軒茶屋・二子玉川）": {"n": 1, "avg": 10490}, "蒲田・大井町": {"n": 2, "avg": 950}, "品川・港南": {"n": 1, "avg": 3400}, "池袋": {"n": 9, "avg": 2997}, "赤羽・王子": {"n": 4, "avg": 2175}, "五反田・大崎": {"n": 1, "avg": 1200}, "浅草": {"n": 2, "avg": 4140}, "恵比寿・中目黒": {"n": 3, "avg": 4200}, "高田馬場・早稲田": {"n": 1, "avg": 15350}, "吉祥寺・三鷹": {"n": 1, "avg": 3800}}}, "street": {"day": {"北千住・足立": {"n": 15, "avg": 2222}, "浅草": {"n": 20, "avg": 1880}, "銀座・有楽町": {"n": 41, "avg": 2378}, "六本木・西麻布": {"n": 25, "avg": 1744}, "赤坂・虎ノ門": {"n": 23, "avg": 1812}, "日本橋・人形町": {"n": 21, "avg": 1514}, "豊洲・お台場": {"n": 16, "avg": 2911}, "恵比寿・中目黒": {"n": 8, "avg": 2901}, "新橋・汐留": {"n": 23, "avg": 2770}, "新宿": {"n": 28, "avg": 1962}, "池袋": {"n": 4, "avg": 1095}, "高田馬場・早稲田": {"n": 8, "avg": 2138}, "神楽坂・飯田橋": {"n": 14, "avg": 2047}, "上野・御徒町": {"n": 40, "avg": 2085}, "秋葉原": {"n": 31, "avg": 2586}, "中野・高円寺": {"n": 1, "avg": 1600}, "丸の内・大手町・東京駅": {"n": 23, "avg": 2541}, "錦糸町": {"n": 15, "avg": 1684}, "門前仲町・木場": {"n": 3, "avg": 2000}, "品川・港南": {"n": 25, "avg": 3013}, "渋谷": {"n": 17, "avg": 2612}, "五反田・大崎": {"n": 2, "avg": 2800}, "目黒・白金": {"n": 2, "avg": 1915}, "赤羽・王子": {"n": 3, "avg": 1827}, "吉祥寺・三鷹": {"n": 3, "avg": 6743}}, "night": {"六本木・西麻布": {"n": 36, "avg": 3112}, "赤坂・虎ノ門": {"n": 14, "avg": 2985}, "新橋・汐留": {"n": 28, "avg": 4905}, "上野・御徒町": {"n": 24, "avg": 3492}, "錦糸町": {"n": 6, "avg": 1117}, "新宿": {"n": 24, "avg": 2905}, "秋葉原": {"n": 13, "avg": 2894}, "日本橋・人形町": {"n": 5, "avg": 7762}, "北千住・足立": {"n": 10, "avg": 1806}, "蒲田・大井町": {"n": 1, "avg": 3090}, "高田馬場・早稲田": {"n": 4, "avg": 1900}, "浅草": {"n": 4, "avg": 1082}, "恵比寿・中目黒": {"n": 4, "avg": 1500}, "世田谷（三軒茶屋・二子玉川）": {"n": 8, "avg": 1588}, "銀座・有楽町": {"n": 10, "avg": 5051}, "渋谷": {"n": 2, "avg": 1450}, "品川・港南": {"n": 5, "avg": 2146}, "丸の内・大手町・東京駅": {"n": 1, "avg": 3030}, "池袋": {"n": 5, "avg": 1840}, "練馬・板橋": {"n": 1, "avg": 3400}, "五反田・大崎": {"n": 2, "avg": 1250}, "門前仲町・木場": {"n": 1, "avg": 800}, "目黒・白金": {"n": 1, "avg": 1300}, "神楽坂・飯田橋": {"n": 2, "avg": 1600}}}};
 const CAL={app:{"day":{"銀座・有楽町":2.4,"六本木・西麻布":1.25,"赤坂・虎ノ門":2,"新橋・汐留":2.4,"丸の内・大手町・東京駅":1.08,"新宿":2.4,"渋谷":1.97,"池袋":1.4,"品川・港南":1.19,"恵比寿・中目黒":0.75,"五反田・大崎":1.11,"上野・御徒町":1.24,"秋葉原":1.86,"浅草":1.36,"錦糸町":0.84,"北千住・足立":0.64,"豊洲・お台場":1.17,"中野・高円寺":0.45,"世田谷（三軒茶屋・二子玉川）":0.45,"蒲田・大井町":0.45,"羽田空港":0.45,"吉祥寺・三鷹":0.45},"night":{"銀座・有楽町":0.9,"六本木・西麻布":0.72,"赤坂・虎ノ門":0.82,"新橋・汐留":1.09,"丸の内・大手町・東京駅":0.8,"新宿":1.64,"渋谷":0.89,"池袋":1.04,"品川・港南":0.78,"恵比寿・中目黒":1.45,"五反田・大崎":0.82,"上野・御徒町":1.1,"秋葉原":1.19,"浅草":1.01,"錦糸町":0.75,"北千住・足立":1.33,"豊洲・お台場":0.76,"中野・高円寺":1.12,"世田谷（三軒茶屋・二子玉川）":1.3,"蒲田・大井町":0.74,"羽田空港":0.83,"吉祥寺・三鷹":0.84}},street:{"銀座・有楽町":1.35,"六本木・西麻布":1.42,"赤坂・虎ノ門":1.15,"新橋・汐留":1.45,"丸の内・大手町・東京駅":0.91,"新宿":1.58,"渋谷":0.66,"池袋":0.5,"品川・港南":0.92,"恵比寿・中目黒":0.65,"五反田・大崎":0.45,"上野・御徒町":1.86,"秋葉原":2.16,"浅草":0.91,"錦糸町":1.11,"北千住・足立":1.02,"豊洲・お台場":1.07,"中野・高円寺":0.61,"世田谷（三軒茶屋・二子玉川）":0.66,"蒲田・大井町":0.45,"羽田空港":0.45,"吉祥寺・三鷹":0.45}};
 const STATS={"銀座・有楽町":{"app":45,"st":60,"avg":2980,"appAvg":2760},"六本木・西麻布":{"app":26,"st":61,"avg":2590,"appAvg":2190},"赤坂・虎ノ門":{"app":39,"st":40,"avg":2750,"appAvg":2720},"新橋・汐留":{"app":58,"st":55,"avg":3830,"appAvg":3680},"丸の内・大手町・東京駅":{"app":42,"st":42,"avg":2330,"appAvg":2470},"新宿":{"app":79,"st":70,"avg":2580,"appAvg":2760},"渋谷":{"app":35,"st":23,"avg":3020,"appAvg":3370},"池袋":{"app":32,"st":14,"avg":2800,"appAvg":3310},"品川・港南":{"app":45,"st":36,"avg":3300,"appAvg":3170},"恵比寿・中目黒":{"app":32,"st":16,"avg":2460,"appAvg":2590},"五反田・大崎":{"app":16,"st":7,"avg":2590,"appAvg":2800},"上野・御徒町":{"app":43,"st":69,"avg":2840,"appAvg":3420},"秋葉原":{"app":56,"st":68,"avg":2730,"appAvg":2890},"浅草":{"app":50,"st":22,"avg":2510,"appAvg":2950},"錦糸町":{"app":22,"st":25,"avg":2070,"appAvg":2090},"北千住・足立":{"app":44,"st":23,"avg":3360,"appAvg":4160},"豊洲・お台場":{"app":54,"st":25,"avg":2840,"appAvg":3110},"中野・高円寺":{"app":6,"st":8,"avg":2810,"appAvg":2670},"世田谷（三軒茶屋・二子玉川）":{"app":17,"st":10,"avg":2780,"appAvg":3510},"蒲田・大井町":{"app":2,"st":2,"avg":1380,"appAvg":1400},"羽田空港":{"app":1,"st":0,"avg":6900,"appAvg":6900},"吉祥寺・三鷹":{"app":1,"st":5,"avg":5210,"appAvg":1200}};
 const HOURS={"5":{"n":2,"avg":2200,"ap":100},"6":{"n":2,"avg":1900,"ap":100},"7":{"n":39,"avg":3900,"ap":85},"8":{"n":70,"avg":2590,"ap":70},"9":{"n":90,"avg":2940,"ap":78},"10":{"n":79,"avg":2950,"ap":75},"11":{"n":91,"avg":3050,"ap":59},"12":{"n":79,"avg":2550,"ap":51},"13":{"n":63,"avg":2770,"ap":62},"14":{"n":75,"avg":2790,"ap":60},"15":{"n":79,"avg":2540,"ap":61},"16":{"n":68,"avg":2260,"ap":57},"17":{"n":88,"avg":2630,"ap":58},"18":{"n":85,"avg":2650,"ap":60},"19":{"n":72,"avg":2600,"ap":46},"20":{"n":62,"avg":2350,"ap":48},"21":{"n":75,"avg":2590,"ap":37},"22":{"n":78,"avg":2790,"ap":28},"23":{"n":72,"avg":2180,"ap":24},"24":{"n":83,"avg":3960,"ap":22},"25":{"n":52,"avg":4950,"ap":23},"26":{"n":22,"avg":2800,"ap":14}};
@@ -3554,6 +3559,60 @@ function supLabel(s){ return s>=.8?"とても多い":s>=.6?"多い":s>=.4?"普�
     render();
   };
   setTimeout(FS_RESTORE,0);
+  function digReport(){
+    const seg = (hour>=22) ? "night" : "day";   // hourは5〜28表記なので24以降も含む
+    const md  = mode==="app" ? "app" : "street";
+    const real = (FLOW_REAL[md]||{})[seg] || {};
+    const model = AREAS.map(a=>({n:a.n, s:score(a,hour,day,mode,false)}))
+      .sort((x,y)=>y.s-x.s).map((x,i)=>({n:x.n, rank:i+1}));
+    const mRank={}; model.forEach(x=>mRank[x.n]=x.rank);
+    const rArr=AREAS.map(a=>{
+      const v=real[a.n];
+      return {n:a.n, sc:(v? v.avg*Math.log2(1+v.n) : 0), cnt:(v?v.n:0), avg:(v?v.avg:0)};
+    }).sort((x,y)=>y.sc-x.sc);
+    const rRank={}; rArr.forEach((x,i)=>{ rRank[x.n]= x.sc>0 ? i+1 : null; });
+    const rows=AREAS.map(a=>{
+      const v=real[a.n]||{n:0,avg:0};
+      return {label:(a.s||a.n), m:mRank[a.n], r:rRank[a.n], cnt:v.n, avg:v.avg};
+    });
+    const undug=rows.filter(x=>x.m<=12 && x.cnt<3).sort((a,b)=>a.m-b.m);
+    const gem=rows.filter(x=>x.r!=null && x.r<=10 && (x.m-x.r)>=6).sort((a,b)=>(b.m-b.r)-(a.m-a.r));
+    const ok=rows.filter(x=>x.r!=null && x.r<=8 && Math.abs(x.m-x.r)<6).sort((a,b)=>a.r-b.r);
+    const line=(x,mode2)=>`<div style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-top:1px solid var(--fs-line);">
+        <b style="font-size:13px;flex:1;">${x.label}</b>`
+      + (mode2==="u" ? `<span style="font-size:11px;color:var(--fs-sky);">予測${x.m}位</span>
+        <span style="font-size:11px;color:var(--fs-dim);">実績${x.cnt?x.cnt+"回":"なし"}</span>`
+        : `<span style="font-size:11px;color:var(--fs-dim);">予測${x.m}位 → </span>
+        <span style="font-size:11px;color:#7dd87d;font-weight:700;">実績${x.r}位</span>
+        <span style="font-size:11px;color:var(--fs-amber);">¥${x.avg.toLocaleString()}×${x.cnt}</span>`)
+      + `</div>`;
+    let h=`<div style="font-size:12px;color:var(--fs-dim);margin-bottom:4px;line-height:1.6;">
+      <b style="color:var(--fs-text);">${fmt(hour)}・${mode==="app"?"アプリ配車":"流し"}</b> の予測と自分の実績の比較<br>
+      実績は${seg==="night"?"22時〜翌5時":"5時〜22時"}の記録を使用</div>`;
+    h+=`<h3 style="font-size:13px;color:var(--fs-amber);margin:14px 0 4px;">🌱 まだ開拓できていない場所</h3>
+      <div style="font-size:11px;color:var(--fs-dim);margin-bottom:2px;">予測は上位なのに、自分の記録がほとんどない</div>`;
+    h+= undug.length ? undug.slice(0,6).map(x=>line(x,"u")).join("")
+      : `<div style="font-size:12px;color:var(--fs-dim);padding:6px 0;">主要エリアは一通り走れています</div>`;
+    h+=`<h3 style="font-size:13px;color:var(--fs-amber);margin:16px 0 4px;">💎 自分だけの穴場</h3>
+      <div style="font-size:11px;color:var(--fs-dim);margin-bottom:2px;">予測は低いのに、実際には稼げている</div>`;
+    h+= gem.length ? gem.slice(0,6).map(x=>line(x,"g")).join("")
+      : `<div style="font-size:12px;color:var(--fs-dim);padding:6px 0;">まだ見つかっていません</div>`;
+    h+=`<h3 style="font-size:13px;color:var(--fs-amber);margin:16px 0 4px;">✅ 予測どおり稼げている場所</h3>`;
+    h+= ok.length ? ok.slice(0,5).map(x=>line(x,"g")).join("")
+      : `<div style="font-size:12px;color:var(--fs-dim);padding:6px 0;">—</div>`;
+    h+=`<div style="font-size:10px;color:var(--fs-dim);margin-top:14px;line-height:1.6;">
+      予測順位はモデル計算、実績順位は自分の記録(単価×回数)による順位。記録の少ないエリアは実績順位が出ません。時刻・曜日・モードを変えると結果が変わります。</div>`;
+    return h;
+  }
+  const digBtn=FS_$("fsDig");
+  if(digBtn) digBtn.onclick=()=>{
+    const box=FS_$("digPanel");
+    if(!box) return;
+    if(box.style.display==="block"){ box.style.display="none"; digBtn.textContent="🔍 開拓できる場所を探す"; return; }
+    box.innerHTML=digReport();
+    box.style.display="block";
+    digBtn.textContent="✕ 閉じる";
+  };
 const fsMap = FS_$("fsMap");
 const nodes = AREAS.map((a,idx)=>{
   const b = document.createElement("button");
