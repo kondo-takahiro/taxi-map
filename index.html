@@ -359,6 +359,9 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   </div>
 </div>
 
+<div id="roadSign" style="display:none;position:fixed;left:10px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:1200;
+  pointer-events:none;display:flex;align-items:center;gap:6px;"></div>
+
 <div id="hotelSheet" style="display:none;position:fixed;inset:0;z-index:1700;background:rgba(0,0,0,.55);">
   <div style="position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:16px 16px 0 0;
     padding:14px 16px calc(16px + env(safe-area-inset-bottom));max-height:80svh;overflow-y:auto;">
@@ -844,7 +847,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.23-1";
+const APP_VER = "2026.09.23-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1276,6 +1279,7 @@ async function updateHUD(ll, force){
   updateAirFare();
   layoutUnderHUD();
   if(moved) drawAppRing();
+  if(signOn) updateSign(ll, false);
 }
 document.getElementById("hud").onclick=()=>{ if(lastLL) showAdvice(lastLL); };
 
@@ -5097,6 +5101,105 @@ function isAirportRide(dst){
   return /空港|成田市|羽田/.test(dst||"");
 }
 
+// ===== 現在地の道路標識(路線番号) =====
+let signOn=true, signLast=null, signBusy=false, signAt=0;   // 常時表示
+const signCache=new Map();
+function signHide(){ const el=document.getElementById("roadSign"); if(el) el.style.display="none"; }
+function signRender(list, name, sp, ow){
+  const el=document.getElementById("roadSign");
+  if(!el) return;
+  if(!list.length && !name && !sp && !ow){ el.style.display="none"; return; }
+  el.style.display="flex";
+  const shield=(kind,num)=>{
+    if(kind==="national")  // 国道: 青の逆三角(角丸)
+      return `<div style="width:42px;height:38px;background:#1565c0;border:2px solid #fff;border-radius:6px 6px 16px 16px;
+        box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;">
+        <span style="font-size:7px;color:#fff;">国道</span>
+        <span style="font-size:15px;font-weight:800;color:#fff;">${num}</span></div>`;
+    if(kind==="expy")      // 高速: 緑
+      return `<div style="padding:4px 8px;background:#2e7d32;border:2px solid #fff;border-radius:6px;
+        box-shadow:0 2px 6px rgba(0,0,0,.5);color:#fff;font-size:14px;font-weight:800;">${num}</div>`;
+    // 都道県道: 六角形風
+    return `<div style="width:40px;height:36px;background:#0d47a1;border:2px solid #fff;
+      clip-path:polygon(20% 0,80% 0,100% 50%,80% 100%,20% 100%,0 50%);
+      box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
+      <span style="font-size:14px;font-weight:800;color:#fff;">${num}</span></div>`;
+  };
+  el.innerHTML = list.slice(0,2).map(s=>shield(s.kind,s.num)).join("")
+    + (sp ? `<div style="width:38px;height:38px;border-radius:50%;background:#fff;border:4px solid #d32f2f;
+        box-shadow:0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;">
+        <span style="font-size:15px;font-weight:800;color:#111;">${sp}</span></div>` : "")
+    + (ow ? `<div style="background:#1565c0;border:2px solid #fff;border-radius:8px;padding:4px 7px;
+        box-shadow:0 2px 6px rgba(0,0,0,.5);color:#fff;font-size:11px;font-weight:800;white-space:nowrap;">→ 一方通行</div>` : "")
+    + (name?`<div style="background:rgba(13,19,32,.88);border:1px solid var(--line);border-radius:8px;
+        padding:5px 9px;font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;
+        box-shadow:0 2px 6px rgba(0,0,0,.4);">${name}</div>`:"");
+}
+function parseRef(ref, hw){
+  // ref例: "6", "E1", "318", "国道6号"
+  const out=[];
+  String(ref).split(/[;,]/).forEach(r=>{
+    r=r.trim(); if(!r) return;
+    const m=r.match(/(\d+)/); if(!m) return;
+    const num=m[1];
+    let kind="pref";
+    if(/^(国道)?\d+号?$/.test(r) && (hw==="trunk"||hw==="primary")) kind="national";
+    if(/^[A-Z]/.test(r) || hw==="motorway") kind="expy";
+    out.push({kind, num: kind==="expy"? r : num});
+  });
+  return out;
+}
+async function fetchSign(ll){
+  const key=ll[0].toFixed(3)+","+ll[1].toFixed(3);
+  if(signCache.has(key)) return signCache.get(key);
+  const q=`[out:json][timeout:20];way(around:30,${ll[0]},${ll[1]})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential)$"];out geom tags;`;
+  const servers=["https://overpass-api.de/api/interpreter","https://overpass.osm.jp/api/interpreter"];
+  for(const url of servers){
+    try{
+      const res=await fetchT(url,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:"data="+encodeURIComponent(q)}, 20000);
+      if(!res.ok) continue;
+      const j=await res.json();
+      const els=(j.elements||[]).filter(e=>e.tags&&e.geometry&&e.geometry.length>1);
+      if(!els.length){ signCache.set(key,{refs:[],name:"",speed:null,oneway:false}); return signCache.get(key); }
+      // 現在地に最も近い道を選ぶ
+      let near=null, nd=9e9;
+      els.forEach(e=>{
+        e.geometry.forEach(g=>{
+          const d=haversineKm(ll,[g.lat,g.lon]);
+          if(d<nd){ nd=d; near=e; }
+        });
+      });
+      const t=near.tags||{};
+      let refs = t.ref ? parseRef(t.ref, t.highway) : [];
+      // 同じ地点の他の道の路線番号も拾う(重複路線)
+      els.forEach(e=>{ if(e!==near && e.tags.ref && (e.tags["name:ja"]||e.tags.name)===(t["name:ja"]||t.name)) refs=refs.concat(parseRef(e.tags.ref, e.tags.highway)); });
+      const seen=new Set(); refs=refs.filter(r=>{ const k=r.kind+r.num; if(seen.has(k))return false; seen.add(k); return true; });
+      const ms=(t.maxspeed||"").match(/(\d+)/);
+      const v={refs, name:(t["name:ja"]||t.name||""), speed: ms?+ms[1]:null,
+               oneway: (t.oneway==="yes"||t.oneway==="-1"||t.junction==="roundabout")};
+      signCache.set(key, v);
+      return v;
+    }catch(e){}
+  }
+  return null;
+}
+async function updateSign(ll, force){
+  if(!signOn || !ll) return;
+  const now=Date.now();
+  if(!force){
+    if(signLast && haversineKm(signLast, ll)<0.08) return;   // 80m未満の移動は無視
+    if(now-signAt < 20000) return;                            // 20秒に1回まで
+  }
+  if(signBusy) return;
+  signBusy=true; signAt=now; signLast=ll;
+  try{
+    const v=await fetchSign(ll);
+    if(v) signRender(v.refs, v.name, v.speed, v.oneway);
+  }catch(e){}
+  signBusy=false;
+}
+
 // ===== 住宅地 / 繁華街(OpenStreetMapの土地利用) =====
 const LAND_KIND={
   commercial:{n:"商業・繁華街", c:"#f5a623", o:.22},
@@ -6232,6 +6335,7 @@ btnGps.onclick=()=>{
     else if(follow){ map.setView(ll, map.getZoom(), {animate:false}); } // 常に自分が中心
     updateHUD(ll);
     if(!appRing) drawAppRing();
+    if(signOn && !signLast) updateSign(ll, true);
   },err=>{
     if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
     gpsSilent=false;
