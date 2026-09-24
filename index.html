@@ -368,6 +368,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
       <span id="hotelClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;">✕</span>
     </div>
     <div id="hotelStatus" style="display:none;font-size:11px;color:var(--amber);background:var(--panel2);border-radius:8px;padding:7px 9px;margin-bottom:8px;"></div>
+    <div id="hotelCount" style="font-size:11px;color:var(--muted);margin-bottom:6px;"></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">料金帯で絞り込めます(タップで表示/非表示)</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;" id="hotelTiers"></div>
     <div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">
@@ -843,7 +844,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.22-4";
+const APP_VER = "2026.09.23-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5247,11 +5248,14 @@ function drawHotels(){
   if(map.getZoom()<13) return;
   const b=map.getBounds();
   const items=[];
-  hotelData.forEach(p=>{
-    if(!b.contains([p[0],p[1]])) return;
+  // 航空系を先に描く(密集地で上限に埋もれないように)
+  const inView=hotelData.filter(p=>b.contains([p[0],p[1]]));
+  const ordered=inView.filter(p=>hotelTierOf(p[2]).k==="air")
+    .concat(inView.filter(p=>hotelTierOf(p[2]).k!=="air"));
+  ordered.forEach(p=>{
     const t=hotelTierOf(p[2]);
     if(!hotelShow[t.k]) return;
-    if(items.length>=250) return;
+    if(items.length>=400) return;
     const near=myRides().filter(r=>haversineKm([p[0],p[1]],[r.lat,r.lng])<=1.0);
     const avg=near.length?Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0;
     const big=t.k==="air";
@@ -5265,9 +5269,30 @@ function drawHotels(){
         + `<br><button onclick="_evRoute(${p[0]},${p[1]})" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍経路</button>`));
   });
   hotelLayer=L.layerGroup(items).addTo(map);
+  if(hotelShow.air && !inView.some(p=>hotelTierOf(p[2]).k==="air")){
+    const airs=hotelData.filter(p=>hotelTierOf(p[2]).k==="air");
+    if(airs.length){
+      const c=map.getCenter();
+      const near=airs.map(p=>({p, d:haversineKm([c.lat,c.lng],[p[0],p[1]])})).sort((a,b2)=>a.d-b2.d)[0];
+      const h=document.getElementById("hint");
+      h.innerHTML=`この範囲に航空系はありません。最寄りは <b>${near.p[2]}</b>(${near.d.toFixed(1)}km)`;
+      h.classList.add("show");
+      setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },4000);
+    }
+  }
 }
 map.on("moveend zoomend",()=>{ if(hotelOn) drawHotels(); });
 function buildHotelTiers(){
+  const cnt=document.getElementById("hotelCount");
+  if(cnt){
+    if(!hotelData){ cnt.textContent="ホテルの位置を取得すると件数が出ます"; }
+    else{
+      const per={};
+      hotelData.forEach(p=>{ const k=hotelTierOf(p[2]).k; per[k]=(per[k]||0)+1; });
+      cnt.innerHTML=`収録 <b>${hotelData.length}</b>件 ／ `
+        + HOTEL_TIERS.map(t=>`<span style="color:${t.c}">${t.n.replace("✈️ ","✈")}${per[t.k]||0}</span>`).join(" ・ ");
+    }
+  }
   const box=document.getElementById("hotelTiers");
   box.innerHTML=HOTEL_TIERS.map(t=>
     `<button class="chip htier${hotelShow[t.k]?" on":""}" data-k="${t.k}" style="font-size:12px;padding:7px 11px;">
