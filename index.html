@@ -847,7 +847,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.23-4";
+const APP_VER = "2026.09.24-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1740,6 +1740,62 @@ function demandByHour(info){
     {h:"2時-",    k:"resi",          t:"帰庫方向", d:"北東(足立・葛飾)方向の客を優先"}
   ];
 }
+// ===== 出庫〜帰庫の時間帯別プラン(城東拠点) =====
+const JOTO_PLAN=[
+ {h:"7:00-9:30", k:"biz",
+  wd:{p:"足立区内の住宅地(北千住・綾瀬・西新井・竹ノ塚の駅から外した住宅側)", w:"駅に並ばず住宅の内側で待つ。迎車が長い=車が足りない時間帯",},
+  hol:{p:"足立・葛飾の住宅地、主要駅の周辺", w:"休日の朝は薄い。駅・空港へ向かう荷物のある客を意識"}},
+ {h:"9:30-12:00", k:"biz",
+  wd:{p:"北千住 → 浅草・上野", w:"病院・ホテル・出張客。9時以降は空港案件も出る"},
+  hol:{p:"浅草・上野(観光地の外周)", w:"観光客が動き出す。ホテル前と駅から外した通り"}},
+ {h:"12:00-16:00", k:"shop",
+  wd:{p:"浅草・錦糸町・豊洲の3拠点を回す", w:"迎車0.95kmと車が余る時間。1拠点10〜15分で鳴らなければ次へ"},
+  hol:{p:"豊洲・有明・お台場", w:"休日の午後は湾岸が強い(有明3は平均¥3,767)。商業施設の裏手で待つ"}},
+ {h:"16:00-20:00", k:"ent",
+  wd:{p:"日本橋・豊洲・錦糸町のオフィス外縁", w:"夕方のピーク。16時台は谷なのでここで休憩を。連続配車のコアタイム"},
+  hol:{p:"浅草・上野・錦糸町", w:"観光帰りと夕方の外食。会場の1本外した通りで待つ"}},
+ {h:"20:00-22:00", k:"ent",
+  wd:{p:"錦糸町・上野・浅草の繁華街の外縁", w:"20時台は谷。ここで2回目の休憩を取り22時に備える"},
+  hol:{p:"錦糸町・上野の繁華街の外縁", w:"休日の飲みは早く終わる。22時前から帰宅の流れ"}},
+ {h:"22:00-1:30", k:"stn",
+  wd:{p:"西池袋・大久保・新宿北・池袋北(山手線西側の外縁)", w:"迎車1.44km=需要超過。終電後の埼玉・多摩行きを狙う。万収の実績あり"},
+  hol:{p:"上野・錦糸町・北千住", w:"休日深夜は都心が薄い。地元から郊外へのロングを狙う"}},
+ {h:"1:30-3:00", k:"resi",
+  wd:{p:"新宿・池袋 → 文京 → 上野 → 北千住と東へ寄せる", w:"帰庫に合わせて東へ。ロングが松戸・草加・三郷方面になり帰路と重なる"},
+  hol:{p:"上野 → 北千住 → 足立", w:"帰庫方向で受ける。迎車が長いものは無理をしない"}}
+];
+function renderJotoPlan(info){
+  const now=new Date(); const nh=now.getHours()<5?now.getHours()+24:now.getHours();
+  const isToday=!boardDay;
+  const ranges=[[7,9.5],[9.5,12],[12,16],[16,20],[20,22],[22,25.5],[25.5,27]];
+  const idx=isToday ? ranges.findIndex(([a,b])=>nh>=a&&nh<b) : -1;
+  const hol=info.weekend;
+  let h=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:16px 0 4px;">
+    🗾 城東拠点の1日プラン <span style="font-weight:400;color:var(--muted);font-size:10px;">${hol?"休日版":"平日版"}${info.longVac?"・連休":""}</span></div>`;
+  // 連休・イベントの補正メモ
+  const notes=[];
+  if(info.longVac) notes.push("連休中は観光需要。浅草・豊洲・有明を昼に厚く、オフィス街は避ける");
+  if(info.holEve) notes.push("休前日。終電を気にしない客が増え、22時以降のロングが伸びる");
+  if(info.dw===5) notes.push("金曜。20-22時の会食帰りと、深夜の郊外行きが最も濃い");
+  if(info.day>=25) notes.push("給料日後。接待・会食が増える");
+  if(notes.length) h+=notes.map(n=>`<div style="font-size:11px;color:var(--muted);line-height:1.6;">・${n}</div>`).join("");
+  h+=`<div id="jotoEvNote"></div>`;
+  h+=JOTO_PLAN.map((x,i)=>{
+    const d=hol?x.hol:x.wd;
+    const cur=i===idx;
+    const t=DEMAND_TYPES.find(y=>y.k===x.k);
+    return `<div style="border-top:1px solid var(--line);padding:7px 0;${cur?"background:rgba(245,166,35,.07);":""}">
+      <div style="display:flex;align-items:baseline;gap:7px;">
+        <span style="width:74px;font-size:11px;color:${cur?"var(--amber)":"var(--muted)"};font-weight:${cur?800:400};">${x.h}</span>
+        <b style="font-size:12px;color:${t.c};flex:1;">${d.p}</b>
+        ${cur?'<span style="color:var(--amber);font-size:10px;">← いま</span>':''}</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.55;margin-left:81px;">${d.w}</div>
+    </div>`;
+  }).join("");
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.6;">
+    帰庫3時から逆算し、1:30以降は東へ寄せる構成です。イベントがある日は終演時刻に合わせて調整してください。</div>`;
+  return h;
+}
 function renderDemandBoard(){
   const box=document.getElementById("demandBoard");
   if(!box) return;
@@ -1797,6 +1853,8 @@ function renderDemandBoard(){
         ${sel.length?`<div style="color:var(--muted);font-size:11px;margin-top:3px;">${bdMode==="app"?"📲 アプリ":"🚕 流し"}に限ると ${sel.length}本・1本平均 <b style="color:var(--text)">${yen(selAvg)}</b>(全体の${Math.round(sel.length/rs.length*100)}%)</div>`:""}</div>`;
     }
   }catch(e){}
+
+  h+=renderJotoPlan(info);
 
   // 時間帯ごとの主役(現在の時間帯を強調)
   h+=`<div style="font-size:12px;color:var(--amber);font-weight:700;margin:12px 0 6px;">時間帯ごとの主役</div>`;
