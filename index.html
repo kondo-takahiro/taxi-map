@@ -847,7 +847,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.24-2";
+const APP_VER = "2026.09.28-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1026,6 +1026,7 @@ function render(){
   if(typeof drawWardRank==="function") drawWardRank();
   if(typeof drawBig==="function") drawBig();
   if(typeof drawAppRing==="function") drawAppRing();
+  if(typeof drawWaitSpots==="function") drawWaitSpots();
   const list = filtered();
   if(!heatOn && !wardsOn) list.forEach(r=>{
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
@@ -1226,6 +1227,71 @@ setInterval(updateBigWindow, 60000);
 
 // ===== アプリ配車の想定範囲(現在地から半径1km) =====
 let appRing=null;
+
+// ===== アプリ待機スポット(推奨エリアを地図に色で表示) =====
+// type: "spot"=この円の中で待つ / "ring"=中心は台数が多いので外縁(緑の帯)で待つ
+// t: [開始,終了](5〜29時表記) / d: "wd"平日 "hol"休日 "all"両方
+const WAIT_SPOTS=[
+ {n:"北千住の住宅側", c:[35.7497,139.8050], type:"ring", r1:250, r2:900, t:[[7,9.5],[22,27]], d:"all", why:"駅前ロータリーは配車除外が多い。駅から外した住宅側で待つ。朝は都心向けの長距離、深夜は郊外行き"},
+ {n:"千住2・千住仲町", c:[35.7515,139.8015], type:"spot", r:420, t:[[22,27]], d:"all", why:"深夜の主戦場。千住2発のアプリ平均¥6,932。経堂¥13,730・三郷¥9,860の実績"},
+ {n:"綾瀬の住宅側", c:[35.7622,139.8250], type:"ring", r1:200, r2:800, t:[[7,9.5]], d:"wd", why:"朝の通勤・通院。住宅側で停まって待つ"},
+ {n:"西新井の住宅側", c:[35.7768,139.7913], type:"ring", r1:200, r2:800, t:[[7,9.5]], d:"wd", why:"朝の住宅地。駅に並ばない"},
+ {n:"浅草(雷門の外周)", c:[35.7110,139.7964], type:"ring", r1:250, r2:750, t:[[9.5,16]], d:"all", why:"観光客とホテルの配車。雷門の目の前は台数が多い"},
+ {n:"上野(春日通り沿い)", c:[35.7090,139.7760], type:"spot", r:450, t:[[25,27]], d:"all", why:"25時過ぎに鳴り出す。上野2から埼玉への万収あり"},
+ {n:"錦糸町(南口の外縁)", c:[35.6966,139.8146], type:"ring", r1:250, r2:750, t:[[12,16],[20,22]], d:"all", why:"駅前は台数が多い。江東橋側の外縁で待つ"},
+ {n:"豊洲", c:[35.6545,139.7960], type:"spot", r:600, t:[[7,9.5],[12,16]], d:"all", why:"朝はタワマンから都心へ。昼はオフィス・商業施設"},
+ {n:"有明3", c:[35.6360,139.7930], type:"spot", r:500, t:[[12,18]], d:"hol", why:"休日の午後が強い。有明3は平均¥3,767"},
+ {n:"青海", c:[35.6250,139.7790], type:"spot", r:600, t:[[21,23.5]], d:"hol", why:"休日夜の湾岸。青海→歌舞伎町¥12,110の実績(1回)"},
+ {n:"門前仲町の外縁", c:[35.6717,139.7969], type:"ring", r1:200, r2:700, t:[[20,24]], d:"wd", why:"下町の飲み屋街。交差点の外側で待つ"},
+ {n:"日本橋・人形町", c:[35.6860,139.7823], type:"spot", r:500, t:[[16,22]], d:"wd", why:"料亭・会食。スマ配が効く"},
+ {n:"日本橋本町", c:[35.6880,139.7760], type:"spot", r:380, t:[[16,20]], d:"wd", why:"夕方の配車で空港・県外が出る。成田¥26,000の実績"},
+ {n:"芝浦・芝", c:[35.6425,139.7500], type:"spot", r:600, t:[[12,16]], d:"wd", why:"第2クールの本命。芝浦3は平均¥5,970"},
+ {n:"港南", c:[35.6290,139.7450], type:"spot", r:500, t:[[7,12]], d:"wd", why:"オフィス出勤と出張客。空港案件も"},
+ {n:"銀座(外縁で待つ)", c:[35.6712,139.7650], type:"ring", r1:380, r2:950, t:[[18,22]], d:"wd", why:"中心は台数が最も多い。昭和通り側・7〜8丁目の外周へ。平日22-1時は乗り場のみ"},
+ {n:"新橋2", c:[35.6668,139.7576], type:"spot", r:300, t:[[23.5,25.5]], d:"wd", why:"0時台は平均¥8,329・万収2本。外堀通り・烏森口で動かず待つ"},
+ {n:"六本木(外縁)", c:[35.6629,139.7322], type:"ring", r1:250, r2:800, t:[[22,26]], d:"all", why:"交差点の周りは台数が多い。埼玉狙いは霞ヶ関側、神奈川は飯倉側へ頭を向ける"},
+ {n:"西池袋1・3・5", c:[35.7300,139.7060], type:"spot", r:550, t:[[20,26]], d:"all", why:"深夜でもよく鳴る。志木¥11,930・東久留米¥10,670の実績"},
+ {n:"赤羽(東口の外縁)", c:[35.7781,139.7208], type:"ring", r1:200, r2:700, t:[[22,26]], d:"wd", why:"終電後の帰宅。埼玉方面へ出ることも"},
+ {n:"大久保・北新宿", c:[35.7010,139.6980], type:"spot", r:550, t:[[22,26]], d:"all", why:"終電後の郊外行き。大久保→松戸¥15,350の実績"},
+ {n:"新宿(外縁)", c:[35.6900,139.7003], type:"ring", r1:450, r2:1050, t:[[20,26]], d:"all", why:"歌舞伎町の中は近距離が多く台数も多い。西口・3丁目の外周で待つ"},
+ {n:"渋谷(外縁)", c:[35.6580,139.7016], type:"ring", r1:300, r2:900, t:[[20,25]], d:"all", why:"駅周辺は台数が多い。神泉・道玄坂上側へ外す"},
+ {n:"中野の住宅側", c:[35.7057,139.6659], type:"ring", r1:200, r2:900, t:[[7,9.5],[22,26]], d:"all", why:"朝は都心への通勤、深夜は新宿から帰った客の近場の移動"}
+];
+let waitLayer=null;
+let waitOn = localStorage.getItem("opt-waitspots")!=="0";
+function waitDayType(){
+  const d=new Date(); if(d.getHours()<5) d.setDate(d.getDate()-1);
+  const ds=dsOf(d);
+  return (d.getDay()===0||d.getDay()===6||isHoliday(ds)) ? "hol" : "wd";
+}
+function drawWaitSpots(){
+  if(waitLayer){ map.removeLayer(waitLayer); waitLayer=null; }
+  if(!waitOn || modeFilter!=="app") return;
+  const dt=waitDayType();
+  const a=tMin, b=tMax;   // 時間帯フィルターと重なるものを表示
+  const act=WAIT_SPOTS.filter(s=>(s.d==="all"||s.d===dt) && s.t.some(([x,y])=>x<b && y>a));
+  const items=[];
+  act.forEach(s=>{
+    const near=myRides().filter(r=>(r.m||"app")==="app" && haversineKm(s.c,[r.lat,r.lng])<=(s.r2||s.r)/1000);
+    const avg=near.length?Math.round(near.reduce((q,r)=>q+r.f,0)/near.length):0;
+    const pop=`<b>📍 ${s.n}</b><br><span style="font-size:11px;">${s.why}</span>`
+      + `<br><span style="font-size:11px;color:#8b98ad;">時間帯 ${s.t.map(([x,y])=>fmtH(x)+"-"+fmtH(y)).join(" / ")}${s.d==="wd"?"(平日)":s.d==="hol"?"(休日)":""}</span>`
+      + (near.length?`<br>周辺のアプリ実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b>`:"");
+    if(s.type==="ring"){
+      items.push(L.circle(s.c,{radius:s.r2, color:"#2ecc71", weight:2, dashArray:"6 5", fillColor:"#2ecc71", fillOpacity:.16}).bindPopup(pop));
+      items.push(L.circle(s.c,{radius:s.r1, color:"#9e9e9e", weight:1, fillColor:"#555", fillOpacity:.38, interactive:true})
+        .bindPopup(`<b>${s.n}の中心</b><br><span style="font-size:11px;">ここは待機台数が多い。緑の帯(外縁)で待つ</span>`));
+    }else{
+      items.push(L.circle(s.c,{radius:s.r, color:"#2ecc71", weight:2, fillColor:"#2ecc71", fillOpacity:.22}).bindPopup(pop));
+    }
+    items.push(L.marker(s.c,{interactive:false, icon:L.divIcon({className:"",iconSize:[120,18],iconAnchor:[60,-2],
+      html:`<div style="text-align:center;"><span style="background:rgba(13,19,32,.85);color:#7dd87d;border:1px solid #2ecc71;
+        border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">📍${s.n}</span></div>`})}));
+  });
+  waitLayer=L.layerGroup(items).addTo(map);
+  waitLayer.eachLayer(l=>{ if(l.bringToBack) l.bringToBack(); });
+}
+
 function drawAppRing(){
   if(appRing){ map.removeLayer(appRing); appRing=null; }
   // 配車フィルターが「アプリ」のときだけ表示
@@ -1754,16 +1820,16 @@ const AREA_PLANS={
    wd:{p:"浅草・錦糸町・豊洲の3拠点を回す", w:"迎車0.95kmと車が余る時間。1拠点10〜15分で鳴らなければ次へ"},
    hol:{p:"豊洲・有明・お台場", w:"休日の午後は湾岸が強い(有明3は平均¥3,767)。商業施設の裏手で待つ"}},
   {h:"16:00-20:00", k:"ent",
-   wd:{p:"日本橋・豊洲・錦糸町のオフィス外縁", w:"夕方のピーク。16時台は谷なのでここで休憩を"},
+   wd:{p:"豊洲・東陽町・木場のオフィス、錦糸町の外縁", w:"夕方のピーク。江東のオフィス街の退勤。16時台は谷なのでここで休憩を"},
    hol:{p:"浅草・上野・錦糸町", w:"観光帰りと夕方の外食。会場の1本外した通りで待つ"}},
   {h:"20:00-22:00", k:"ent",
    wd:{p:"錦糸町・上野・浅草の繁華街の外縁", w:"20時台は谷。ここで2回目の休憩を取り22時に備える"},
    hol:{p:"錦糸町・上野の繁華街の外縁", w:"休日の飲みは早く終わる。22時前から帰宅の流れ"}},
   {h:"22:00-1:30", k:"stn",
-   wd:{p:"西池袋・大久保・新宿北・池袋北(山手線西側の外縁)", w:"迎車1.44km=需要超過。終電後の埼玉・多摩行きを狙う"},
+   wd:{p:"千住2・千住仲町、上野(春日通り)、錦糸町南口", w:"迎車1.44km=需要超過。千住2発は平均¥6,932・万収2本。終電後の埼玉・千葉方面を狙う"},
    hol:{p:"上野・錦糸町・北千住", w:"休日深夜は都心が薄い。地元から郊外へのロングを狙う"}},
   {h:"1:30-3:00", k:"resi",
-   wd:{p:"新宿・池袋 → 文京 → 上野 → 北千住と東へ寄せる", w:"帰庫に合わせて東へ。ロングが松戸・草加・三郷方面になり帰路と重なる"},
+   wd:{p:"上野 → 千住 → 足立の住宅地", w:"帰庫方向で受ける。千住発は松戸・草加・三郷方面のロングが帰路と重なる"},
    hol:{p:"上野 → 北千住 → 足立", w:"帰庫方向で受ける。迎車が長いものは無理をしない"}}]},
 
  johoku:{n:"城北", d:"北・板橋・練馬・豊島・文京", rows:[
@@ -1774,13 +1840,13 @@ const AREA_PLANS={
    wd:{p:"文京(本郷・音羽) → 池袋東口", w:"大学病院(東大・日医大)と出版社。病院は休日でも動く"},
    hol:{p:"池袋東口・サンシャイン周辺", w:"買い物客が動き出す。駅前は待機が多いので外周で"}},
   {h:"12:00-16:00", k:"shop",
-   wd:{p:"池袋 → 本郷 → 飯田橋・神楽坂", w:"病院・オフィスの移動。16時台は谷なので休憩に"},
+   wd:{p:"池袋 → 大塚・巣鴨 → 本郷", w:"病院・オフィスの移動。16時台は谷なので休憩に"},
    hol:{p:"池袋・巣鴨・大塚", w:"買い物と病院。巣鴨は高齢の客が多く近距離中心"}},
   {h:"16:00-20:00", k:"ent",
-   wd:{p:"神楽坂・飯田橋・池袋西口", w:"神楽坂の会食が動き出す。坂下・大久保通り沿いで待つ"},
+   wd:{p:"池袋東口・西口の外縁、本郷・後楽", w:"退勤と会食の始まり。池袋は駅前を避けて外周で"},
    hol:{p:"池袋東口・西口の外縁", w:"買い物帰りと夕方の外食"}},
   {h:"20:00-22:00", k:"ent",
-   wd:{p:"神楽坂・池袋西口(西池袋1〜5)", w:"西口は連続配車が効く。20時台の谷で休憩を"},
+   wd:{p:"池袋西口(西池袋1〜5)・大塚", w:"西口は連続配車が効く。20時台の谷で休憩を"},
    hol:{p:"池袋西口・大塚", w:"休日は早じまい。22時前から帰宅の流れ"}},
   {h:"22:00-1:30", k:"stn",
    wd:{p:"西池袋1・3・5で待つ", w:"深夜でもアプリがよく鳴る。志木・和光・東久留米など埼玉への万収あり"},
@@ -1806,7 +1872,7 @@ const AREA_PLANS={
    wd:{p:"新宿3丁目・西口の外縁、恵比寿", w:"歌舞伎町の中は近距離が多い。外周で待つ。20時台の谷で休憩を"},
    hol:{p:"新宿・渋谷の外縁", w:"休日の飲みは早く終わる"}},
   {h:"22:00-1:30", k:"stn",
-   wd:{p:"大久保・北新宿・西池袋寄り、笹塚・幡ヶ谷", w:"終電後の中野・杉並・練馬・多摩行き。大久保から松戸¥15,350の実績あり"},
+   wd:{p:"大久保・北新宿、笹塚・幡ヶ谷", w:"終電後の中野・杉並・練馬・多摩行き。大久保から松戸¥15,350の実績あり"},
    hol:{p:"新宿・渋谷の外縁", w:"終電後の帰宅需要。世田谷・杉並方面"}},
   {h:"1:30-3:00", k:"resi",
    wd:{p:"新宿 → 大久保 → 文京 → 上野方面へ東進", w:"足立へ帰るため早めに東へ。西で受けると回送が長くなる"},
@@ -1873,7 +1939,7 @@ function renderJotoPlan(info){
     </div>`;
   }).join("");
   h+=`<div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.6;">
-    帰庫3時から逆算し、1:30以降は足立方向へ寄せる構成です。</div>`;
+    各エリアの区の中だけで組み立てています。1:30以降は帰庫(足立)方向へ寄せる構成です。</div>`;
   return h;
 }
 function renderDemandBoard(){
@@ -4953,6 +5019,7 @@ function renderSettings(){
       <div style="font-size:12px;color:var(--amber);margin:18px 0 6px;">地図の表示</div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;">
         <button class="chip opt-btn${showCountBadge?" on":""}" data-opt="countbadge" style="font-size:12px;padding:7px 10px;">🔢 回数バッジ</button>
+        <button class="chip opt-btn${waitOn?" on":""}" data-opt="waitspots" style="font-size:12px;padding:7px 10px;">📍 アプリ待機スポット</button>
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:5px;">ヒートマップ上に表示される「2件以上の場所の回数」の丸印です。</div>
 
@@ -4970,6 +5037,10 @@ function renderSettings(){
     localStorage.setItem("hidden-btns","[]"); applyHidden(); renderSettings();
   };
   body.querySelectorAll(".opt-btn").forEach(b=>b.onclick=()=>{
+    if(b.dataset.opt==="waitspots"){
+      waitOn=!waitOn; localStorage.setItem("opt-waitspots", waitOn?"1":"0");
+      b.classList.toggle("on", waitOn); drawWaitSpots(); return;
+    }
     if(b.dataset.opt==="countbadge"){
       showCountBadge=!showCountBadge;
       localStorage.setItem("opt-countbadge", showCountBadge?"1":"0");
