@@ -240,6 +240,17 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
 </div>
 
+<div id="hankaPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.96);border:1px solid var(--line);border-radius:14px;padding:10px 12px;">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <b style="font-size:14px;">🏮 繁華街の実績</b>
+    <span id="hankaCond" style="font-size:11px;color:var(--muted);"></span>
+    <span style="flex:1"></span>
+    <span id="hankaClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="hankaList" style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:4px;"></div>
+  <div style="font-size:10px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--line);">塗り＝平均単価(緑→赤)・金枠＝万収あり・灰色の点線＝実績なし。✕で一覧だけ閉じる</div>
+</div>
 <div id="rankPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
   background:rgba(19,26,42,.96);border:1px solid var(--line);border-radius:14px;padding:12px 14px;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -581,6 +592,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
+    <button class="btn" id="btnHanka">🏮 繁華街</button>
     <button class="btn" id="btnMetric">指標: 単価</button>
     <button class="btn" id="btnPredict">🔮 推定</button>
     <button class="btn" id="btnGps">現在地</button>
@@ -847,7 +859,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.09.28-2";
+const APP_VER = "2026.10.04-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1028,7 +1040,7 @@ function render(){
   if(typeof drawAppRing==="function") drawAppRing();
   if(typeof drawWaitSpots==="function") drawWaitSpots();
   const list = filtered();
-  if(!heatOn && !wardsOn) list.forEach(r=>{
+  if(!heatOn && !wardsOn && !hankaOn) list.forEach(r=>{   // 繁華街表示中は個別ピンを出さない(色塗りが隠れるため)
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
@@ -1038,6 +1050,7 @@ function render(){
       <br><span class="del" data-id="${r.id}">この記録を削除</span></div>`);
   });
   drawHeat(list);
+  if(typeof drawHanka==="function") drawHanka();   // ヒートの上に重ねる
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
   document.getElementById("stAvg").textContent = list.length ? yen(Math.round(sum/list.length)) : "¥0";
@@ -1107,10 +1120,10 @@ const PLAN_SLOTS=[
   {lo:18,  hi:20,  t:"第3・銀座へ移動", d:"銀座5/6・日本橋3が高単価。京橋〜銀座で回す"},
   {lo:20,  hi:20.7,t:"⏸ 休憩の推奨", d:"20時台は谷(¥3,087)。ここで休んで21時に備える"},
   {lo:20.7,hi:22,  t:"第3の締め", d:"21時台は単価¥2,519。銀座・日本橋・人形町で7本×¥3,000へ"},
-  {lo:22,  hi:23,  t:"青タンの入り", d:"都心に位置取り。日本橋・銀座・新橋・六本木。無理に拾わない"},
-  {lo:23,  hi:24,  t:"新橋へ移動", d:"23時台は最も薄い。0時の勝負に備えて新橋・上野へ"},
-  {lo:24,  hi:25,  t:"⭐ 0時台は勝負", d:"新橋2で張る(8回平均¥8,329)。動かず待つ"},
-  {lo:25,  hi:26,  t:"⭐ 1時台も勝負", d:"上野2・新橋2・六本木4。25時過ぎは上野の春日通り沿い"},
+  {lo:22,  hi:23,  t:"青タンの入り", d:"都心で刻みながら東へ寄る。銀座・日本橋→上野方面。22-23時の上野周辺は平均¥2,307、粘らない"},
+  {lo:23,  hi:24,  t:"両国へ移動", d:"23時台は最も薄い。23:45までに両国2・3へ入る"},
+  {lo:24,  hi:25,  t:"⭐ 0時台は両国で張る", d:"両国2・3の京葉道路沿い。流しで2件とも万収(三鷹・流山)。錦糸町側は万収ゼロ。都心にいたら新橋2(10回平均¥7,343)"},
+  {lo:25,  hi:26,  t:"⭐ 1時台は上野2・湯島3", d:"仲町通り〜春日通り。1時台4件中3件が¥7,000以上(最高¥18,950)。両国から約3km"},
   {lo:26,  hi:30,  t:"帰庫へ", d:"北東方向の客を優先。足立・葛飾方面で締める"}
 ];
 function planNow(){
@@ -4990,7 +5003,7 @@ async function showRoads(d){
 // ===== 表示ボタンの設定(使わない機能を隠す) =====
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
-  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnHanka","🏮 繁華街"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
@@ -6367,17 +6380,33 @@ document.getElementById("replayClose").onclick=clearReplay;
 document.getElementById("btnHeat").onclick=e=>{
   heatOn=!heatOn; e.target.classList.toggle("on",heatOn);
   if(heatOn && wardsOn){ wardsOn=false; document.getElementById("btnWards").classList.remove("on"); }
+  if(heatOn) hankaOff();   // 繁華街の色塗りと重なると読めないので片方だけ表示
   render();
 };
 // ===== 万収スポット(¥10,000以上が出た乗車地) =====
 let bigLayer=null, bigOn=false;
+// 青タンの試行スポット(万収の出る場所を増やすために張る場所)。実績は乗車データから自動集計
+const TRY_SINCE="2026-10-03";   // この営業日以降を「試行後」として数える
+const TRY_SPOTS=[
+  {n:"両国2・3", ps:["墨田区両国2","墨田区両国3"], c:[35.69335,139.79343], when:"0時台",
+   note:"京葉道路沿いで張る。錦糸町側(江東橋・錦糸)は0-2時7件で万収ゼロなので寄らない"},
+  {n:"上野2・湯島3", ps:["台東区上野2","文京区湯島3"], c:[35.70807,139.77088], when:"1時台",
+   note:"仲町通り〜春日通り。22-23時は平均¥2,307と弱いので0時を過ぎてから"}
+];
+function tryStats(s){
+  const rs=myRides().filter(r=>s.ps.includes(r.p) && shiftHour(r.t)>=24 && shiftHour(r.t)<27);
+  const agg=l=>({n:l.length, big:l.filter(r=>r.f>=10000).length, mid:l.filter(r=>r.f>=7000).length,
+    avg:l.length?Math.round(l.reduce((q,r)=>q+r.f,0)/l.length):0});
+  return {all:agg(rs), since:agg(rs.filter(r=>shiftDateStr(r)>=TRY_SINCE)),
+    top:rs.slice().sort((x,y)=>y.f-x.f).slice(0,5)};
+}
 document.getElementById("btnPredict").onclick=e=>{
   predictOn=!predictOn;
   e.target.classList.toggle("on",predictOn);
   if(predictOn && !heatOn){ // 推定はヒートマップ上で表示
     heatOn=true; document.getElementById("btnHeat").classList.add("on");
   }
-  if(predictOn) ensureChome();
+  if(predictOn){ ensureChome(); hankaOff(); }
   render();
 };
 map.on("moveend",()=>{ if(predictOn && heatOn) render(); });
@@ -6398,7 +6427,6 @@ function drawBig(){
   if(bigLayer){ map.removeLayer(bigLayer); bigLayer=null; }
   if(!bigOn) return;
   const list=filtered().filter(r=>r.f>=10000);
-  if(!list.length) return;
   const g=new Map();
   list.forEach(r=>{
     const a=g.get(r.p)||{la:0,lo:0,n:0,items:[]};
@@ -6423,8 +6451,241 @@ function drawBig(){
           }).join("")
         + (a.items.length>6?`<div style="font-size:11px;color:#8b98ad;margin-top:4px;">ほか${a.items.length-6}本</div>`:"")));
   });
+  // 青タンの試行スポット(🎯)。⭐と重ならないよう地点の下側にラベルを出す
+  TRY_SPOTS.forEach(s=>{
+    const st=tryStats(s);
+    const line=(lbl,a)=>`<div style="font-size:12px;margin-top:4px;">${lbl} `
+      + (a.n ? `<b>${a.n}件</b>・万収 <b>${a.big}本</b>・¥7,000以上 <b>${a.mid}本</b>・平均 <b>${yen(a.avg)}</b>` : `<span style="color:#8b98ad;">まだ実績なし</span>`)
+      + `</div>`;
+    items.push(L.marker(s.c,{icon:L.divIcon({className:"",iconSize:[96,36],iconAnchor:[48,-2],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="font-size:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">🎯</div>
+        <div style="background:rgba(19,26,42,.92);color:#ffd54f;border:1px dashed #ffd54f;border-radius:7px;padding:1px 5px;font-size:9px;font-weight:800;margin-top:1px;white-space:nowrap;">${s.n} ${s.when}</div>
+      </div>`})})
+      .bindPopup(`<b>🎯 ${s.n}</b> <span style="color:#8b98ad;font-size:11px;">青タンの試行スポット・${s.when}</span>`
+        + `<br><span style="font-size:11px;">${s.note}</span>`
+        + line("0〜2時の実績", st.all)
+        + line("試行後("+TRY_SINCE.slice(5).replace("-","/")+"〜)", st.since)
+        + st.top.map(r=>`<div style="margin-top:4px;font-size:12px;">${r.d.slice(5).replace("-","/")} ${r.t} → ${r.dst||"?"} <b>${yen(r.f)}</b> <span style="color:#8b98ad;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`).join("")));
+  });
   bigLayer=L.layerGroup(items).addTo(map);
 }
+
+// ===== 繁華街(エリアの色塗り + 自分の実績) =====
+// 塗り=平均単価(ヒートと同じ10段階) / 金枠=万収あり / 灰色の点線=今の条件で実績なし
+// 実績は「今のフィルター条件(時間帯・曜日・配車区分・天気)× 自分の乗車」で集計する
+const HANKA=[
+ {n:"上野・湯島", z:"城東・城北", c:[35.70902,139.77284], ch:["台東区上野2","台東区上野4","台東区上野6","文京区湯島3"]},
+ {n:"浅草", z:"城東・城北", c:[35.71245,139.79442], ch:["台東区浅草1","台東区浅草2","台東区雷門2","台東区西浅草2"]},
+ {n:"錦糸町", z:"城東・城北", c:[35.69692,139.81393], ch:["墨田区江東橋3","墨田区江東橋4","墨田区錦糸1","墨田区錦糸2","墨田区錦糸3"]},
+ {n:"両国", z:"城東・城北", c:[35.69335,139.79343], ch:["墨田区両国2","墨田区両国3"]},
+ {n:"北千住", z:"城東・城北", c:[35.75015,139.80341], ch:["足立区千住1","足立区千住2","足立区千住3","足立区千住旭町"]},
+ {n:"亀戸", z:"城東・城北", c:[35.69822,139.82726], ch:["江東区亀戸2","江東区亀戸5","江東区亀戸6"]},
+ {n:"門前仲町", z:"城東・城北", c:[35.67233,139.79622], ch:["江東区門前仲町1","江東区門前仲町2","江東区富岡1"]},
+ {n:"小岩", z:"城東・城北", c:[35.73165,139.88302], ch:["江戸川区南小岩7","江戸川区南小岩8","江戸川区西小岩1"]},
+ {n:"新小岩", z:"城東・城北", c:[35.71595,139.85996], ch:["葛飾区新小岩1","葛飾区新小岩2"]},
+ {n:"金町", z:"城東・城北", c:[35.77036,139.86947], ch:["葛飾区金町6","葛飾区東金町1"]},
+ {n:"亀有", z:"城東・城北", c:[35.76628,139.84913], ch:["葛飾区亀有3","葛飾区亀有5"]},
+ {n:"綾瀬", z:"城東・城北", c:[35.76225,139.82731], ch:["足立区綾瀬2","足立区綾瀬3"]},
+ {n:"赤羽", z:"城東・城北", c:[35.77871,139.72323], ch:["北区赤羽1","北区赤羽2","北区赤羽南1"]},
+ {n:"日暮里・鶯谷", z:"城東・城北", c:[35.72625,139.77485], ch:["荒川区東日暮里5","荒川区西日暮里2","台東区根岸1"]},
+ {n:"大塚", z:"城東・城北", c:[35.73116,139.72862], ch:["豊島区南大塚3","豊島区北大塚2"]},
+ {n:"新橋", z:"都心", c:[35.66625,139.75711], ch:["港区新橋1","港区新橋2","港区新橋3","港区新橋4"]},
+ {n:"銀座", z:"都心", c:[35.66884,139.76320], ch:["中央区銀座5","中央区銀座6","中央区銀座7","中央区銀座8"]},
+ {n:"有楽町・日比谷", z:"都心", c:[35.67366,139.76111], ch:["千代田区有楽町1","千代田区有楽町2"]},
+ {n:"日本橋・八重洲", z:"都心", c:[35.68121,139.77264], ch:["中央区八重洲1","中央区八重洲2","中央区日本橋1","中央区日本橋2","中央区日本橋3"]},
+ {n:"人形町", z:"都心", c:[35.68576,139.78301], ch:["中央区日本橋人形町1","中央区日本橋人形町2","中央区日本橋人形町3"]},
+ {n:"神田", z:"都心", c:[35.69109,139.77114], ch:["千代田区鍛冶町1","千代田区鍛冶町2","千代田区内神田3"]},
+ {n:"秋葉原", z:"都心", c:[35.70007,139.77129], ch:["千代田区外神田1","千代田区外神田3","千代田区外神田4"]},
+ {n:"赤坂", z:"都心", c:[35.67279,139.73819], ch:["港区赤坂2","港区赤坂3"]},
+ {n:"六本木", z:"都心", c:[35.66260,139.73282], ch:["港区六本木3","港区六本木4","港区六本木5","港区六本木6","港区六本木7"]},
+ {n:"西麻布", z:"都心", c:[35.65939,139.72539], ch:["港区西麻布1","港区西麻布3"]},
+ {n:"麻布十番", z:"都心", c:[35.65605,139.73458], ch:["港区麻布十番1","港区麻布十番2"]},
+ {n:"浜松町・大門", z:"都心", c:[35.65675,139.75494], ch:["港区浜松町1","港区浜松町2","港区芝大門1","港区芝大門2"]},
+ {n:"田町", z:"都心", c:[35.64748,139.74755], ch:["港区芝5"]},
+ {n:"歌舞伎町", z:"城西・城南", c:[35.69584,139.70262], ch:["新宿区歌舞伎町1","新宿区歌舞伎町2"]},
+ {n:"新宿3丁目・西口", z:"城西・城南", c:[35.69173,139.70018], ch:["新宿区新宿3","新宿区西新宿1"]},
+ {n:"大久保", z:"城西・城南", c:[35.70174,139.70227], ch:["新宿区大久保1","新宿区大久保2","新宿区百人町1","新宿区百人町2"]},
+ {n:"四谷・荒木町", z:"城西・城南", c:[35.68987,139.72181], ch:["新宿区荒木町","新宿区舟町","新宿区四谷3"]},
+ {n:"神楽坂", z:"城西・城南", c:[35.70158,139.74008], ch:["新宿区神楽坂2","新宿区神楽坂3","新宿区神楽坂4","新宿区神楽坂5"]},
+ {n:"高田馬場", z:"城西・城南", c:[35.71241,139.70376], ch:["新宿区高田馬場1","新宿区高田馬場2","新宿区高田馬場3"]},
+ {n:"池袋", z:"城西・城南", c:[35.73158,139.71115], ch:["豊島区西池袋1","豊島区東池袋1","豊島区池袋2","豊島区南池袋1"]},
+ {n:"渋谷", z:"城西・城南", c:[35.65913,139.69735], ch:["渋谷区道玄坂1","渋谷区道玄坂2","渋谷区宇田川町","渋谷区円山町"]},
+ {n:"恵比寿", z:"城西・城南", c:[35.64665,139.70979], ch:["渋谷区恵比寿1","渋谷区恵比寿西1","渋谷区恵比寿南1"]},
+ {n:"中目黒", z:"城西・城南", c:[35.64378,139.69716], ch:["目黒区上目黒1","目黒区上目黒2","目黒区上目黒3"]},
+ {n:"五反田", z:"城西・城南", c:[35.62598,139.72354], ch:["品川区東五反田1","品川区西五反田1","品川区西五反田2"]},
+ {n:"大井町", z:"城西・城南", c:[35.60594,139.73462], ch:["品川区東大井5","品川区大井1"]},
+ {n:"蒲田", z:"城西・城南", c:[35.56235,139.71505], ch:["大田区蒲田5","大田区西蒲田7"]},
+ {n:"三軒茶屋", z:"城西・城南", c:[35.64292,139.66869], ch:["世田谷区三軒茶屋1","世田谷区三軒茶屋2","世田谷区太子堂4"]},
+ {n:"下北沢", z:"城西・城南", c:[35.66120,139.66710], ch:["世田谷区北沢2"]},
+ {n:"自由が丘", z:"城西・城南", c:[35.61101,139.66874], ch:["目黒区自由が丘1","目黒区自由が丘2"]},
+ {n:"中野", z:"城西・城南", c:[35.70772,139.66837], ch:["中野区中野5"]}
+];
+var hankaLayer=null, hankaOn=false, hankaList=true, hankaRows=[], hankaSel=null;
+function hankaAgg(rs){
+  const n=rs.length, sum=rs.reduce((q,r)=>q+r.f,0);
+  return {n, sum, avg:n?Math.round(sum/n):0, big:rs.filter(r=>r.f>=10000).length,
+    mid:rs.filter(r=>r.f>=7000).length, app:rs.filter(r=>(r.m||"app")==="app").length};
+}
+function hankaStats(){
+  const idx=l=>{ const m=new Map(); l.forEach(r=>{ const a=m.get(r.p); if(a) a.push(r); else m.set(r.p,[r]); }); return m; };
+  const own=r=>!r.drv || normName(r.drv)===normName(MY_NAME);
+  const cur=idx(filtered().filter(own)), all=idx(myRides());
+  return HANKA.map(h=>{
+    const rs=h.ch.flatMap(c=>cur.get(c)||[]);
+    return {h, rs, cur:hankaAgg(rs), all:hankaAgg(h.ch.flatMap(c=>all.get(c)||[]))};
+  });
+}
+function hankaCondText(){
+  // 時間帯フィルターは「時」単位で効くので、実際に含まれる時間で表示する
+  const lo=Math.ceil(tMin), hi=Math.floor(tMax);
+  const t = (lo<=5 && hi>=28) ? "全時間帯" : lo>=hi ? (lo%24)+"時台" : (lo%24)+"時〜"+(hi%24)+"時台";
+  const dw = dowSet.size ? "・"+[1,2,3,4,5,6,0].filter(d=>dowSet.has(d)).map(d=>"日月火水木金土"[d]).join("") : "";
+  return t + dw
+    + (modeFilter==="app"?"・配車のみ":modeFilter==="st"?"・流しのみ":"")
+    + (weatherFilter==="rain"?"・雨":weatherFilter==="dry"?"・晴曇":"")
+    + (minFare>0?"・"+yen(minFare)+"以上":"");
+}
+function hankaShort(c){ return c.replace(/^.+?区/,""); }
+function hankaLine(lbl,a){
+  return `<div style="font-size:12px;margin-top:6px;"><span style="color:#8b98ad;font-size:11px;">${lbl}</span><br>`
+    + (a.n ? `<span style="font-weight:700;">${a.n}件・平均 ${yen(a.avg)}・万収 ${a.big}本・¥7,000以上 ${a.mid}本</span>`
+             + `<br><span style="color:#8b98ad;font-size:11px;">配車 ${a.app}件 / 流し ${a.n-a.app}件</span>`
+           : `<span style="color:#8b98ad;">実績なし</span>`)
+    + `</div>`;
+}
+function hankaBody(s){
+  const h=s.h;
+  const per=h.ch.map(c=>{ const rs=s.rs.filter(r=>r.p===c); if(!rs.length) return "";
+    const a=hankaAgg(rs); return `${hankaShort(c)} ${a.n}件 ${yen(a.avg)}`; }).filter(Boolean).join(" / ");
+  const top=s.rs.slice().sort((x,y)=>y.f-x.f).slice(0,5);
+  return `<div style="min-width:210px;"><span style="font-weight:800;font-size:14px;">🏮 ${h.n}</span>`
+    + `<br><span style="color:#8b98ad;font-size:11px;">${h.ch.map(hankaShort).join("・")}</span>`
+    + hankaLine("今の条件 "+hankaCondText(), s.cur)
+    + (per?`<div style="font-size:11px;margin-top:3px;">${per}</div>`:"")
+    + top.map(r=>`<div style="margin-top:4px;font-size:12px;">${r.d.slice(5).replace("-","/")} ${r.t} ${hankaShort(r.p)} → ${r.dst||"?"} <span style="font-weight:700;">${yen(r.f)}</span> <span style="color:#8b98ad;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`).join("")
+    + hankaLine("全期間・全時間帯", s.all) + `</div>`;
+}
+function hankaPopup(s){
+  return hankaBody(s)
+    + `<div class="pop"><span class="navi route-here" data-lat="${s.h.c[0]}" data-lng="${s.h.c[1]}">📍 この地図で経路</span>`
+    + `<span class="navi sub hanka-back">📋 一覧</span></div>`;
+}
+// ポップアップがHUDやフィルターパネルの裏に隠れないよう、見えている範囲に収める
+function hankaPopupOpts(){
+  const hud=document.getElementById("hud"), pn=document.getElementById("panel");
+  const top=(hud?hud.getBoundingClientRect().bottom:60)+8;
+  const bottom=Math.max(70, pn?window.innerHeight-pn.getBoundingClientRect().top:70)+8;
+  return {maxWidth:300, maxHeight:Math.max(110, window.innerHeight-top-bottom-70),
+    autoPanPaddingTopLeft:[8,top], autoPanPaddingBottomRight:[8,bottom]};
+}
+function renderHankaList(stats){
+  const panel=document.getElementById("hankaPanel");
+  if(!panel) return;
+  panel.style.display = (hankaOn && hankaList) ? "block" : "none";
+  if(!hankaOn || !hankaList) return;
+  const hud=document.getElementById("hud");
+  if(hud) panel.style.top=(hud.getBoundingClientRect().bottom+8)+"px";
+  document.getElementById("hankaCond").textContent=hankaCondText();
+  const listEl=document.getElementById("hankaList");
+  const sel=hankaSel && stats.find(s=>s.h.n===hankaSel);
+  if(sel){   // 詳細表示(フィルターを変えると数字も追従する)
+    const chip="font-size:12px;font-weight:700;border-radius:9px;padding:6px 10px;cursor:pointer;white-space:nowrap;";
+    listEl.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:2px 0 8px;">`
+      + `<span id="hankaBack" style="${chip}color:var(--amber);border:1px solid var(--amber);">← 一覧</span>`
+      + `<span style="flex:1"></span>`
+      + `<span id="hankaSee" style="${chip}color:var(--text);border:1px solid var(--line);">🗺 地図で見る</span>`
+      + `<span id="hankaGo" style="${chip}background:var(--amber);color:#1a1206;">📍 経路</span></div>`
+      + hankaBody(sel);
+    listEl.scrollTop=0;
+    document.getElementById("hankaBack").onclick=()=>{ hankaSel=null; drawHanka(); };
+    document.getElementById("hankaGo").onclick=()=>{ hankaList=false; panel.style.display="none"; showRoute(sel.h.c[0], sel.h.c[1]); };
+    document.getElementById("hankaSee").onclick=()=>{ hankaList=false; panel.style.display="none"; };
+    return;
+  }
+  hankaSel=null;
+  const has=stats.filter(s=>s.cur.n>0).sort((x,y)=>(y.cur.big-x.cur.big)||(y.cur.avg-x.cur.avg));
+  const none=stats.filter(s=>s.cur.n===0);
+  hankaRows=has.concat(none);
+  const tot=hankaAgg(has.flatMap(s=>s.rs));
+  let h=`<div style="font-size:11px;color:var(--muted);padding:2px 0 6px;">実績あり ${has.length}か所・${tot.n}件・平均 ${yen(tot.avg)}・万収 ${tot.big}本　/　実績なし ${none.length}か所</div>`;
+  h+=has.map((s,i)=>`
+    <div class="hanka-row" data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid var(--line);cursor:pointer;">
+      <span style="width:12px;height:12px;border-radius:3px;flex:none;background:${fareTierColor(s.cur.avg)};${s.cur.big?"outline:2px solid #ffd54f;":""}"></span>
+      <span style="font-size:14px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.h.n}</span>
+      ${s.cur.big?`<span style="font-size:12px;color:#ffd54f;font-weight:800;">⭐${s.cur.big}</span>`:""}
+      <span style="font-size:14px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${yen(s.cur.avg)}</span>
+      <span style="font-size:11px;color:var(--muted);width:36px;text-align:right;">${s.cur.n}件</span>
+    </div>`).join("");
+  if(!has.length) h+=`<div style="color:var(--muted);font-size:13px;padding:8px 0;border-top:1px solid var(--line);">この条件では繁華街からの乗車がありません</div>`;
+  if(none.length){
+    h+=`<div style="font-size:11px;color:var(--muted);padding:8px 0 4px;border-top:1px solid var(--line);">この条件で実績なし(タップで場所へ)</div>`
+      + `<div style="display:flex;flex-wrap:wrap;gap:6px;padding-bottom:4px;">`
+      + none.map((s,i)=>`<span class="hanka-row" data-i="${has.length+i}" style="font-size:12px;color:#aab4c4;border:1px dashed #5a6a75;border-radius:8px;padding:4px 8px;cursor:pointer;">${s.h.n}</span>`).join("")
+      + `</div>`;
+  }
+  listEl.innerHTML=h;
+  listEl.querySelectorAll(".hanka-row").forEach(row=>{
+    row.onclick=()=>{
+      const s=hankaRows[+row.dataset.i]; if(!s) return;
+      hankaSel=s.h.n;
+      map.closePopup(); map.setView(s.h.c, 15);
+      drawHanka();
+    };
+  });
+}
+function drawHankaMap(stats){
+  if(hankaLayer){ map.removeLayer(hankaLayer); hankaLayer=null; }
+  if(!hankaOn) return;
+  if(!chomeIndex){ ensureChome(); return; }   // 町丁目の読み込み完了後にrender()から再度呼ばれる
+  const z=map.getZoom(), items=[], popt=hankaPopupOpts();
+  stats.forEach(s=>{
+    const a=s.cur, has=a.n>0, col=has?fareTierColor(a.avg):"#8a94a6";
+    const pop=hankaPopup(s);
+    s.h.ch.forEach(c=>{
+      const f=chomeIndex.get(c); if(!f) return;
+      items.push(L.geoJSON(f,{renderer:heatRenderer, style:{
+        color:a.big>0?"#ffd54f":col, weight:a.big>0?3:1.5, opacity:.95, dashArray:has?null:"4 4",
+        fillColor:col, fillOpacity:has?.55:.18}}).bindPopup(pop,popt));
+    });
+    // ラベル: 広域では万収のある場所だけ、拡大したら全部
+    if(z>=14 || (z>=12 && a.big>0)){
+      const lbl = z<14 ? `${s.h.n} ⭐${a.big}` : has ? `${s.h.n} ${a.n}件${a.big?` ⭐${a.big}`:""}` : s.h.n;
+      items.push(L.marker(s.h.c,{interactive:false, icon:L.divIcon({className:"",iconSize:[140,18],iconAnchor:[70,9],
+        html:`<div style="text-align:center;"><span style="background:rgba(13,19,32,.88);color:${a.big?"#ffd54f":has?"#fff":"#aab4c4"};border:1px solid ${a.big?"#ffd54f":"#5a6a75"};border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">${lbl}</span></div>`})}));
+    }
+  });
+  hankaLayer=L.layerGroup(items).addTo(map);
+}
+function drawHanka(){
+  const stats=hankaOn?hankaStats():[];
+  renderHankaList(stats);
+  drawHankaMap(stats);
+}
+function hankaOff(){
+  if(!hankaOn) return;
+  hankaOn=false; hankaSel=null;
+  const b=document.getElementById("btnHanka"); if(b) b.classList.remove("on");
+}
+document.getElementById("btnHanka").onclick=e=>{
+  hankaOn=!hankaOn; e.target.classList.toggle("on",hankaOn);
+  if(hankaOn){
+    hankaList=true; hankaSel=null; ensureChome();
+    // ヒート・推定・区別の色塗りと重なると読めないので、繁華街だけを表示する
+    if(heatOn){ heatOn=false; document.getElementById("btnHeat").classList.remove("on"); }
+    if(predictOn){ predictOn=false; document.getElementById("btnPredict").classList.remove("on"); }
+    if(wardsOn){ wardsOn=false; areaMode=0; const w=document.getElementById("btnWards"); w.classList.remove("on"); w.textContent="区別"; }
+  }else map.closePopup();
+  render();
+};
+document.getElementById("hankaClose").onclick=()=>{
+  hankaList=false; document.getElementById("hankaPanel").style.display="none";
+};
+map.on("zoomend",()=>{ if(hankaOn) drawHankaMap(hankaStats()); });
+map.on("popupopen", e=>{
+  const el=e.popup.getElement().querySelector(".hanka-back");
+  if(el) el.onclick=()=>{ map.closePopup(); hankaList=true; hankaSel=null; drawHanka(); };
+});
 
 // ===== エリア別ランキング(タップで オフ→区別→町別 を切替) =====
 let wardLayer=null, wardsOn=false, areaMode=0; // 0:オフ 1:区別 2:町別
@@ -6442,6 +6703,7 @@ document.getElementById("btnWards").onclick=e=>{
   e.target.classList.toggle("on", wardsOn);
   e.target.textContent = areaMode===2 ? "町別" : "区別";
   if(wardsOn && heatOn){ heatOn=false; document.getElementById("btnHeat").classList.remove("on"); }
+  if(wardsOn) hankaOff();
   if(areaMode===1 && !wardsData) ensureChome();
   if(areaMode===2 && !townsData) ensureTowns();
   render();
@@ -6838,7 +7100,7 @@ function saveViewState(){
     const st={
       minFare, modeFilter, weatherFilter, metric, appMode, coolAuto,
       dows:[...dowSet], tMin, tMax,
-      heatOn, areaMode, bigOn, predictOn,
+      heatOn, areaMode, bigOn, predictOn, hankaOn,
       standsOn, toiletOn, memoOn, railOn, lastOn,
       roads:Object.keys(roadOn).filter(k=>roadOn[k]),
       pois:(typeof poiOn==="object")?Object.keys(poiOn).filter(k=>poiOn[k]):[],
@@ -6891,6 +7153,7 @@ function restoreViewState(){
     if(areaMode===1) ensureChome(); if(areaMode===2) ensureTowns();
   }
   if(st.bigOn){ bigOn=true; const b=document.getElementById("btnBig"); if(b) b.classList.add("on"); }
+  if(st.hankaOn){ hankaOn=true; hankaList=false; const b=document.getElementById("btnHanka"); if(b) b.classList.add("on"); ensureChome(); }
   if(st.predictOn){ predictOn=true; const b=document.getElementById("btnPredict"); if(b) b.classList.add("on"); ensureChome(); }
   if(st.memoOn){ memoOn=true; const b=document.getElementById("btnMemo"); if(b) b.classList.add("on"); drawMemos(); }
   if(st.railOn){ railOn=true; const b=document.getElementById("btnGone"); if(b) b.classList.add("on"); drawRail(); }
