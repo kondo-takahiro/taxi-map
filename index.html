@@ -859,7 +859,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.04-1";
+const APP_VER = "2026.10.04-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1051,6 +1051,7 @@ function render(){
   });
   drawHeat(list);
   if(typeof drawHanka==="function") drawHanka();   // ヒートの上に重ねる
+  try{ updatePlan(); }catch(e){}                    // 配車フィルターの切替を「今やること」に反映
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
   document.getElementById("stAvg").textContent = list.length ? yen(Math.round(sum/list.length)) : "¥0";
@@ -1111,18 +1112,24 @@ document.getElementById("routeClose").onclick=clearRoute;
 // ===== 今やること(実績の谷・山に基づく時間帯別プラン) =====
 // 実績: 16時台と20時台が単価の谷。第2は港区南部、第3は銀座が高単価
 const PLAN_SLOTS=[
-  {lo:5,   hi:8,   t:"出庫〜朝の勝負", d:"荒川を超えるまで無線停止。足立・荒川・台東で1本目→都心へ"},
-  {lo:8,   hi:11,  t:"朝の窓 ✈️", d:"郊外ロングの時間。9時以降はホテル発の空港客も狙える"},
+  {lo:5,   hi:8,   t:"出庫〜朝の勝負", d:"荒川を超えるまで無線停止。足立・荒川・台東で1本目→都心へ",
+    a:{t:"⭐ 千住西・下谷〜荒川2で配車待ち", d:"7:30〜9:30が朝の配車窓。平日朝の足立・荒川・台東は配車47件で万収5本、他区はゼロ。荒川の北は平均¥2,904"}},
+  {lo:8,   hi:9.5, t:"朝の窓 ✈️", d:"郊外ロングの時間。9時以降はホテル発の空港客も狙える",
+    a:{t:"⭐ 9:30まで足立・荒川・台東に残る", d:"降車が台東・荒川・千住ならそのまま待つ。9時台に残った7件で万収2本(狭山¥22,370・綱島¥17,420)"}},
+  {lo:9.5, hi:11,  t:"朝の窓 ✈️", d:"郊外ロングの時間。9時以降はホテル発の空港客も狙える"},
   {lo:11,  hi:13,  t:"第1クール仕上げ", d:"都心で刻む。13時までに¥35,000"},
   {lo:13,  hi:16,  t:"✈️ 空港の窓・第2前半", d:"9-17時は空港客の時間。湾岸(有明・芝浦・港南)とホテルを意識。目標¥15,000"},
   {lo:16,  hi:16.7,t:"⏸ 休憩の推奨", d:"16時台は単価の谷(¥1,910)。ここで30〜40分休む"},
   {lo:16.7,hi:18,  t:"第2の稼ぎ時", d:"17時台は単価が戻る。芝浦〜三田〜八重洲で¥30,000へ"},
-  {lo:18,  hi:20,  t:"第3・銀座へ移動", d:"銀座5/6・日本橋3が高単価。京橋〜銀座で回す"},
+  {lo:18,  hi:20,  t:"第3・銀座へ移動", d:"銀座5/6・日本橋3が高単価。京橋〜銀座で回す",
+    a:{t:"⭐ 日本橋本町・八重洲1で配車待ち", d:"18〜20時が夕方の配車窓。日本橋側は配車5件で万収2本(成田・川崎)。銀座の配車は6件で平均¥2,400"}},
   {lo:20,  hi:20.7,t:"⏸ 休憩の推奨", d:"20時台は谷(¥3,087)。ここで休んで21時に備える"},
   {lo:20.7,hi:22,  t:"第3の締め", d:"21時台は単価¥2,519。銀座・日本橋・人形町で7本×¥3,000へ"},
   {lo:22,  hi:23,  t:"青タンの入り", d:"都心で刻みながら東へ寄る。銀座・日本橋→上野方面。22-23時の上野周辺は平均¥2,307、粘らない"},
-  {lo:23,  hi:24,  t:"両国へ移動", d:"23時台は最も薄い。23:45までに両国2・3へ入る"},
-  {lo:24,  hi:25,  t:"⭐ 0時台は両国で張る", d:"両国2・3の京葉道路沿い。流しで2件とも万収(三鷹・流山)。錦糸町側は万収ゼロ。都心にいたら新橋2(10回平均¥7,343)"},
+  {lo:23,  hi:24,  t:"両国へ移動", d:"23時台は最も薄い。23:45までに両国2・3へ入る",
+    a:{t:"上野へ移動", d:"23時台は最も薄い。23:45までに上野2・湯島3へ入る。都心にいたら新橋2へ"}},
+  {lo:24,  hi:25,  t:"⭐ 0時台は両国で張る", d:"両国2・3の京葉道路沿い。流しで2件とも万収(三鷹・流山)。錦糸町側は万収ゼロ。都心にいたら新橋2(10回平均¥7,343)",
+    a:{t:"⭐ 0時台は上野2・湯島3で配車待ち", d:"0〜1時の配車万収4本は全部繁華街発(新橋2・上野2・西池袋1・三軒茶屋1)。足立・墨田・葛飾の配車は15件でゼロ"}},
   {lo:25,  hi:26,  t:"⭐ 1時台は上野2・湯島3", d:"仲町通り〜春日通り。1時台4件中3件が¥7,000以上(最高¥18,950)。両国から約3km"},
   {lo:26,  hi:30,  t:"帰庫へ", d:"北東方向の客を優先。足立・葛飾方面で締める"}
 ];
@@ -1135,8 +1142,10 @@ function planNow(){
 function updatePlan(){
   const el=document.getElementById("hudPlan");
   if(!el) return;
-  const p=planNow();
+  let p=planNow();
   if(!p){ el.style.display="none"; return; }
+  // アプリ営業(配車フィルター)の平日は、配車万収の窓に合わせた文言に差し替える(土日祝は配車万収の実績なし)
+  try{ if(p.a && modeFilter==="app" && waitDayType()==="wd") p=p.a; }catch(e){}
   el.style.display="block";
   const rest = p.t.startsWith("⏸");
   const star = p.t.startsWith("⭐");
@@ -1146,6 +1155,19 @@ function updatePlan(){
   setTimeout(layoutUnderHUD,0);
 }
 setInterval(updatePlan, 60000);
+// 「今やること」は1行表示。タップすると全文を開く(12秒で自動的に1行に戻る)
+(function(){
+  const el=document.getElementById("hudPlan");
+  if(!el) return;
+  let open=false, timer=null;
+  el.style.cursor="pointer";
+  el.addEventListener("click",()=>{
+    open=!open; el.style.whiteSpace=open?"normal":"nowrap";
+    clearTimeout(timer);
+    if(open) timer=setTimeout(()=>{ open=false; el.style.whiteSpace="nowrap"; layoutUnderHUD(); },12000);
+    setTimeout(layoutUnderHUD,0);
+  });
+})();
 
 // ===== 万収ウィンドウ(大物が出る時間帯かどうか) =====
 // 実績: 12-19時は万収ゼロ。朝/夜/深夜の3つの窓に集中し、同じ場所への張り付きで当たっている
@@ -1244,24 +1266,28 @@ let appRing=null;
 // ===== アプリ待機スポット(推奨エリアを地図に色で表示) =====
 // type: "spot"=この円の中で待つ / "ring"=中心は台数が多いので外縁(緑の帯)で待つ
 // t: [開始,終了](5〜29時表記) / d: "wd"平日 "hol"休日 "all"両方
+// big: 配車で万収が出た窓(金色で表示)。true=常に / "wd"=平日だけ金色
 const WAIT_SPOTS=[
  {n:"北千住の住宅側", c:[35.7497,139.8050], type:"ring", r1:250, r2:900, t:[[7,9.5],[22,27]], d:"all", why:"駅前ロータリーは配車除外が多い。駅から外した住宅側で待つ。朝は都心向けの長距離、深夜は郊外行き"},
  {n:"千住2・千住仲町", c:[35.7515,139.8015], type:"spot", r:420, t:[[22,27]], d:"all", why:"深夜の主戦場。千住2発のアプリ平均¥6,932。経堂¥13,730・三郷¥9,860の実績"},
- {n:"綾瀬の住宅側", c:[35.7622,139.8250], type:"ring", r1:200, r2:800, t:[[7,9.5]], d:"wd", why:"朝の通勤・通院。住宅側で停まって待つ"},
+ {n:"千住の西側(元町・桜木)", c:[35.7527,139.7925], type:"spot", r:500, t:[[7.5,9.5]], d:"wd", big:true, why:"千住元町→大崎¥11,120、千住桜木1→九段¥5,900。平日朝の千住側は配車平均¥4,724、荒川の北は¥2,904"},
+ {n:"下谷・根岸〜荒川2", c:[35.7285,139.7819], type:"spot", r:1000, t:[[7.5,9.5]], d:"wd", big:true, why:"荒川2→狭山¥22,370(9:02)、下谷2→桜丘¥10,340(8:20)。近くの西浅草2からも綱島¥17,420(9:04)。1本目の降車がこの辺りなら9:30まで動かず待つ"},
+ {n:"綾瀬の住宅側", c:[35.7622,139.8250], type:"ring", r1:200, r2:800, t:[[7,9.5]], d:"wd", why:"朝の通勤・通院。住宅側で停まって待つ。西綾瀬3→永田町¥10,580の実績(1回)"},
  {n:"西新井の住宅側", c:[35.7768,139.7913], type:"ring", r1:200, r2:800, t:[[7,9.5]], d:"wd", why:"朝の住宅地。駅に並ばない"},
  {n:"浅草(雷門の外周)", c:[35.7110,139.7964], type:"ring", r1:250, r2:750, t:[[9.5,16]], d:"all", why:"観光客とホテルの配車。雷門の目の前は台数が多い"},
- {n:"上野(春日通り沿い)", c:[35.7090,139.7760], type:"spot", r:450, t:[[25,27]], d:"all", why:"25時過ぎに鳴り出す。上野2から埼玉への万収あり"},
+ {n:"上野2・湯島3", c:[35.7081,139.7709], type:"spot", r:450, t:[[24,27]], d:"all", big:"wd", why:"仲町通り〜春日通り。配車で上野2→府中¥18,950(1:23)。0〜1時の配車万収4本は全部繁華街発。土日の0〜1時は配車8件で万収ゼロ"},
  {n:"錦糸町(南口の外縁)", c:[35.6966,139.8146], type:"ring", r1:250, r2:750, t:[[12,16],[20,22]], d:"all", why:"駅前は台数が多い。江東橋側の外縁で待つ"},
  {n:"豊洲", c:[35.6545,139.7960], type:"spot", r:600, t:[[7,9.5],[12,16]], d:"all", why:"朝はタワマンから都心へ。昼はオフィス・商業施設"},
  {n:"有明3", c:[35.6360,139.7930], type:"spot", r:500, t:[[12,18]], d:"hol", why:"休日の午後が強い。有明3は平均¥3,767"},
  {n:"青海", c:[35.6250,139.7790], type:"spot", r:600, t:[[21,23.5]], d:"hol", why:"休日夜の湾岸。青海→歌舞伎町¥12,110の実績(1回)"},
  {n:"門前仲町の外縁", c:[35.6717,139.7969], type:"ring", r1:200, r2:700, t:[[20,24]], d:"wd", why:"下町の飲み屋街。交差点の外側で待つ"},
  {n:"日本橋・人形町", c:[35.6860,139.7823], type:"spot", r:500, t:[[16,22]], d:"wd", why:"料亭・会食。スマ配が効く"},
- {n:"日本橋本町", c:[35.6880,139.7760], type:"spot", r:380, t:[[16,20]], d:"wd", why:"夕方の配車で空港・県外が出る。成田¥26,000の実績"},
+ {n:"日本橋本町・室町", c:[35.6890,139.7745], type:"spot", r:380, t:[[16,21]], d:"wd", big:true, why:"18〜21時の配車は日本橋側5件で万収2本・平均¥9,578。本町4→成田¥26,000(18:14)。同じ時間の銀座は6件で平均¥2,400"},
+ {n:"八重洲1", c:[35.6831,139.7710], type:"spot", r:260, t:[[18,21]], d:"wd", big:true, why:"八重洲1→川崎¥11,390(19:51)。まだ2件の参考値"},
  {n:"芝浦・芝", c:[35.6425,139.7500], type:"spot", r:600, t:[[12,16]], d:"wd", why:"第2クールの本命。芝浦3は平均¥5,970"},
  {n:"港南", c:[35.6290,139.7450], type:"spot", r:500, t:[[7,12]], d:"wd", why:"オフィス出勤と出張客。空港案件も"},
  {n:"銀座(外縁で待つ)", c:[35.6712,139.7650], type:"ring", r1:380, r2:950, t:[[18,22]], d:"wd", why:"中心は台数が最も多い。昭和通り側・7〜8丁目の外周へ。平日22-1時は乗り場のみ"},
- {n:"新橋2", c:[35.6668,139.7576], type:"spot", r:300, t:[[23.5,25.5]], d:"wd", why:"0時台は平均¥8,329・万収2本。外堀通り・烏森口で動かず待つ"},
+ {n:"新橋2", c:[35.6668,139.7576], type:"spot", r:300, t:[[23.5,25.5]], d:"wd", big:true, why:"0時台は10件で平均¥7,343・万収2本。配車でも羽村¥24,690(0:39)。外堀通り・烏森口で動かず待つ"},
  {n:"六本木(外縁)", c:[35.6629,139.7322], type:"ring", r1:250, r2:800, t:[[22,26]], d:"all", why:"交差点の周りは台数が多い。埼玉狙いは霞ヶ関側、神奈川は飯倉側へ頭を向ける"},
  {n:"西池袋1・3・5", c:[35.7300,139.7060], type:"spot", r:550, t:[[20,26]], d:"all", why:"深夜でもよく鳴る。志木¥11,930・東久留米¥10,670の実績"},
  {n:"赤羽(東口の外縁)", c:[35.7781,139.7208], type:"ring", r1:200, r2:700, t:[[22,26]], d:"wd", why:"終電後の帰宅。埼玉方面へ出ることも"},
@@ -1284,22 +1310,29 @@ function drawWaitSpots(){
   const a=tMin, b=tMax;   // 時間帯フィルターと重なるものを表示
   const act=WAIT_SPOTS.filter(s=>(s.d==="all"||s.d===dt) && s.t.some(([x,y])=>x<b && y>a));
   const items=[];
+  const hm=v=>(Math.floor(v)%24)+":"+String(Math.round((v%1)*60)).padStart(2,"0");
+  const hf=r=>shiftHour(r.t)+(parseInt(r.t.split(":")[1],10)||0)/60;
   act.forEach(s=>{
+    const gold = s.big===true || s.big===dt;      // 配車で万収が出た窓
     const near=myRides().filter(r=>(r.m||"app")==="app" && haversineKm(s.c,[r.lat,r.lng])<=(s.r2||s.r)/1000);
     const avg=near.length?Math.round(near.reduce((q,r)=>q+r.f,0)/near.length):0;
-    const pop=`<b>📍 ${s.n}</b><br><span style="font-size:11px;">${s.why}</span>`
-      + `<br><span style="font-size:11px;color:#8b98ad;">時間帯 ${s.t.map(([x,y])=>fmtH(x)+"-"+fmtH(y)).join(" / ")}${s.d==="wd"?"(平日)":s.d==="hol"?"(休日)":""}</span>`
+    const inw=near.filter(r=>s.t.some(([x,y])=>hf(r)>=x && hf(r)<y));   // この時間帯の配車だけ
+    const inwAvg=inw.length?Math.round(inw.reduce((q,r)=>q+r.f,0)/inw.length):0;
+    const pop=`<b>${gold?"⭐":"📍"} ${s.n}</b>${gold?` <span style="color:#ffd54f;font-size:11px;">配車万収の窓</span>`:""}<br><span style="font-size:11px;">${s.why}</span>`
+      + `<br><span style="font-size:11px;color:#8b98ad;">時間帯 ${s.t.map(([x,y])=>hm(x)+"-"+hm(y)).join(" / ")}${s.d==="wd"?"(平日)":s.d==="hol"?"(休日)":""}</span>`
+      + (inw.length?`<br>この時間帯の配車 <b>${inw.length}件</b>・万収 <b>${inw.filter(r=>r.f>=10000).length}本</b>・平均 <b>${yen(inwAvg)}</b>`:"")
       + (near.length?`<br>周辺のアプリ実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b>`:"");
+    const C1=gold?"#ffd54f":"#2ecc71", C2=gold?"#ffd54f":"#7dd87d";
     if(s.type==="ring"){
-      items.push(L.circle(s.c,{radius:s.r2, color:"#2ecc71", weight:2, dashArray:"6 5", fillColor:"#2ecc71", fillOpacity:.16}).bindPopup(pop));
+      items.push(L.circle(s.c,{radius:s.r2, color:C1, weight:2, dashArray:"6 5", fillColor:C1, fillOpacity:.16}).bindPopup(pop));
       items.push(L.circle(s.c,{radius:s.r1, color:"#9e9e9e", weight:1, fillColor:"#555", fillOpacity:.38, interactive:true})
         .bindPopup(`<b>${s.n}の中心</b><br><span style="font-size:11px;">ここは待機台数が多い。緑の帯(外縁)で待つ</span>`));
     }else{
-      items.push(L.circle(s.c,{radius:s.r, color:"#2ecc71", weight:2, fillColor:"#2ecc71", fillOpacity:.22}).bindPopup(pop));
+      items.push(L.circle(s.c,{radius:s.r, color:C1, weight:gold?3:2, fillColor:C1, fillOpacity:.22}).bindPopup(pop));
     }
     items.push(L.marker(s.c,{interactive:false, icon:L.divIcon({className:"",iconSize:[120,18],iconAnchor:[60,-2],
-      html:`<div style="text-align:center;"><span style="background:rgba(13,19,32,.85);color:#7dd87d;border:1px solid #2ecc71;
-        border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">📍${s.n}</span></div>`})}));
+      html:`<div style="text-align:center;"><span style="background:rgba(13,19,32,.85);color:${C2};border:1px solid ${C1};
+        border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">${gold?"⭐":"📍"}${s.n}</span></div>`})}));
   });
   waitLayer=L.layerGroup(items).addTo(map);
   waitLayer.eachLayer(l=>{ if(l.bringToBack) l.bringToBack(); });
@@ -3278,7 +3311,9 @@ const FLOW_HTML = `<div id="flowSim">
   </div>
   <div style="text-align:center;margin:8px 0 0;">
     <button id="fsJoto" style="background:none;border:1px solid var(--fs-line);color:var(--fs-text);
-      border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;margin-right:6px;">🏮 城東で比べる</button>
+      border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;margin:0 6px 6px 0;">🏮 城東で比べる</button>
+    <button id="fsJonan" style="background:none;border:1px solid var(--fs-line);color:var(--fs-text);
+      border-radius:999px;padding:7px 12px;font-size:13px;cursor:pointer;margin:0 6px 6px 0;">＋城南</button>
     <button id="fsDig" style="background:none;border:1px solid var(--fs-line);color:var(--fs-amber);
       border-radius:999px;padding:7px 18px;font-size:13px;cursor:pointer;">🔍 開拓できる場所を探す</button>
   </div>
@@ -3310,6 +3345,7 @@ const FLOW_HTML = `<div id="flowSim">
   <div class="flow" id="flow"></div>
 
   <h2 id="rankTitle">待機したいエリア<span>タップで詳細</span></h2>
+  <div id="fsCmp" style="display:none;background:var(--fs-panel);border:1px solid var(--fs-line);border-radius:12px;padding:10px 12px;margin:0 0 8px;font-size:12.5px;line-height:1.7;"></div>
   <ol class="rank" id="rank"></ol>
 
   <div class="detail" id="detail" hidden></div>
@@ -3845,17 +3881,21 @@ function supLabel(s){ return s>=.8?"とても多い":s>=.6?"多い":s>=.4?"普�
       予測順位はモデル計算、実績順位は自分の記録(単価×回数)による順位。記録の少ないエリアは実績順位が出ません。時刻・曜日・モードを変えると結果が変わります。</div>`;
     return h;
   }
-  const jBtn=FS_$("fsJoto");
+  const jBtn=FS_$("fsJoto"), nBtn=FS_$("fsJonan");
   if(jBtn){
-    if(localStorage.getItem("flowsim-joto")==="1"){ FS_ROOT.dataset.joto="1"; jBtn.style.borderColor="var(--fs-amber)"; jBtn.style.color="var(--fs-amber)"; }
-    jBtn.onclick=()=>{
-      const on = FS_ROOT.dataset.joto!=="1";
-      FS_ROOT.dataset.joto = on?"1":"0";
-      localStorage.setItem("flowsim-joto", on?"1":"0");
-      jBtn.style.borderColor = on?"var(--fs-amber)":"var(--fs-line)";
-      jBtn.style.color = on?"var(--fs-amber)":"var(--fs-text)";
-      render();
+    // 比較モード: 0=全体 / 1=城東だけ / 2=城東+城南
+    const setCmp=(v, draw)=>{
+      FS_ROOT.dataset.joto=String(v);
+      localStorage.setItem("flowsim-joto", String(v));
+      jBtn.style.borderColor = v>0?"var(--fs-amber)":"var(--fs-line)";
+      jBtn.style.color = v>0?"var(--fs-amber)":"var(--fs-text)";
+      if(nBtn){ nBtn.style.borderColor = v===2?"#7db3f0":"var(--fs-line)"; nBtn.style.color = v===2?"#7db3f0":"var(--fs-text)"; }
+      if(draw) render();
     };
+    const sv=localStorage.getItem("flowsim-joto");
+    setCmp(sv==="2"?2:sv==="1"?1:0, false);
+    jBtn.onclick=()=>setCmp(FS_ROOT.dataset.joto==="0"?1:0, true);
+    if(nBtn) nBtn.onclick=()=>setCmp(FS_ROOT.dataset.joto==="2"?1:2, true);   // 城東の比較に城南を足す/外す
   }
   const digBtn=FS_$("fsDig");
   if(digBtn) digBtn.onclick=()=>{
@@ -3901,18 +3941,22 @@ function render(){
 
   const JOTO_SET=new Set(["北千住・足立", "浅草", "錦糸町", "門前仲町・木場", "豊洲・お台場", "葛飾・江戸川", "上野・御徒町", "日本橋・人形町", "秋葉原"]);
   let list = AREAS.map((a,i)=>({i,a,s:score(a,hour,day,mode,calOn)})).sort((p,q)=>q.s-p.s);
-  const jotoOnly = FS_ROOT.dataset.joto==="1";
-  // 城東モード: 城東の中の最大値を基準に色をつける(城東内の差が見えるように)
-  const jMax = Math.max(...list.filter(o=>JOTO_SET.has(o.a.n)).map(o=>o.s), 0.0001);
+  // 城南は「エリア別プラン」と同じ定義(港・品川・目黒・大田・中央)。日本橋は城東側に入れている
+  const JONAN_SET=new Set(["品川・港南", "五反田・大崎", "目黒・白金", "恵比寿・中目黒", "蒲田・大井町", "羽田空港", "六本木・西麻布", "赤坂・虎ノ門", "新橋・汐留", "銀座・有楽町"]);
+  const cmp = FS_ROOT.dataset.joto==="2" ? 2 : FS_ROOT.dataset.joto==="1" ? 1 : 0;
+  const jotoOnly = cmp>0;                                   // 比較モード中か
+  const inCmp = n => JOTO_SET.has(n) || (cmp===2 && JONAN_SET.has(n));
+  // 比較モード: 比べているエリアの中の最大値を基準に色をつける(エリア間の差が見えるように)
+  const jMax = Math.max(...list.filter(o=>inCmp(o.a.n)).map(o=>o.s), 0.0001);
   const scaleOf = (o)=> jotoOnly ? Math.min(1, o.s/jMax) : Math.min(1, o.s/MAXS[maxKey()]);
-  if(jotoOnly) list = list.filter(o=>JOTO_SET.has(o.a.n)).concat(list.filter(o=>!JOTO_SET.has(o.a.n)));
+  if(jotoOnly) list = list.filter(o=>inCmp(o.a.n)).concat(list.filter(o=>!inCmp(o.a.n)));
   const top = new Set(list.slice(0,6).map(o=>o.i));
 
   list.forEach((o)=>{
     const {i,a}=o;
     const v = scaleOf(o);
     const el = nodes[i], d = el.querySelector(".dot");
-    el.style.opacity = (jotoOnly && !JOTO_SET.has(a.n)) ? ".25" : "";
+    el.style.opacity = (jotoOnly && !inCmp(a.n)) ? ".25" : "";
     const size = 9 + v*24;
     d.style.width=size+"px"; d.style.height=size+"px";
     d.style.background=heat(v);
@@ -3933,9 +3977,25 @@ function render(){
     arr.map(function(p){ return "<div class='arw'><b>"+p[0]+"</b><span class='a'>▶</span><b>"+p[1]+"</b></div>"; }).join("") +
     "</div>" + real;
 
-  FS_$("rank").innerHTML = list.slice(0, jotoOnly?9:6).filter(o=>!jotoOnly||JOTO_SET.has(o.a.n)).map(function(o,n){
+  // 城東+城南の比較: まとめ(平均・最高・上位の内訳)を一覧の上に出す
+  const cmpBox=FS_$("fsCmp");
+  if(cmpBox){
+    if(cmp===2){
+      const inC=list.filter(o=>inCmp(o.a.n));
+      const grp=(set)=>{ const g=inC.filter(o=>set.has(o.a.n)); const vs=g.map(o=>Math.round(scaleOf(o)*100));
+        return {n:g.length, avg:vs.length?Math.round(vs.reduce((p,q)=>p+q,0)/vs.length):0, best:g[0], bv:vs[0]||0, top5:inC.slice(0,5).filter(o=>set.has(o.a.n)).length}; };
+      const E=grp(JOTO_SET), S=grp(JONAN_SET);
+      const row=(lbl,col,g)=>"<div style='white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'><b style='color:"+col+"'>"+lbl+"</b> 平均 <b>"+g.avg+"</b>・最高 "+(g.best?(g.best.a.s||g.best.a.n)+" <b>"+g.bv+"</b>":"-")+"・上位5に <b>"+g.top5+"</b></div>";
+      cmpBox.innerHTML=row("城東("+E.n+")","var(--fs-amber)",E)+row("城南("+S.n+")","#7db3f0",S)
+        +"<div style='color:var(--fs-dim);font-size:11px;'>数字は城東・城南の中で一番高いエリアを100とした値</div>";
+      cmpBox.style.display="block";
+    }else cmpBox.style.display="none";
+  }
+  const tagOf = n => cmp!==2 ? "" : "<span style='display:inline-block;font-size:10px;font-weight:700;border-radius:5px;padding:0 4px;margin-right:5px;border:1px solid "
+    +(JOTO_SET.has(n)?"var(--fs-amber);color:var(--fs-amber)'>東":"#7db3f0;color:#7db3f0'>南")+"</span>";
+  FS_$("rank").innerHTML = list.slice(0, cmp===2?JOTO_SET.size+JONAN_SET.size:cmp===1?9:6).filter(o=>!jotoOnly||inCmp(o.a.n)).map(function(o,n){
     const v = scaleOf(o);
-    return "<li data-i='"+o.i+"'><span class='pos'>"+(n+1)+"</span><span class='nm2'>"+o.a.n+"</span>"+
+    return "<li data-i='"+o.i+"'><span class='pos'>"+(n+1)+"</span><span class='nm2'>"+tagOf(o.a.n)+o.a.n+"</span>"+
       "<span class='bar'><i style='width:"+Math.round(v*100)+"%;background:"+heat(v)+"'></i></span>"+
       "<span class='sc'>"+Math.round(v*100)+"</span></li>";
   }).join("");
