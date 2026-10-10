@@ -251,19 +251,34 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="hankaList" style="max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:4px;"></div>
   <div style="font-size:10px;color:var(--muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--line);">塗り＝平均単価(緑→赤)・金枠＝万収あり・灰色の点線＝実績なし。✕で一覧だけ閉じる</div>
 </div>
-<div id="tsukePanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+<div id="spPanel_tsuke" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
   background:rgba(19,26,42,.96);border:1px solid var(--line);border-radius:14px;padding:10px 12px;">
   <div style="display:flex;align-items:center;gap:8px;">
     <b style="font-size:14px;">🅿️ つけ待ちスポットの成績</b>
     <span style="flex:1"></span>
-    <span id="tsukeClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+    <span id="spClose_tsuke" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
   </div>
-  <div id="tsukeList" style="max-height:44vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:4px;"></div>
+  <div id="spList_tsuke" style="max-height:44vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:4px;"></div>
   <div style="display:flex;gap:6px;margin-top:8px;padding-top:6px;border-top:1px solid var(--line);align-items:center;">
     <span style="font-size:10px;color:var(--muted);flex:1;">万収の本数順・色は平均単価。記録はこの端末に保存</span>
-    <button class="btn" id="tsExport" style="padding:5px 9px;font-size:11px;">書き出し</button>
-    <button class="btn" id="tsImport" style="padding:5px 9px;font-size:11px;">読み込み</button>
-    <input type="file" id="tsFile" accept=".json,application/json" style="display:none">
+    <button class="btn" id="spExport_tsuke" style="padding:5px 9px;font-size:11px;">書き出し</button>
+    <button class="btn" id="spImport_tsuke" style="padding:5px 9px;font-size:11px;">読み込み</button>
+    <input type="file" id="spFile_tsuke" accept=".json,application/json" style="display:none">
+  </div>
+</div>
+<div id="spPanel_hotel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
+  background:rgba(19,26,42,.96);border:1px solid var(--line);border-radius:14px;padding:10px 12px;">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <b style="font-size:14px;">🏨 ホテル別の成績</b>
+    <span style="flex:1"></span>
+    <span id="spClose_hotel" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:16px;padding:0 4px;">✕</span>
+  </div>
+  <div id="spList_hotel" style="max-height:44vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:4px;"></div>
+  <div style="display:flex;gap:6px;margin-top:8px;padding-top:6px;border-top:1px solid var(--line);align-items:center;">
+    <span style="font-size:10px;color:var(--muted);flex:1;">万収の本数順・色は平均単価。記録はこの端末に保存</span>
+    <button class="btn" id="spExport_hotel" style="padding:5px 9px;font-size:11px;">書き出し</button>
+    <button class="btn" id="spImport_hotel" style="padding:5px 9px;font-size:11px;">読み込み</button>
+    <input type="file" id="spFile_hotel" accept=".json,application/json" style="display:none">
   </div>
 </div>
 <div id="tsSheet" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:2100;max-height:82vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
@@ -625,7 +640,9 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
     <button class="btn" id="btnHanka">🏮 繁華街</button>
+    <button class="btn" id="btnWait">📍 待機スポット</button>
     <button class="btn" id="btnTsuke">🅿️ つけ待ち</button>
+    <button class="btn" id="btnHotelRec">🛎 ホテル実績</button>
     <button class="btn" id="btnMetric">指標: 単価</button>
     <button class="btn" id="btnPredict">🔮 推定</button>
     <button class="btn" id="btnGps">現在地</button>
@@ -894,7 +911,7 @@ function heatPopup(name,a){
 // ヒートは地図を動かすたびに描き直される(moveend→render)ので、ポップアップはレイヤーに付けず単独で開く
 // (付けると自動スクロールや現在地追尾の再描画で一瞬で閉じてしまう)
 function openHeatPopup(name,a,e){
-  if(typeof tsPick!=="undefined" && tsPick) return;     // つけ待ちの場所選択中は地図タップとして通す
+  if(typeof spPick!=="undefined" && spPick) return;     // 地点の場所選択中は地図タップとして通す
   if(e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
   if(e && e.target && e.target.closeTooltip) e.target.closeTooltip();
   if(e && e.target && e.target.eachLayer) e.target.eachLayer(l=>l.closeTooltip&&l.closeTooltip());
@@ -948,7 +965,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.10-1";
+const APP_VER = "2026.10.10-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1131,7 +1148,7 @@ function render(){
   if(typeof drawAppRing==="function") drawAppRing();
   if(typeof drawWaitSpots==="function") drawWaitSpots();
   const list = filtered();
-  if(!heatOn && !wardsOn && !hankaOn && !(typeof tsPick!=="undefined" && tsPick)) list.forEach(r=>{   // 繁華街表示中は個別ピンを出さない(色塗りが隠れるため)
+  if(!heatOn && !wardsOn && !hankaOn && !(typeof spPick!=="undefined" && spPick)) list.forEach(r=>{   // 繁華街表示中は個別ピンを出さない(色塗りが隠れるため)
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
@@ -1142,7 +1159,7 @@ function render(){
   });
   drawHeat(list);
   if(typeof drawHanka==="function") drawHanka();   // ヒートの上に重ねる
-  if(typeof drawTsuke==="function" && (tsukeOn||tsPick)) drawTsuke();
+  if(typeof spDrawAll==="function" && (SP_ON.tsuke||SP_ON.hotel||spPick)) spDrawAll();
   try{ updatePlan(); }catch(e){}                    // 配車フィルターの切替を「今やること」に反映
   const sum = list.reduce((a,r)=>a+r.f,0);
   document.getElementById("stCount").textContent = list.length;
@@ -1390,6 +1407,16 @@ const WAIT_SPOTS=[
 ];
 let waitLayer=null;
 let waitOn = localStorage.getItem("opt-waitspots")!=="0";
+// 地図のボタンで待機スポット(緑の円と名前)をオン/オフ。設定画面のボタンと同じ値を使う
+function toggleWaitSpots(){
+  waitOn=!waitOn; localStorage.setItem("opt-waitspots", waitOn?"1":"0");
+  drawWaitSpots();
+  if(waitOn && modeFilter!=="app"){
+    const h=document.getElementById("hint");
+    if(h){ h.textContent="待機スポットは「📲 アプリ営業」(配車フィルター)のときに表示されます"; h.classList.add("show");
+      setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },3000); }
+  }
+}
 function waitDayType(){
   const d=new Date(); if(d.getHours()<5) d.setDate(d.getDate()-1);
   const ds=dsOf(d);
@@ -1397,6 +1424,7 @@ function waitDayType(){
 }
 function drawWaitSpots(){
   if(waitLayer){ map.removeLayer(waitLayer); waitLayer=null; }
+  const wb=document.getElementById("btnWait"); if(wb) wb.classList.toggle("on", waitOn);
   if(!waitOn || modeFilter!=="app") return;
   const dt=waitDayType();
   const a=tMin, b=tMax;   // 時間帯フィルターと重なるものを表示
@@ -1422,7 +1450,7 @@ function drawWaitSpots(){
     }else{
       items.push(L.circle(s.c,{radius:s.r, color:C1, weight:gold?3:2, fillColor:C1, fillOpacity:.22}).bindPopup(pop));
     }
-    items.push(L.marker(s.c,{interactive:false, icon:L.divIcon({className:"",iconSize:[120,18],iconAnchor:[60,-2],
+    if(map.getZoom()>=14) items.push(L.marker(s.c,{interactive:false, icon:L.divIcon({className:"",iconSize:[120,18],iconAnchor:[60,-2],
       html:`<div style="text-align:center;"><span style="background:rgba(13,19,32,.85);color:${C2};border:1px solid ${C1};
         border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">${gold?"⭐":"📍"}${s.n}</span></div>`})}));
   });
@@ -1430,6 +1458,9 @@ function drawWaitSpots(){
   waitLayer.eachLayer(l=>{ if(l.bringToBack) l.bringToBack(); });
 }
 
+document.getElementById("btnWait").onclick=()=>toggleWaitSpots();
+document.getElementById("btnWait").classList.toggle("on", waitOn);
+map.on("zoomend",()=>{ if(waitOn && modeFilter==="app") drawWaitSpots(); });   // 拡大縮小で名前の出し分けを更新
 function drawAppRing(){
   if(appRing){ map.removeLayer(appRing); appRing=null; }
   // 配車フィルターが「アプリ」のときだけ表示
@@ -4893,8 +4924,8 @@ function renderDiaryY(pick){
   // ===== 日報の表(全乗車) =====
   h+=sectionTitle("この日の営業日報");
   const seqT=[...rs].sort((a,b)=>shiftHour(a.t)-shiftHour(b.t)||a.t.localeCompare(b.t));
-  window._tsRows=seqT;   // 行タップでつけ待ちを記録するため
-  const tsMap=new Map(tsLoad(TS_REC).map(x=>[x.k,x])), tsSp=new Map(tsLoad(TS_SPOT).map(s=>[s.id,s]));
+  window._tsRows=seqT;   // 行タップでつけ待ち・ホテルを記録するため
+  const spMaps={}; ["tsuke","hotel"].forEach(k=>{ spMaps[k]={rec:new Map(spLoad(SP_K[k].rec).map(x=>[x.k,x])), sp:new Map(spLoad(SP_K[k].spot).map(s=>[s.id,s]))}; });
   const CB2=[[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,30,"青タン"]];
   h+=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table style="border-collapse:collapse;font-size:11px;width:100%;white-space:nowrap;">
@@ -4917,13 +4948,14 @@ function renderDiaryY(pick){
     }
     run+=r.f;
     const big=r.f>=10000;
-    const tr=tsMap.get(tsKey(r)), tsp=tr?tsSp.get(tr.sid):null;
+    const spBadge=["tsuke","hotel"].map(k=>{ const x=spMaps[k].rec.get(spKey(r)), sp=x?spMaps[k].sp.get(x.sid):null;
+      return sp?`<span title="${sp.n}" style="margin-left:3px;display:inline-block;background:${SP_K[k].col};color:${SP_K[k].txt};border-radius:4px;padding:0 3px;font-weight:900;">${SP_K[k].letter}</span>`:""; }).join("");
     h+=`<tr class="ts-row" data-i="${i}" style="cursor:pointer;border-top:1px solid var(--line);${big?'background:rgba(255,213,79,.08);':''}">
       <td style="padding:4px;color:var(--muted);">${r.t.slice(0,5)}</td>
       <td style="padding:4px;max-width:96px;overflow:hidden;text-overflow:ellipsis;">${r.p}</td>
       <td style="padding:4px;max-width:96px;overflow:hidden;text-overflow:ellipsis;color:var(--muted);">${r.dst||"—"}</td>
       <td style="padding:4px;text-align:right;font-weight:${big?800:400};color:${big?"#ffd54f":"var(--text)"};font-variant-numeric:tabular-nums;">${yen(r.f)}</td>
-      <td style="padding:4px 2px;font-size:9px;color:var(--muted);">${(r.m||"app")==="app"?"配":"流"}${tsp?`<span title="${tsp.n}" style="margin-left:3px;display:inline-block;background:var(--amber);color:#1a1206;border-radius:4px;padding:0 3px;font-weight:900;">P</span>`:""}</td></tr>`;
+      <td style="padding:4px 2px;font-size:9px;color:var(--muted);">${(r.m||"app")==="app"?"配":"流"}${spBadge}</td></tr>`;
   });
   if(prevCool!==null){
     h+=`<tr><td colspan="5" style="padding:2px 4px;text-align:right;font-size:10px;color:var(--amber);border-bottom:1px solid var(--line);">${prevCool} 小計 ${yen(run)}</td></tr>`;
@@ -4931,7 +4963,7 @@ function renderDiaryY(pick){
   h+=`<tr><td colspan="3" style="padding:6px 4px;font-weight:700;">合計 ${seqT.length}回</td>
       <td colspan="2" style="padding:6px 4px;text-align:right;font-weight:800;color:var(--amber);font-size:13px;">${yen(total)}</td></tr>`;
   h+=`</table></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています<br>🅿️ つけ待ちで乗せた行をタップすると、待った場所を記録できます(P＝記録済み)</div>`;
+    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています<br>行をタップすると 🅿️つけ待ちした場所 / 🏨乗せたホテル を記録できます(P・H＝記録済み)</div>`;
 
   h+=`<button class="btn" id="diaryRoads" style="width:100%;padding:10px;margin-top:14px;">🛣 この日の道を復習</button>`;
   h+=`<button class="btn" id="diaryAI" style="width:100%;padding:10px;margin-top:8px;">🤖 この日の立ち回りをAI分析</button>
@@ -5158,7 +5190,7 @@ async function showRoads(d){
 // ===== 表示ボタンの設定(使わない機能を隠す) =====
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
-  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnHanka","🏮 繁華街"],["btnTsuke","🅿️ つけ待ち"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
@@ -5189,7 +5221,7 @@ function renderSettings(){
         <button class="chip opt-btn${showCountBadge?" on":""}" data-opt="countbadge" style="font-size:12px;padding:7px 10px;">🔢 回数バッジ</button>
         <button class="chip opt-btn${waitOn?" on":""}" data-opt="waitspots" style="font-size:12px;padding:7px 10px;">📍 アプリ待機スポット</button>
       </div>
-      <div style="font-size:10px;color:var(--muted);margin-top:5px;">ヒートマップ上に表示される「2件以上の場所の回数」の丸印です。</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px;">待機スポットは地図の「📍 待機スポット」ボタンでも切り替えられます。<br>ヒートマップ上に表示される「2件以上の場所の回数」の丸印です。</div>
 
       <div style="font-size:12px;color:var(--amber);margin:18px 0 6px;">表示状態</div>
       <button class="btn" id="setResetView" style="width:100%;padding:11px;">🔄 初期状態に戻す</button>
@@ -5206,8 +5238,7 @@ function renderSettings(){
   };
   body.querySelectorAll(".opt-btn").forEach(b=>b.onclick=()=>{
     if(b.dataset.opt==="waitspots"){
-      waitOn=!waitOn; localStorage.setItem("opt-waitspots", waitOn?"1":"0");
-      b.classList.toggle("on", waitOn); drawWaitSpots(); return;
+      toggleWaitSpots(); b.classList.toggle("on", waitOn); return;
     }
     if(b.dataset.opt==="countbadge"){
       showCountBadge=!showCountBadge;
@@ -6134,8 +6165,8 @@ function bindDiaryY(){
   const body=document.getElementById("diaryBody");
     body.querySelectorAll(".ts-row").forEach(tr=>tr.onclick=()=>{
       const r=(window._tsRows||[])[+tr.dataset.i]; if(!r) return;
-      tsDiaryScroll=document.getElementById("diaryPanel").scrollTop;
-      tsOpen(r);
+      spDiaryScroll=document.getElementById("diaryPanel").scrollTop;
+      spOpen(spSheet.k||"tsuke", r);
     });
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
@@ -6848,253 +6879,321 @@ map.on("popupopen", e=>{
   if(el) el.onclick=()=>{ map.closePopup(); hankaList=true; hankaSel=null; drawHanka(); };
 });
 
-// ===== つけ待ちスポット(営業日報の乗車に「どこでつけ待ちしたか」を紐付け、万収が出やすい場所を後から見る) =====
-// 記録は端末内(localStorage)に保存。乗車とは「日付|時刻|乗車地」で紐付けるので、rides.csvを入れ直しても消えない
-const TS_REC="tsuke-v1", TS_SPOT="tsukespots-v1";
-const TS_WAITS=[[null,"不明"],[10,"〜10分"],[20,"〜20分"],[30,"〜30分"],[45,"〜45分"],[60,"60分〜"]];
-var tsukeOn=false, tsukeLayer=null, tsPick=null, tsSheetRide=null, tsSheetWait=null, tsDiaryScroll=0;
-function tsLoad(k){ try{ const v=JSON.parse(localStorage.getItem(k)); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
-function tsSave(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ alert("保存できませんでした(端末の空き容量を確認してください)"); } }
-function tsKey(r){ return r.d+"|"+r.t+"|"+r.p; }
-function tsRecOf(r){ const k=tsKey(r); return tsLoad(TS_REC).find(x=>x.k===k)||null; }
-function tsSpotById(id){ return tsLoad(TS_SPOT).find(s=>s.id===id)||null; }
-function tsRideLabel(r){
+// ===== 地点の記録(🅿️つけ待ち / 🏨ホテル) =====
+// 営業日報の乗車に「どこで待ったか」「どのホテルから乗せたか」を紐付けて、万収が出やすい場所を後から見る。
+// 記録は端末内(localStorage)。乗車とは「日付|時刻|乗車地」で紐付けるので、rides.csvを入れ直しても消えない
+const SP_K={
+  tsuke:{k:"tsuke", rec:"tsuke-v1", spot:"tsukespots-v1", icon:"🅿️", letter:"P", name:"つけ待ち", col:"#f5a623", txt:"#1a1206",
+    title:"🅿️ つけ待ちスポットの成績", file:"tsuke.json", pickTxt:"つけ待ちした場所", ask:"この場所の名前(例: 品川プリンス東口、新橋2 烏森口)"},
+  hotel:{k:"hotel", rec:"hotelrec-v1", spot:"hotelspots-v1", icon:"🏨", letter:"H", name:"ホテル", col:"#4dd0e1", txt:"#06232a",
+    title:"🏨 ホテル別の成績", file:"hotels-rec.json", pickTxt:"乗せたホテル(車寄せ)", ask:"ホテル名"}
+};
+const SP_WAITS=[[null,"不明"],[10,"〜10分"],[20,"〜20分"],[30,"〜30分"],[45,"〜45分"],[60,"60分〜"]];
+var SP_ON={tsuke:false, hotel:false}, SP_LAYER={tsuke:null, hotel:null};
+var spPick=null;                       // {k, r} 地図で場所を選んでいる最中
+var spSheet={k:"tsuke", r:null, w:null};
+var spDiaryScroll=0;
+function spLoad(key){ try{ const v=JSON.parse(localStorage.getItem(key)); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+function spSave(key,v){ try{ localStorage.setItem(key, JSON.stringify(v)); }catch(e){ alert("保存できませんでした(端末の空き容量を確認してください)"); } }
+function spKey(r){ return r.d+"|"+r.t+"|"+r.p; }
+function spRecOf(k,r){ const key=spKey(r); return spLoad(SP_K[k].rec).find(x=>x.k===key)||null; }
+function spSpotById(k,id){ return spLoad(SP_K[k].spot).find(s=>s.id===id)||null; }
+function spRideLabel(r){
   return `${shiftDateStr(r).slice(5).replace("-","/")}(${"日月火水木金土"[shiftDow(r)]}) ${shiftHour(r.t)>=24?"翌":""}${r.t.slice(0,5)}`;
 }
-// スポットごとの成績(自分の乗車だけ・全期間)
-function tsStats(){
-  const recs=tsLoad(TS_REC), spots=tsLoad(TS_SPOT);
-  const byKey=new Map(myRides().map(r=>[tsKey(r), r]));
+function spWaitTxt(w){ return w==null?"":(w>=60?"60分〜":"〜"+w+"分"); }
+function spTier(k,name){
+  if(k!=="hotel" || typeof hotelTierOf!=="function") return null;
+  const t=hotelTierOf(name||""); return (t && t.k!=="other") ? t : null;
+}
+// 地点ごとの成績(自分の乗車・全期間)
+function spStats(k){
+  const C=SP_K[k], recs=spLoad(C.rec), spots=spLoad(C.spot);
+  const byKey=new Map(myRides().map(r=>[spKey(r), r]));
   return spots.map(s=>{
     const items=recs.filter(x=>x.sid===s.id).map(x=>({rec:x, r:byKey.get(x.k)})).filter(x=>x.r);
-    const rs=items.map(x=>x.r);
-    const n=rs.length, sum=rs.reduce((q,r)=>q+r.f,0);
+    const rs=items.map(x=>x.r), n=rs.length, sum=rs.reduce((q,r)=>q+r.f,0);
     const ws=items.map(x=>x.rec.w).filter(w=>w!=null);
-    return {s, items, n, avg:n?Math.round(sum/n):0, big:rs.filter(r=>r.f>=10000).length, mid:rs.filter(r=>r.f>=7000).length,
+    return {k, s, items, n, avg:n?Math.round(sum/n):0, big:rs.filter(r=>r.f>=10000).length, mid:rs.filter(r=>r.f>=7000).length,
       wait:ws.length?Math.round(ws.reduce((q,w)=>q+w,0)/ws.length):null};
   });
 }
-function tsSaveRec(r, sid, w){
-  const k=tsKey(r);
-  const recs=tsLoad(TS_REC).filter(x=>x.k!==k);
-  recs.push({k, sid, w:(w==null?null:w), at:Date.now()});
-  tsSave(TS_REC, recs);
+function spSaveRec(k, r, sid, w){
+  const C=SP_K[k], key=spKey(r);
+  const recs=spLoad(C.rec).filter(x=>x.k!==key);
+  recs.push({k:key, sid, w:(w==null?null:w), at:Date.now()});
+  spSave(C.rec, recs);
 }
-// ---- 記録シート(日報の行をタップすると開く) ----
-function tsOpen(r){
-  tsSheetRide=r;
-  const rec=tsRecOf(r);
-  tsSheetWait = rec ? rec.w : null;
-  const sp = rec ? tsSpotById(rec.sid) : null;
+function spAddSpot(k, n, lat, lng){
+  const C=SP_K[k], spots=spLoad(C.spot);
+  // 同じ名前で200m以内の地点があれば、それを使う(重複登録を防ぐ)
+  const dup=spots.find(s=>s.n===n && haversineKm([s.lat,s.lng],[lat,lng])<0.2);
+  if(dup) return dup;
+  const s={id:"s"+Date.now()+Math.floor(Math.random()*1000), n, lat:+(+lat).toFixed(5), lng:+(+lng).toFixed(5)};
+  spots.push(s); spSave(C.spot, spots); return s;
+}
+// ---- 記録シート(日報の行をタップすると開く。上のタブでつけ待ち/ホテルを切り替え) ----
+function spOpen(k, r){
+  const C=SP_K[k];
+  spSheet={k, r, w:null};
+  const rec=spRecOf(k,r);
+  spSheet.w = rec ? rec.w : null;
+  const sp = rec ? spSpotById(k, rec.sid) : null;
   const ll=[r.lat,r.lng];
-  const stats=new Map(tsStats().map(x=>[x.s.id,x]));
-  const spots=tsLoad(TS_SPOT).map(s=>({s, d:haversineKm(ll,[s.lat,s.lng])})).sort((a,b)=>a.d-b.d).slice(0,10);
-  const chip=(v,l)=>`<button class="chip ts-w${(tsSheetWait===v)?" on":""}" data-w="${v==null?"":v}" style="padding:6px 9px;font-size:12px;">${l}</button>`;
-  let h=`<div style="font-weight:800;font-size:15px;margin-bottom:4px;">🅿️ つけ待ちの記録</div>`
-    + `<div style="font-size:13px;margin-bottom:8px;">${tsRideLabel(r)}　${r.p} → ${r.dst||"?"}　<b style="color:var(--amber);">${yen(r.f)}</b> <span style="color:var(--muted);font-size:11px;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`;
-  if(sp) h+=`<div style="font-size:12px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;padding:7px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">`
-    + `<span style="flex:1;">記録済み：<b>${sp.n}</b>${rec.w!=null?`・待ち${rec.w>=60?"60分〜":"〜"+rec.w+"分"}`:""}</span>`
-    + `<span id="tsUnlink" style="color:var(--danger);border:1px solid var(--danger);border-radius:8px;padding:3px 8px;cursor:pointer;">解除</span></div>`;
-  h+=`<div style="font-size:11px;color:var(--muted);margin:2px 0 4px;">待ち時間(任意)</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${TS_WAITS.map(([v,l])=>chip(v,l)).join("")}</div>`;
-  h+=`<button class="btn on" id="tsMapPick" style="width:100%;padding:11px;font-size:14px;margin-bottom:10px;">🗺 地図で場所を選ぶ</button>`;
-  h+=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">登録済みの地点から選ぶ(乗車地から近い順)</div>`;
-  h+= spots.length ? spots.map(({s,d})=>{ const st=stats.get(s.id)||{n:0,big:0};
-      return `<div class="ts-pick" data-id="${s.id}" style="display:flex;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--line);cursor:pointer;${sp&&sp.id===s.id?"background:rgba(245,166,35,.12);":""}">`
-        + `<span style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🅿️ ${s.n}</span>`
-        + `<span style="font-size:11px;color:var(--muted);white-space:nowrap;">${d<1?Math.round(d*1000)+"m":d.toFixed(1)+"km"}</span>`
-        + `<span style="font-size:11px;white-space:nowrap;">${st.n}回${st.big?` <span style="color:#ffd54f;">⭐${st.big}</span>`:""}</span></div>`; }).join("")
-    : `<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);">まだ登録がありません。「地図で場所を選ぶ」から登録してください</div>`;
-  h+=`<button class="btn" id="tsCancel" style="width:100%;padding:10px;margin-top:10px;">閉じる</button>`;
+  const stats=new Map(spStats(k).map(x=>[x.s.id,x]));
+  const mine=spLoad(C.spot).map(s=>({s, d:haversineKm(ll,[s.lat,s.lng])})).sort((a,b)=>a.d-b.d).slice(0,10);
+  const tab=(kk)=>{ const c=SP_K[kk], on=kk===k, has=!!spRecOf(kk,r);
+    return `<button class="sp-tab" data-k="${kk}" style="flex:1;padding:9px 0;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid ${c.col};
+      background:${on?c.col:"transparent"};color:${on?c.txt:c.col};">${c.icon} ${c.name}${has?" ✓":""}</button>`; };
+  const chip=(v,l)=>`<button class="chip sp-w${(spSheet.w===v)?" on":""}" data-w="${v==null?"":v}" style="padding:6px 9px;font-size:12px;">${l}</button>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:8px;">${tab("tsuke")}${tab("hotel")}</div>`
+    + `<div style="font-size:13px;margin-bottom:8px;">${spRideLabel(r)}　${r.p} → ${r.dst||"?"}　<b style="color:var(--amber);">${yen(r.f)}</b> <span style="color:var(--muted);font-size:11px;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`;
+  if(sp) h+=`<div style="font-size:12px;background:var(--panel2);border:1px solid ${C.col};border-radius:10px;padding:7px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">`
+    + `<span style="flex:1;">記録済み：<b>${sp.n}</b>${rec.w!=null?`・待ち${spWaitTxt(rec.w)}`:""}</span>`
+    + `<span id="spUnlink" style="color:var(--danger);border:1px solid var(--danger);border-radius:8px;padding:3px 8px;cursor:pointer;">解除</span></div>`;
+  h+=`<div style="font-size:11px;color:var(--muted);margin:2px 0 4px;">待ち時間(任意)</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${SP_WAITS.map(([v,l])=>chip(v,l)).join("")}</div>`;
+  h+=`<button class="btn on" id="spMapPick" style="width:100%;padding:11px;font-size:14px;margin-bottom:10px;">🗺 地図で場所を選ぶ</button>`;
+  const rowHtml=(attrs, name, d, right, cur)=>`<div ${attrs} style="display:flex;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--line);cursor:pointer;${cur?"background:rgba(245,166,35,.12);":""}">`
+    + `<span style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`
+    + `<span style="font-size:11px;color:var(--muted);white-space:nowrap;">${d<1?Math.round(d*1000)+"m":d.toFixed(1)+"km"}</span>`
+    + `<span style="font-size:11px;white-space:nowrap;">${right}</span></div>`;
+  h+=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">登録済みの${k==="hotel"?"ホテル":"地点"}から選ぶ(乗車地から近い順)</div>`;
+  h+= mine.length ? mine.map(({s,d})=>{ const st=stats.get(s.id)||{n:0,big:0}; const t=spTier(k,s.n);
+      return rowHtml(`class="sp-pick" data-id="${s.id}"`, `${C.icon} ${s.n}${t?` <span style="font-size:10px;color:${t.c};">${t.n}</span>`:""}`, d,
+        `${st.n}回${st.big?` <span style="color:#ffd54f;">⭐${st.big}</span>`:""}`, sp&&sp.id===s.id); }).join("")
+    : `<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);">まだ登録がありません</div>`;
+  // ホテルは、地図のホテルデータ(OpenStreetMap)から乗車地の近くの候補も出す
+  if(k==="hotel"){
+    const own=new Set(spLoad(C.spot).map(s=>s.n));
+    const src=(typeof hotelData!=="undefined" && hotelData) ? hotelData : (()=>{ try{ return JSON.parse(localStorage.getItem("hotels-v1"))||null; }catch(e){ return null; } })();
+    h+=`<div style="font-size:11px;color:var(--muted);margin:10px 0 2px;">近くのホテル(地図データ・乗車地から600m以内)</div>`;
+    if(src && src.length){
+      const near=src.map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).filter(x=>x.d<=0.6 && !own.has(x.p[2])).sort((a,b)=>a.d-b.d).slice(0,12);
+      h+= near.length ? near.map(({p,d},i)=>{ const t=spTier("hotel",p[2]);
+          return rowHtml(`class="sp-osm" data-i="${i}"`, `${p[2]}${t?` <span style="font-size:10px;color:${t.c};">${t.n}</span>`:""}`, d, "", false); }).join("")
+        : `<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);">600m以内にホテルの登録がありません。地図で選んでください</div>`;
+      spSheet.osm=near.map(x=>x.p);
+    }else{
+      h+=`<div style="padding:6px 0;border-top:1px solid var(--line);"><button class="btn" id="spLoadHotels" style="width:100%;padding:9px;font-size:13px;">🏨 周辺のホテルを読み込む(初回のみ・数十秒)</button></div>`;
+    }
+  }
+  h+=`<button class="btn" id="spCancel" style="width:100%;padding:10px;margin-top:10px;">閉じる</button>`;
   const body=document.getElementById("tsBody");
   body.innerHTML=h;
   document.getElementById("tsSheet").style.display="block";
-  body.querySelectorAll(".ts-w").forEach(b=>b.onclick=()=>{
-    tsSheetWait = b.dataset.w==="" ? null : +b.dataset.w;
-    body.querySelectorAll(".ts-w").forEach(x=>x.classList.toggle("on", x===b));
-    const cur=tsRecOf(r); if(cur){ tsSaveRec(r, cur.sid, tsSheetWait); }   // 記録済みなら待ち時間だけ更新
+  body.querySelectorAll(".sp-tab").forEach(b=>b.onclick=()=>spOpen(b.dataset.k, r));
+  body.querySelectorAll(".sp-w").forEach(b=>b.onclick=()=>{
+    spSheet.w = b.dataset.w==="" ? null : +b.dataset.w;
+    body.querySelectorAll(".sp-w").forEach(x=>x.classList.toggle("on", x===b));
+    const cur=spRecOf(k,r); if(cur) spSaveRec(k, r, cur.sid, spSheet.w);   // 記録済みなら待ち時間だけ更新
   });
-  body.querySelectorAll(".ts-pick").forEach(el=>el.onclick=()=>{ tsSaveRec(r, el.dataset.id, tsSheetWait); tsDone("「"+(tsSpotById(el.dataset.id)||{}).n+"」で記録しました"); });
-  document.getElementById("tsMapPick").onclick=()=>tsStartPick(r);
-  document.getElementById("tsCancel").onclick=()=>{ document.getElementById("tsSheet").style.display="none"; };
-  const ul=document.getElementById("tsUnlink");
-  if(ul) ul.onclick=()=>{ tsSave(TS_REC, tsLoad(TS_REC).filter(x=>x.k!==tsKey(r))); tsDone("記録を解除しました"); };
+  body.querySelectorAll(".sp-pick").forEach(el=>el.onclick=()=>{ spSaveRec(k, r, el.dataset.id, spSheet.w); spDone("「"+(spSpotById(k,el.dataset.id)||{}).n+"」で記録しました"); });
+  body.querySelectorAll(".sp-osm").forEach(el=>el.onclick=()=>{
+    const p=(spSheet.osm||[])[+el.dataset.i]; if(!p) return;
+    const s=spAddSpot("hotel", p[2], p[0], p[1]); spSaveRec("hotel", r, s.id, spSheet.w); spDone("「"+s.n+"」で記録しました");
+  });
+  const lh=document.getElementById("spLoadHotels");
+  if(lh) lh.onclick=async()=>{
+    lh.disabled=true; lh.textContent="読み込み中…";
+    try{ const d=await loadHotels(); if(typeof hotelData!=="undefined") hotelData=d; spOpen("hotel", r); }
+    catch(e){ lh.disabled=false; lh.textContent="取得できませんでした。もう一度押す"; }
+  };
+  document.getElementById("spMapPick").onclick=()=>spStartPick(k, r);
+  document.getElementById("spCancel").onclick=()=>{ document.getElementById("tsSheet").style.display="none"; };
+  const ul=document.getElementById("spUnlink");
+  if(ul) ul.onclick=()=>{ spSave(C.rec, spLoad(C.rec).filter(x=>x.k!==spKey(r))); spDone("記録を解除しました"); };
 }
-function tsFlash(msg){
+function spFlash(msg){
   const h=document.getElementById("hint"); if(!h) return;
   h.textContent=msg; h.classList.add("show");
   setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }, 2200);
 }
 // 記録が終わったら日誌の同じ日・同じスクロール位置に戻る
-function tsDone(msg){
+function spDone(msg){
   document.getElementById("tsSheet").style.display="none";
-  const back=!!tsPick || document.getElementById("diaryPanel").style.display==="block";
+  const back=!!spPick || document.getElementById("diaryPanel").style.display==="block";
   const day=lastReportDay;
-  tsPick=null; document.getElementById("tsBanner").style.display="none"; tsCrossShow(false);
+  spPick=null; document.getElementById("tsBanner").style.display="none"; spCross(false);
   map.closePopup();
   if(back && day){
     showTab("diary"); showDayReport(day);
-    const p=document.getElementById("diaryPanel"); setTimeout(()=>{ p.scrollTop=tsDiaryScroll; },30);
+    const p=document.getElementById("diaryPanel"); setTimeout(()=>{ p.scrollTop=spDiaryScroll; },30);
   }
-  if(tsukeOn) drawTsuke();
-  tsFlash(msg);
+  spDrawAll();
+  spFlash(msg);
 }
-// ---- 地図で場所を選ぶ ----
-function tsStartPick(r){
-  tsPick=r;
-  tsDiaryScroll=document.getElementById("diaryPanel").scrollTop;
-  document.getElementById("tsSheet").style.display="none";
-  showTab("map");
-  if(typeof setPanel==="function") setPanel(true);   // フィルターパネルが地図を隠さないよう畳む
-  document.getElementById("tsukePanel").style.display="none";
-  document.getElementById("tsBannerTxt").innerHTML=`地図を動かして＋をつけ待ちした場所に合わせる<br><span style="font-weight:400;font-size:11px;">${tsRideLabel(r)} ${r.p}で乗車 ${yen(r.f)}・地図のタップで＋が移動・登録済みの🅿️をタップでも選べます</span>`;
-  document.getElementById("tsBanner").style.display="flex";
-  tsCrossShow(true);
-  setTimeout(()=>{ map.invalidateSize(); map.setView([r.lat,r.lng], Math.max(map.getZoom(),16)); drawTsuke(); },80);
-}
-function tsPickAt(ll){
-  const r=tsPick; if(!r) return;
-  map.closePopup();
-  ensureChome();
-  const def=nearestAddrName(ll) || r.p;
-  const name=prompt("この場所の名前(例: 品川プリンス東口、新橋2 烏森口)", def);
-  if(name===null) return;              // キャンセル → 選び直せるよう選択モードのまま
-  const n=name.trim()||def;
-  const spots=tsLoad(TS_SPOT);
-  const s={id:"s"+Date.now(), n, lat:+ll[0].toFixed(5), lng:+ll[1].toFixed(5)};
-  spots.push(s); tsSave(TS_SPOT, spots);
-  tsSaveRec(r, s.id, tsSheetWait);
-  tsDone("「"+n+"」を登録して記録しました");
-}
-// 照準は地図の中心に置く(タップは他のピンや塗りに取られやすいので、決定はボタンで行う)
-function tsCrossShow(on){
+// ---- 地図で場所を選ぶ(中心の＋を合わせて「ここで決定」) ----
+function spCross(on){
   const c=document.getElementById("tsCross"); if(!c) return;
   if(!on){ c.style.display="none"; return; }
   const r=map.getContainer().getBoundingClientRect();
   c.style.left=(r.left+r.width/2)+"px"; c.style.top=(r.top+r.height/2)+"px"; c.style.display="block";
 }
-map.on("click", e=>{ if(tsPick) map.panTo(e.latlng); });   // 選択中は、タップした所へ照準を寄せる
-document.getElementById("tsBannerOk").onclick=()=>{ if(tsPick){ const c=map.getCenter(); tsPickAt([c.lat,c.lng]); } };
-// ---- 地図の🅿️レイヤー ----
-function tsPopup(x){
-  const s=x.s;
+function spStartPick(k, r){
+  spPick={k, r};
+  spDiaryScroll=document.getElementById("diaryPanel").scrollTop;
+  document.getElementById("tsSheet").style.display="none";
+  showTab("map");
+  if(typeof setPanel==="function") setPanel(true);   // フィルターパネルが地図を隠さないよう畳む
+  ["tsuke","hotel"].forEach(kk=>{ const pn=document.getElementById("spPanel_"+kk); if(pn) pn.style.display="none"; });
+  const C=SP_K[k];
+  document.getElementById("tsBannerTxt").innerHTML=`${C.icon} 地図を動かして＋を${C.pickTxt}に合わせる<br><span style="font-weight:400;font-size:11px;">${spRideLabel(r)} ${r.p}で乗車 ${yen(r.f)}・地図のタップで＋が移動・登録済みの${C.icon}をタップでも選べます</span>`;
+  document.getElementById("tsBanner").style.display="flex";
+  spCross(true);
+  setTimeout(()=>{ map.invalidateSize(); map.setView([r.lat,r.lng], Math.max(map.getZoom(),16)); spDrawAll(); },80);
+}
+function spPickAt(ll){
+  if(!spPick) return;
+  const {k, r}=spPick, C=SP_K[k];
+  map.closePopup();
+  ensureChome();
+  let def=nearestAddrName(ll) || r.p;
+  if(k==="hotel"){   // ホテルは地図データの一番近いホテル名を初期値にする
+    const src=(typeof hotelData!=="undefined" && hotelData) ? hotelData : (()=>{ try{ return JSON.parse(localStorage.getItem("hotels-v1"))||null; }catch(e){ return null; } })();
+    if(src && src.length){ let b=null, bd=0.15; src.forEach(p=>{ const d=haversineKm(ll,[p[0],p[1]]); if(d<bd){ bd=d; b=p; } }); if(b) def=b[2]; }
+  }
+  const name=prompt(C.ask, def);
+  if(name===null) return;              // キャンセル → 選び直せるよう選択モードのまま
+  const s=spAddSpot(k, name.trim()||def, ll[0], ll[1]);
+  spSaveRec(k, r, s.id, spSheet.w);
+  spDone("「"+s.n+"」を登録して記録しました");
+}
+map.on("click", e=>{ if(spPick) map.panTo(e.latlng); });   // 選択中は、タップした所へ＋を寄せる
+document.getElementById("tsBannerOk").onclick=()=>{ if(spPick){ const c=map.getCenter(); spPickAt([c.lat,c.lng]); } };
+document.getElementById("tsBannerCancel").onclick=()=>{
+  const had=!!spPick; spPick=null; document.getElementById("tsBanner").style.display="none"; spCross(false); spDrawAll();
+  if(had){ showTab("diary"); showDayReport(lastReportDay); const p=document.getElementById("diaryPanel"); setTimeout(()=>{ p.scrollTop=spDiaryScroll; },30); }
+};
+// ---- 地図レイヤー ----
+function spPopup(x){
+  const C=SP_K[x.k], s=x.s, t=spTier(x.k, s.n);
   const rows=x.items.slice().sort((a,b)=>(shiftDateStr(b.r)+(shiftHour(b.r.t)>=24?"Z":"")+b.r.t).localeCompare(shiftDateStr(a.r)+(shiftHour(a.r.t)>=24?"Z":"")+a.r.t));
   const bands=[["朝",5,10],["昼",10,17],["夕夜",17,22],["深夜",22,29]].map(([n,lo,hi])=>{
     const q=x.items.filter(i=>{ const h=shiftHour(i.r.t); return h>=lo&&h<hi; }).map(i=>i.r.f);
     return q.length?`${n} ${q.length}回 ${yen(Math.round(q.reduce((p,v)=>p+v,0)/q.length))}${q.some(v=>v>=10000)?"⭐":""}`:"";
   }).filter(Boolean).join(" / ");
-  return `<div style="min-width:230px;"><div style="font-weight:800;font-size:14px;">🅿️ ${s.n}</div>`
-    + (x.n ? `<div style="font-size:12px;margin-top:2px;">${x.n}回・平均 <b>${yen(x.avg)}</b>・万収 <b style="color:${x.big?"#c62828":"inherit"};">${x.big}本(${Math.round(x.big/x.n*100)}%)</b>・¥7,000以上 ${x.mid}本${x.wait!=null?`・平均待ち ${x.wait}分`:""}</div>`
+  const air=x.items.filter(i=>/空港|成田市|羽田/.test(i.r.dst||"")).length;
+  return `<div style="min-width:230px;"><div style="font-weight:800;font-size:14px;">${C.icon} ${s.n}${t?` <span style="font-size:11px;color:${t.c};">${t.n}</span>`:""}</div>`
+    + (x.n ? `<div style="font-size:12px;margin-top:2px;">${x.n}回・平均 <b>${yen(x.avg)}</b>・万収 <b style="color:${x.big?"#c62828":"inherit"};">${x.big}本(${Math.round(x.big/x.n*100)}%)</b>・¥7,000以上 ${x.mid}本${x.wait!=null?`・平均待ち ${x.wait}分`:""}${air?`・空港 ${air}本`:""}</div>`
              + (bands?`<div style="font-size:11px;color:#8b98ad;margin:2px 0 4px;">${bands}</div>`:"")
            : `<div style="font-size:12px;color:#8b98ad;margin-top:4px;">まだ記録がありません</div>`)
     + rows.map(({r,rec})=>`<div style="display:flex;align-items:baseline;gap:6px;padding:4px 0;border-top:1px solid rgba(139,152,173,.25);font-size:12px;">`
-        + `<span style="white-space:nowrap;color:#8b98ad;font-variant-numeric:tabular-nums;">${tsRideLabel(r)}</span>`
+        + `<span style="white-space:nowrap;color:#8b98ad;font-variant-numeric:tabular-nums;">${spRideLabel(r)}</span>`
         + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">→ ${r.dst||"?"}</span>`
         + `<span style="white-space:nowrap;font-weight:800;border-left:4px solid ${fareTierColor(r.f)};padding-left:4px;">${r.f>=10000?"⭐":""}${yen(r.f)}</span>`
-        + `<span style="white-space:nowrap;color:#8b98ad;font-size:10px;">${rec.w!=null?(rec.w>=60?"60分〜":"〜"+rec.w+"分"):""}</span></div>`).join("")
+        + `<span style="white-space:nowrap;color:#8b98ad;font-size:10px;">${spWaitTxt(rec.w)}</span></div>`).join("")
     + `<div style="margin-top:8px;display:flex;gap:6px;">`
-    + `<span class="ts-ren" data-id="${s.id}" style="font-size:12px;border:1px solid #8b98ad;border-radius:8px;padding:4px 9px;cursor:pointer;">名前を変更</span>`
-    + `<span class="ts-del" data-id="${s.id}" style="font-size:12px;color:#e57373;border:1px solid #e57373;border-radius:8px;padding:4px 9px;cursor:pointer;">削除</span></div></div>`;
+    + `<span class="sp-ren" data-k="${x.k}" data-id="${s.id}" style="font-size:12px;border:1px solid #8b98ad;border-radius:8px;padding:4px 9px;cursor:pointer;">名前を変更</span>`
+    + `<span class="sp-del" data-k="${x.k}" data-id="${s.id}" style="font-size:12px;color:#e57373;border:1px solid #e57373;border-radius:8px;padding:4px 9px;cursor:pointer;">削除</span></div></div>`;
 }
-function drawTsuke(){
-  if(tsukeLayer){ map.removeLayer(tsukeLayer); tsukeLayer=null; }
-  const show = tsukeOn || !!tsPick;
-  renderTsukeList();
+function spPopupOpen(x){
+  L.popup((typeof heatPopupOpts==="function")?heatPopupOpts():{maxWidth:300}).setLatLng([x.s.lat,x.s.lng]).setContent(spPopup(x)).openOn(map);
+}
+function spDraw(k){
+  const C=SP_K[k];
+  if(SP_LAYER[k]){ map.removeLayer(SP_LAYER[k]); SP_LAYER[k]=null; }
+  spRenderList(k);
+  const show = SP_ON[k] || (spPick && spPick.k===k);
   if(!show) return;
   const z=map.getZoom(), items=[];
-  const popt=(typeof heatPopupOpts==="function")?heatPopupOpts():{maxWidth:300};
-  tsStats().forEach(x=>{
+  spStats(k).forEach(x=>{
     const col = x.n ? fareTierColor(x.avg) : "#8a94a6";
     const sz = x.n>=5 ? 30 : x.n>=2 ? 26 : 22;
     const lbl = x.n ? `${x.s.n} ${x.n}回${x.big?` ⭐${x.big}`:""}` : x.s.n;
-    const m=L.marker([x.s.lat,x.s.lng],{icon:L.divIcon({className:"",iconSize:[150,sz+18],iconAnchor:[75,sz/2],
+    const m=L.marker([x.s.lat,x.s.lng],{zIndexOffset:800, icon:L.divIcon({className:"",iconSize:[150,sz+18],iconAnchor:[75,sz/2],
       html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
-        <div style="width:${sz}px;height:${sz}px;border-radius:7px;background:${col};border:${x.big?3:2}px solid ${x.big?"#ffd54f":"#fff"};
-          box-shadow:0 1px 4px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#111;font-weight:900;font-size:${sz*0.55}px;">P</div>
-        ${(z>=14||x.big)?`<div style="margin-top:2px;background:rgba(13,19,32,.9);color:${x.big?"#ffd54f":"#fff"};border:1px solid ${x.big?"#ffd54f":"#5a6a75"};border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">${lbl}</div>`:""}
-      </div>`}), zIndexOffset:800});
+        <div style="width:${sz}px;height:${sz}px;border-radius:${k==="hotel"?"50%":"7px"};background:${col};border:${x.big?3:2}px solid ${x.big?"#ffd54f":"#fff"};
+          box-shadow:0 1px 4px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;color:#111;font-weight:900;font-size:${sz*0.55}px;">${C.letter}</div>
+        ${(z>=14||x.big)?`<div style="margin-top:2px;background:rgba(13,19,32,.9);color:${x.big?"#ffd54f":"#fff"};border:1px solid ${x.big?"#ffd54f":C.col};border-radius:6px;padding:1px 6px;font-size:10px;font-weight:700;white-space:nowrap;">${lbl}</div>`:""}
+      </div>`})});
     m.on("click",ev=>{
       if(ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);
-      if(tsPick){ const r=tsPick; tsSaveRec(r, x.s.id, tsSheetWait); tsDone("「"+x.s.n+"」で記録しました"); return; }
-      L.popup(popt).setLatLng([x.s.lat,x.s.lng]).setContent(tsPopup(x)).openOn(map);
+      if(spPick){
+        if(spPick.k!==k){ spFlash(`${SP_K[spPick.k].name}の記録中です。${SP_K[spPick.k].icon}の地点を選ぶか、＋で決めてください`); return; }
+        spSaveRec(k, spPick.r, x.s.id, spSheet.w); spDone("「"+x.s.n+"」で記録しました"); return;
+      }
+      spPopupOpen(x);
     });
     items.push(m);
   });
-  tsukeLayer=L.layerGroup(items).addTo(map);
+  SP_LAYER[k]=L.layerGroup(items).addTo(map);
 }
+function spDrawAll(){ spDraw("tsuke"); spDraw("hotel"); }
 map.on("popupopen", e=>{
   const root=e.popup.getElement(); if(!root) return;
-  const rn=root.querySelector(".ts-ren"), dl=root.querySelector(".ts-del");
+  const rn=root.querySelector(".sp-ren"), dl=root.querySelector(".sp-del");
   if(rn) rn.onclick=()=>{
-    const spots=tsLoad(TS_SPOT), s=spots.find(v=>v.id===rn.dataset.id); if(!s) return;
+    const C=SP_K[rn.dataset.k], spots=spLoad(C.spot), s=spots.find(v=>v.id===rn.dataset.id); if(!s) return;
     const v=prompt("新しい名前", s.n); if(v===null||!v.trim()) return;
-    s.n=v.trim(); tsSave(TS_SPOT, spots); map.closePopup(); drawTsuke();
+    s.n=v.trim(); spSave(C.spot, spots); map.closePopup(); spDrawAll();
   };
   if(dl) dl.onclick=()=>{
-    const s=tsSpotById(dl.dataset.id); if(!s) return;
-    const n=tsLoad(TS_REC).filter(x=>x.sid===s.id).length;
+    const k=dl.dataset.k, C=SP_K[k], s=spSpotById(k, dl.dataset.id); if(!s) return;
+    const n=spLoad(C.rec).filter(x=>x.sid===s.id).length;
     if(!confirm(`「${s.n}」を削除しますか?${n?`\nこの地点の記録${n}件も消えます(乗車データは消えません)`:""}`)) return;
-    tsSave(TS_SPOT, tsLoad(TS_SPOT).filter(v=>v.id!==s.id));
-    tsSave(TS_REC, tsLoad(TS_REC).filter(x=>x.sid!==s.id));
-    map.closePopup(); drawTsuke();
+    spSave(C.spot, spLoad(C.spot).filter(v=>v.id!==s.id));
+    spSave(C.rec, spLoad(C.rec).filter(x=>x.sid!==s.id));
+    map.closePopup(); spDrawAll();
   };
 });
-map.on("zoomend",()=>{ if(tsukeOn||tsPick) drawTsuke(); });
+map.on("zoomend",()=>{ if(SP_ON.tsuke||SP_ON.hotel||spPick) spDrawAll(); });
 // ---- 成績一覧(万収の本数 → 万収率 → 平均の順) ----
-function renderTsukeList(){
-  const pn=document.getElementById("tsukePanel"); if(!pn) return;
-  if(!tsukeOn || tsPick){ pn.style.display="none"; return; }
+var SP_LIST={tsuke:true, hotel:true};
+function spRenderList(k){
+  const C=SP_K[k], pn=document.getElementById("spPanel_"+k); if(!pn) return;
+  if(!SP_ON[k] || !SP_LIST[k] || spPick){ pn.style.display="none"; return; }
+  // 2つ同時に開くと重なるので、後から開いた方だけ出す
+  const other=k==="tsuke"?"hotel":"tsuke"; const op=document.getElementById("spPanel_"+other); if(op) op.style.display="none";
   pn.style.display="block";
   const hud=document.getElementById("hud"); if(hud) pn.style.top=(hud.getBoundingClientRect().bottom+8)+"px";
-  const st=tsStats().sort((a,b)=>(b.big-a.big)||((b.n?b.big/b.n:0)-(a.n?a.big/a.n:0))||(b.avg-a.avg)||(b.n-a.n));
+  const st=spStats(k).sort((a,b)=>(b.big-a.big)||((b.n?b.big/b.n:0)-(a.n?a.big/a.n:0))||(b.avg-a.avg)||(b.n-a.n));
   const tot=st.reduce((q,x)=>q+x.n,0), big=st.reduce((q,x)=>q+x.big,0);
-  let h=`<div style="font-size:11px;color:var(--muted);padding:2px 0 6px;">${st.length}地点・記録${tot}回・万収${big}本(自分の乗車・全期間)</div>`;
-  h+= st.length ? st.map((x,i)=>`<div class="ts-row2" data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid var(--line);cursor:pointer;">
-      <span style="width:12px;height:12px;border-radius:3px;flex:none;background:${x.n?fareTierColor(x.avg):"#8a94a6"};${x.big?"outline:2px solid #ffd54f;":""}"></span>
-      <span style="font-size:14px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x.s.n}</span>
+  let h=`<div style="font-size:11px;color:var(--muted);padding:2px 0 6px;">${st.length}${k==="hotel"?"軒":"地点"}・記録${tot}回・万収${big}本(自分の乗車・全期間)</div>`;
+  h+= st.length ? st.map((x,i)=>{ const t=spTier(k,x.s.n); return `<div class="sp-row2" data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid var(--line);cursor:pointer;">
+      <span style="width:12px;height:12px;border-radius:${k==="hotel"?"50%":"3px"};flex:none;background:${x.n?fareTierColor(x.avg):"#8a94a6"};${x.big?"outline:2px solid #ffd54f;":""}"></span>
+      <span style="font-size:14px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${x.s.n}${t?` <span style="font-size:10px;font-weight:400;color:${t.c};">${t.n}</span>`:""}</span>
       ${x.big?`<span style="font-size:12px;color:#ffd54f;font-weight:800;">⭐${x.big}</span>`:""}
       <span style="font-size:14px;color:var(--amber);font-weight:700;font-variant-numeric:tabular-nums;">${x.n?yen(x.avg):"—"}</span>
-      <span style="font-size:11px;color:var(--muted);width:34px;text-align:right;">${x.n}回</span></div>`).join("")
-    : `<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);line-height:1.6;">まだ記録がありません。<br>日誌の「この日の営業日報」で、つけ待ちで乗せた行をタップして記録します。</div>`;
-  const el=document.getElementById("tsukeList"); el.innerHTML=h;
-  el.querySelectorAll(".ts-row2").forEach(row=>row.onclick=()=>{
+      <span style="font-size:11px;color:var(--muted);width:34px;text-align:right;">${x.n}回</span></div>`; }).join("")
+    : `<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);line-height:1.6;">まだ記録がありません。<br>日誌の「この日の営業日報」で行をタップし、上の「${C.icon} ${C.name}」を選んで記録します。</div>`;
+  const el=document.getElementById("spList_"+k); el.innerHTML=h;
+  el.querySelectorAll(".sp-row2").forEach(row=>row.onclick=()=>{
     const x=st[+row.dataset.i]; if(!x) return;
-    pn.style.display="none"; tsukeListOpen=false;
+    pn.style.display="none"; SP_LIST[k]=false;
     map.setView([x.s.lat,x.s.lng],16);
-    setTimeout(()=>L.popup((typeof heatPopupOpts==="function")?heatPopupOpts():{maxWidth:300}).setLatLng([x.s.lat,x.s.lng]).setContent(tsPopup(x)).openOn(map),350);
+    setTimeout(()=>spPopupOpen(x),350);
   });
 }
-var tsukeListOpen=true;
-document.getElementById("btnTsuke").onclick=e=>{
-  tsukeOn=!tsukeOn; e.target.classList.toggle("on",tsukeOn); tsukeListOpen=true;
-  if(!tsukeOn) map.closePopup();
-  drawTsuke();
-};
-document.getElementById("tsukeClose").onclick=()=>{ document.getElementById("tsukePanel").style.display="none"; tsukeListOpen=false; };
-document.getElementById("tsBannerCancel").onclick=()=>{
-  const r=tsPick; tsPick=null; document.getElementById("tsBanner").style.display="none"; tsCrossShow(false); drawTsuke();
-  if(r){ showTab("diary"); showDayReport(lastReportDay); const p=document.getElementById("diaryPanel"); setTimeout(()=>{ p.scrollTop=tsDiaryScroll; },30); }
-};
-// ---- バックアップ(端末内保存なので、機種変更や初期化に備えて書き出せるようにする) ----
-document.getElementById("tsExport").onclick=()=>{
-  const data={v:1, at:new Date().toISOString(), spots:tsLoad(TS_SPOT), recs:tsLoad(TS_REC)};
-  const blob=new Blob([JSON.stringify(data,null,1)],{type:"application/json"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="tsuke.json"; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
-};
-document.getElementById("tsImport").onclick=()=>document.getElementById("tsFile").click();
-document.getElementById("tsFile").onchange=async e=>{
-  const f=e.target.files[0]; if(!f) return;
-  try{
-    const d=JSON.parse(await f.text());
-    if(!Array.isArray(d.spots)||!Array.isArray(d.recs)) throw new Error("形式が違います");
-    // 既存とマージ(同じIDのスポット・同じ乗車の記録は読み込んだ側で上書き)
-    const sp=new Map(tsLoad(TS_SPOT).map(s=>[s.id,s])); d.spots.forEach(s=>sp.set(s.id,s));
-    const rc=new Map(tsLoad(TS_REC).map(x=>[x.k,x])); d.recs.forEach(x=>rc.set(x.k,x));
-    tsSave(TS_SPOT,[...sp.values()]); tsSave(TS_REC,[...rc.values()]);
-    drawTsuke(); alert(`読み込みました(地点${d.spots.length}・記録${d.recs.length})`);
-  }catch(err){ alert("読み込めませんでした: "+err.message); }
-  e.target.value="";
-};
+["tsuke","hotel"].forEach(k=>{
+  const C=SP_K[k];
+  document.getElementById(k==="tsuke"?"btnTsuke":"btnHotelRec").onclick=e=>{
+    SP_ON[k]=!SP_ON[k]; e.target.classList.toggle("on",SP_ON[k]); SP_LIST[k]=true;
+    if(!SP_ON[k]) map.closePopup();
+    spDraw(k);
+  };
+  document.getElementById("spClose_"+k).onclick=()=>{ document.getElementById("spPanel_"+k).style.display="none"; SP_LIST[k]=false; };
+  // バックアップ(端末内保存なので、機種変更や初期化に備えて書き出せるようにする)
+  document.getElementById("spExport_"+k).onclick=()=>{
+    const data={v:1, kind:k, at:new Date().toISOString(), spots:spLoad(C.spot), recs:spLoad(C.rec)};
+    const blob=new Blob([JSON.stringify(data,null,1)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=C.file; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  };
+  document.getElementById("spImport_"+k).onclick=()=>document.getElementById("spFile_"+k).click();
+  document.getElementById("spFile_"+k).onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      const d=JSON.parse(await f.text());
+      if(!Array.isArray(d.spots)||!Array.isArray(d.recs)) throw new Error("形式が違います");
+      if(d.kind && d.kind!==k) throw new Error(`これは${SP_K[d.kind]?SP_K[d.kind].name:d.kind}のファイルです`);
+      const sp=new Map(spLoad(C.spot).map(s=>[s.id,s])); d.spots.forEach(s=>sp.set(s.id,s));
+      const rc=new Map(spLoad(C.rec).map(x=>[x.k,x])); d.recs.forEach(x=>rc.set(x.k,x));
+      spSave(C.spot,[...sp.values()]); spSave(C.rec,[...rc.values()]);
+      spDraw(k); alert(`読み込みました(地点${d.spots.length}・記録${d.recs.length})`);
+    }catch(err){ alert("読み込めませんでした: "+err.message); }
+    e.target.value="";
+  };
+});
 
 // ===== エリア別ランキング(タップで オフ→区別→町別 を切替) =====
 let wardLayer=null, wardsOn=false, areaMode=0; // 0:オフ 1:区別 2:町別
@@ -7509,7 +7608,7 @@ function saveViewState(){
     const st={
       minFare, modeFilter, weatherFilter, metric, appMode, coolAuto,
       dows:[...dowSet], tMin, tMax,
-      heatOn, areaMode, bigOn, predictOn, hankaOn, tsukeOn,
+      heatOn, areaMode, bigOn, predictOn, hankaOn, tsukeOn:SP_ON.tsuke, hotelRecOn:SP_ON.hotel,
       standsOn, toiletOn, memoOn, railOn, lastOn,
       roads:Object.keys(roadOn).filter(k=>roadOn[k]),
       pois:(typeof poiOn==="object")?Object.keys(poiOn).filter(k=>poiOn[k]):[],
@@ -7562,7 +7661,8 @@ function restoreViewState(){
     if(areaMode===1) ensureChome(); if(areaMode===2) ensureTowns();
   }
   if(st.bigOn){ bigOn=true; const b=document.getElementById("btnBig"); if(b) b.classList.add("on"); }
-  if(st.tsukeOn){ tsukeOn=true; const b=document.getElementById("btnTsuke"); if(b) b.classList.add("on"); }
+  if(st.tsukeOn){ SP_ON.tsuke=true; const b=document.getElementById("btnTsuke"); if(b) b.classList.add("on"); }
+  if(st.hotelRecOn){ SP_ON.hotel=true; const b=document.getElementById("btnHotelRec"); if(b) b.classList.add("on"); }
   if(st.hankaOn){ hankaOn=true; hankaList=false; const b=document.getElementById("btnHanka"); if(b) b.classList.add("on"); ensureChome(); }
   if(st.predictOn){ predictOn=true; const b=document.getElementById("btnPredict"); if(b) b.classList.add("on"); ensureChome(); }
   if(st.memoOn){ memoOn=true; const b=document.getElementById("btnMemo"); if(b) b.classList.add("on"); drawMemos(); }
