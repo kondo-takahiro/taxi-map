@@ -241,6 +241,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="btnCenter" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:20px;">◎</button>
   <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
   <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
+  <button id="btnCount" title="回数の数字を表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">123</button>
 </div>
 
 <div id="hankaPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
@@ -987,7 +988,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.13-1";
+const APP_VER = "2026.10.13-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1260,7 +1261,7 @@ const PLAN_SLOTS=[
   {lo:23,  hi:24,  t:"両国へ移動", d:"23時台は最も薄い。23:45までに両国2・3へ入る",
     a:{t:"上野へ移動", d:"23時台は最も薄い。23:45までに上野2・湯島3へ入る。都心にいたら新橋2へ"}},
   {lo:24,  hi:25,  t:"⭐ 0時台は両国で張る", d:"両国2・3の京葉道路沿い。流しで2件とも万収(三鷹・流山)。錦糸町側は万収ゼロ。都心にいたら新橋2(10回平均¥7,343)",
-    a:{t:"⭐ 0時台は上野2・湯島3で配車待ち", d:"0〜1時の配車万収4本は全部繁華街発(新橋2・上野2・西池袋1・三軒茶屋1)。足立・墨田・葛飾の配車は15件でゼロ"}},
+    a:{t:"⭐ 0時台は上野2・湯島3で配車待ち", d:"0〜1時の配車万収4本は全部繁華街発(上野2・西池袋1・三軒茶屋1・歌舞伎町1)。足立・墨田・葛飾の配車は17件でゼロ"}},
   {lo:25,  hi:26,  t:"⭐ 1時台は上野2・湯島3", d:"仲町通り〜春日通り。1時台4件中3件が¥7,000以上(最高¥18,950)。両国から約3km"},
   {lo:26,  hi:30,  t:"帰庫へ", d:"北東方向の客を優先。足立・葛飾方面で締める"}
 ];
@@ -1420,7 +1421,7 @@ const WAIT_SPOTS=[
  {n:"芝浦・芝", c:[35.6425,139.7500], type:"spot", r:600, t:[[12,16]], d:"wd", why:"第2クールの本命。芝浦3は平均¥5,970"},
  {n:"港南", c:[35.6290,139.7450], type:"spot", r:500, t:[[7,12]], d:"wd", why:"オフィス出勤と出張客。空港案件も"},
  {n:"銀座(外縁で待つ)", c:[35.6712,139.7650], type:"ring", r1:380, r2:950, t:[[18,22]], d:"wd", why:"中心は台数が最も多い。昭和通り側・7〜8丁目の外周へ。平日22-1時は乗り場のみ"},
- {n:"新橋2", c:[35.6668,139.7576], type:"spot", r:300, t:[[23.5,25.5]], d:"wd", big:true, why:"0時台は10件で平均¥7,343・万収2本。配車でも羽村¥24,690(0:39)。外堀通り・烏森口で動かず待つ"},
+ {n:"新橋2", c:[35.6668,139.7576], type:"spot", r:300, t:[[23.5,25.5]], d:"wd", big:true, why:"0時台は10件で平均¥7,343・万収2本(羽村¥24,690は乗り場から)。配車はあまり鳴らないので流し・乗り場向き"},
  {n:"六本木(外縁)", c:[35.6629,139.7322], type:"ring", r1:250, r2:800, t:[[22,26]], d:"all", why:"交差点の周りは台数が多い。埼玉狙いは霞ヶ関側、神奈川は飯倉側へ頭を向ける"},
  {n:"西池袋1・3・5", c:[35.7300,139.7060], type:"spot", r:550, t:[[20,26]], d:"all", why:"深夜でもよく鳴る。志木¥11,930・東久留米¥10,670の実績"},
  {n:"赤羽(東口の外縁)", c:[35.7781,139.7208], type:"ring", r1:200, r2:700, t:[[22,26]], d:"wd", why:"終電後の帰宅。埼玉方面へ出ることも"},
@@ -4949,6 +4950,7 @@ function renderDiaryY(pick){
   h+=sectionTitle("この日の営業日報");
   const seqT=[...rs].sort((a,b)=>shiftHour(a.t)-shiftHour(b.t)||a.t.localeCompare(b.t));
   window._tsRows=seqT;   // 行タップでつけ待ち・ホテルを記録するため
+  const reMap=reLoad();
   const spMaps={}; ["tsuke","hotel"].forEach(k=>{ spMaps[k]={rec:new Map(spLoad(SP_K[k].rec).map(x=>[x.k,x])), sp:new Map(spLoad(SP_K[k].spot).map(s=>[s.id,s]))}; });
   const CB2=[[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,30,"青タン"]];
   h+=`<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -4973,7 +4975,8 @@ function renderDiaryY(pick){
     run+=r.f;
     const big=r.f>=10000;
     const spBadge=["tsuke","hotel"].map(k=>{ const x=spMaps[k].rec.get(spKey(r)), sp=x?spMaps[k].sp.get(x.sid):null;
-      return sp?`<span title="${sp.n}" style="margin-left:3px;display:inline-block;background:${SP_K[k].col};color:${SP_K[k].txt};border-radius:4px;padding:0 3px;font-weight:900;">${SP_K[k].letter}</span>`:""; }).join("");
+      return sp?`<span title="${sp.n}" style="margin-left:3px;display:inline-block;background:${SP_K[k].col};color:${SP_K[k].txt};border-radius:4px;padding:0 3px;font-weight:900;">${SP_K[k].letter}</span>`:""; }).join("")
+      + (reMap[rideOrigKey(r)]?`<span title="修正済み" style="margin-left:2px;">✏️</span>`:"");
     h+=`<tr class="ts-row" data-i="${i}" style="cursor:pointer;border-top:1px solid var(--line);${big?'background:rgba(255,213,79,.08);':''}">
       <td style="padding:4px;color:var(--muted);">${r.t.slice(0,5)}</td>
       <td style="padding:4px;max-width:96px;overflow:hidden;text-overflow:ellipsis;">${r.p}</td>
@@ -4987,8 +4990,16 @@ function renderDiaryY(pick){
   h+=`<tr><td colspan="3" style="padding:6px 4px;font-weight:700;">合計 ${seqT.length}回</td>
       <td colspan="2" style="padding:6px 4px;text-align:right;font-weight:800;color:var(--amber);font-size:13px;">${yen(total)}</td></tr>`;
   h+=`</table></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています<br>行をタップすると 🅿️つけ待ちした場所 / 🏨乗せたホテル を記録できます(P・H＝記録済み)</div>`;
+    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています<br>行をタップすると 🅿️つけ待ち / 🏨ホテル の記録と、✏️乗車の修正(配車⇔流し・料金・降車地・削除)ができます</div>`;
 
+  const delRows=Object.entries(reMap).filter(([k,v])=>{ if(!v.del) return false; const [d,t]=k.split("|"); return shiftDateStr({d,t})===target; });
+  if(delRows.length){
+    h+=`<div style="margin-top:10px;font-size:11px;color:var(--muted);">🗑 削除した乗車(集計から外しています)</div>`;
+    h+=delRows.map(([k,v])=>{ const [d,t,f]=k.split("|"); const p=(v.ride&&v.ride.p)||(v.label||"").split(" ")[2]||"";
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 4px;border-top:1px solid var(--line);color:var(--muted);">`
+        + `<span style="flex:1;">${t.slice(0,5)} ${p} ${yen(+f)}</span>`
+        + `<span class="re-restore" data-k="${encodeURIComponent(k)}" style="color:var(--amber);border:1px solid var(--amber);border-radius:8px;padding:3px 8px;cursor:pointer;">戻す</span></div>`; }).join("");
+  }
   h+=`<button class="btn" id="diaryRoads" style="width:100%;padding:10px;margin-top:14px;">🛣 この日の道を復習</button>`;
   h+=`<button class="btn" id="diaryAI" style="width:100%;padding:10px;margin-top:8px;">🤖 この日の立ち回りをAI分析</button>
   <div id="diaryAIOut" style="display:none;margin-top:8px;padding:11px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>`;
@@ -5268,7 +5279,7 @@ function renderSettings(){
       showCountBadge=!showCountBadge;
       localStorage.setItem("opt-countbadge", showCountBadge?"1":"0");
       b.classList.toggle("on", showCountBadge);
-      render();
+      countBtnPaint(); render();
     }
   });
   const rv=document.getElementById("setResetView");
@@ -6190,10 +6201,16 @@ function bindDiaryY(){
     body.querySelectorAll(".ts-row").forEach(tr=>tr.onclick=()=>{
       const r=(window._tsRows||[])[+tr.dataset.i]; if(!r) return;
       spDiaryScroll=document.getElementById("diaryPanel").scrollTop;
-      spOpen(spSheet.k||"tsuke", r);
+      spOpen((spSheet.k&&spSheet.k!=="edit")?spSheet.k:"tsuke", r);
     });
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
+    body.querySelectorAll(".re-restore").forEach(el=>el.onclick=()=>{
+      const k=decodeURIComponent(el.dataset.k), ed=reLoad(), v=ed[k]; if(!v) return;
+      if(v.m!=null){ ed[k]={orig:v.orig, m:v.m, f:v.f, dst:v.dst}; } else delete ed[k]; reSave(ed);
+      if(v.ride && !rides.some(x=>rideOrigKey(x)===k)){ const r=Object.assign({},v.ride); if(v.orig && !v.m){ r.m=v.orig.m; r.f=v.orig.f; r.dst=v.orig.dst; } r.ok=k; rides.push(r); save(); render(); showDayReport(lastReportDay); }
+      else if(typeof loadShared==="function"){ loadShared(); setTimeout(()=>showDayReport(lastReportDay),1500); }
+    });
     body.querySelectorAll(".memo-add").forEach(el=>el.onclick=()=>{
       showTab("map");
       openMemo([+el.dataset.lat, +el.dataset.lng], null, el.dataset.n);
@@ -6903,6 +6920,78 @@ map.on("popupopen", e=>{
   if(el) el.onclick=()=>{ map.closePopup(); hankaList=true; hankaSel=null; drawHanka(); };
 });
 
+// ===== 乗車の修正(日報の行から。配車/流し・料金・降車地の訂正と削除) =====
+// 修正は ride-edit-v1 に「元の乗車キー → 修正内容」で保存し、共有データ(rides.csv)を読み直しても上書きされないようにする
+const RE_KEY="ride-edit-v1";
+function reLoad(){ try{ return JSON.parse(localStorage.getItem(RE_KEY))||{}; }catch(e){ return {}; } }
+function reSave(v){ try{ localStorage.setItem(RE_KEY, JSON.stringify(v)); }catch(e){} }
+function rideOrigKey(r){ return r.ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng); }
+// 既存データに元キーを付け、修正内容を反映する(削除指定は取り除く)
+function applyRideEdits(){
+  const ed=reLoad(); let changed=false;
+  rides.forEach(r=>{ if(!r.ok){ r.ok=rideOrigKey(r); changed=true; } });
+  const before=rides.length;
+  rides=rides.filter(r=>!(ed[r.ok] && ed[r.ok].del));
+  if(rides.length!==before) changed=true;
+  rides.forEach(r=>{
+    const e=ed[r.ok]; if(!e) return;
+    if(e.m && r.m!==e.m){ r.m=e.m; changed=true; }
+    if(e.f!=null && r.f!==e.f){ r.f=e.f; changed=true; }
+    if(e.dst!=null && r.dst!==e.dst){ r.dst=e.dst; changed=true; }
+  });
+  if(changed) save();
+}
+applyRideEdits();
+function spEditHtml(r){
+  const ed=reLoad()[rideOrigKey(r)];
+  const m=r.m||"app";
+  return `<div style="font-size:12px;color:var(--muted);margin:2px 0 6px;">日報と違っていたら直せます。直した内容はこの端末に保存され、rides.csvを読み直しても残ります。</div>`
+    + `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">配車区分</div>`
+    + `<div style="display:flex;gap:8px;margin-bottom:10px;">`
+    + `<button class="btn re-m${m==="app"?" on":""}" data-m="app" style="flex:1;padding:10px;">📲 アプリ配車</button>`
+    + `<button class="btn re-m${m==="st"?" on":""}" data-m="st" style="flex:1;padding:10px;">🚕 流し・乗り場</button></div>`
+    + `<div class="field"><label>料金(円)</label><input type="number" id="reFare" value="${r.f}" min="0" step="10"></div>`
+    + `<div class="field"><label>降車地</label><input type="text" id="reDst" value="${(r.dst||"").replace(/"/g,"&quot;")}"></div>`
+    + `<button class="btn on" id="reSave" style="width:100%;padding:11px;font-size:14px;margin-top:4px;">保存する</button>`
+    + (ed?`<button class="btn" id="reUndo" style="width:100%;padding:9px;margin-top:8px;">↩︎ 修正を取り消して日報の値に戻す</button>`:"")
+    + `<button class="btn" id="reDel" style="width:100%;padding:9px;margin-top:8px;color:var(--danger);border-color:var(--danger);">この乗車を削除(空転の取り込み漏れなど)</button>`
+    + `<button class="btn" id="spCancel" style="width:100%;padding:10px;margin-top:10px;">閉じる</button>`;
+}
+function spEditBind(r){
+  const body=document.getElementById("tsBody");
+  let mode=r.m||"app";
+  body.querySelectorAll(".re-m").forEach(b=>b.onclick=()=>{ mode=b.dataset.m; body.querySelectorAll(".re-m").forEach(x=>x.classList.toggle("on",x===b)); });
+  const key=rideOrigKey(r);
+  document.getElementById("reSave").onclick=()=>{
+    const f=Math.round(+document.getElementById("reFare").value);
+    if(!isFinite(f)||f<0){ alert("料金を確認してください"); return; }
+    const dst=document.getElementById("reDst").value.trim();
+    const ed=reLoad(); const cur=ed[key]||{};
+    // 元の値(rides.csv由来)は orig に残しておき、取り消しで戻せるようにする
+    if(!cur.orig) cur.orig={m:r.m||"app", f:r.f, dst:r.dst||""};
+    cur.m=mode; cur.f=f; cur.dst=dst;
+    if(cur.m===cur.orig.m && cur.f===cur.orig.f && cur.dst===cur.orig.dst) delete ed[key]; else ed[key]=cur;
+    reSave(ed);
+    r.m=mode; r.f=f; r.dst=dst; save(); render();
+    spDone("乗車を修正しました");
+  };
+  const un=document.getElementById("reUndo");
+  if(un) un.onclick=()=>{
+    const ed=reLoad(), cur=ed[key];
+    if(cur && cur.orig){ r.m=cur.orig.m; r.f=cur.orig.f; r.dst=cur.orig.dst; }
+    delete ed[key]; reSave(ed); save(); render();
+    spDone("修正を取り消しました");
+  };
+  document.getElementById("reDel").onclick=()=>{
+    if(!confirm(`${spRideLabel(r)} ${r.p} ${yen(r.f)} を削除しますか?\n(rides.csvを読み直しても戻りません。日報の下の「削除した乗車」から戻せます)`)) return;
+    const ed=reLoad(); ed[key]=Object.assign(ed[key]||{}, {del:true, orig:(ed[key]&&ed[key].orig)||{m:r.m||"app",f:r.f,dst:r.dst||""}, label:`${r.d} ${r.t} ${r.p} ${r.f}`, ride:Object.assign({},r)});
+    reSave(ed);
+    rides=rides.filter(x=>rideOrigKey(x)!==key); save(); render();
+    spDone("乗車を削除しました");
+  };
+  document.getElementById("spCancel").onclick=()=>{ document.getElementById("tsSheet").style.display="none"; };
+}
+
 // ===== 地点の記録(🅿️つけ待ち / 🏨ホテル) =====
 // 営業日報の乗車に「どこで待ったか」「どのホテルから乗せたか」を紐付けて、万収が出やすい場所を後から見る。
 // 記録は端末内(localStorage)。乗車とは「日付|時刻|乗車地」で紐付けるので、rides.csvを入れ直しても消えない
@@ -6958,6 +7047,19 @@ function spAddSpot(k, n, lat, lng){
 }
 // ---- 記録シート(日報の行をタップすると開く。上のタブでつけ待ち/ホテルを切り替え) ----
 function spOpen(k, r){
+  if(k==="edit"){   // 乗車そのものの修正
+    spSheet={k:"edit", r, w:null};
+    const tab=(kk)=>{ const c=SP_K[kk], has=!!spRecOf(kk,r);
+      return `<button class="sp-tab" data-k="${kk}" style="flex:1;padding:9px 0;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid ${c.col};background:transparent;color:${c.col};">${c.icon} ${c.name}${has?" ✓":""}</button>`; };
+    const body=document.getElementById("tsBody");
+    body.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:8px;">${tab("tsuke")}${tab("hotel")}<button class="sp-tab" data-k="edit" style="flex:0 0 auto;padding:9px 12px;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid #8b98ad;background:#8b98ad;color:#0d1320;">✏️ 修正</button></div>`
+      + `<div style="font-size:13px;margin-bottom:6px;">${spRideLabel(r)}　${r.p} → ${r.dst||"?"}　<b style="color:var(--amber);">${yen(r.f)}</b> <span style="color:var(--muted);font-size:11px;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`
+      + spEditHtml(r);
+    document.getElementById("tsSheet").style.display="block";
+    body.querySelectorAll(".sp-tab").forEach(b=>b.onclick=()=>spOpen(b.dataset.k, r));
+    spEditBind(r);
+    return;
+  }
   const C=SP_K[k];
   spSheet={k, r, w:null};
   const rec=spRecOf(k,r);
@@ -6970,7 +7072,9 @@ function spOpen(k, r){
     return `<button class="sp-tab" data-k="${kk}" style="flex:1;padding:9px 0;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid ${c.col};
       background:${on?c.col:"transparent"};color:${on?c.txt:c.col};">${c.icon} ${c.name}${has?" ✓":""}</button>`; };
   const chip=(v,l)=>`<button class="chip sp-w${(spSheet.w===v)?" on":""}" data-w="${v==null?"":v}" style="padding:6px 9px;font-size:12px;">${l}</button>`;
-  let h=`<div style="display:flex;gap:8px;margin-bottom:8px;">${tab("tsuke")}${tab("hotel")}</div>`
+  const edited=!!reLoad()[rideOrigKey(r)];
+  const etab=`<button class="sp-tab" data-k="edit" style="flex:0 0 auto;padding:9px 12px;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid #8b98ad;background:${k==="edit"?"#8b98ad":"transparent"};color:${k==="edit"?"#0d1320":"#c5cfdd"};">✏️${edited?" ✓":""}</button>`;
+  let h=`<div style="display:flex;gap:8px;margin-bottom:8px;">${tab("tsuke")}${tab("hotel")}${etab}</div>`
     + `<div style="font-size:13px;margin-bottom:8px;">${spRideLabel(r)}　${r.p} → ${r.dst||"?"}　<b style="color:var(--amber);">${yen(r.f)}</b> <span style="color:var(--muted);font-size:11px;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`;
   if(sp) h+=`<div style="font-size:12px;background:var(--panel2);border:1px solid ${C.col};border-radius:10px;padding:7px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;">`
     + `<span style="flex:1;">記録済み：<b>${sp.n}</b>${rec.w!=null?`・待ち${spWaitTxt(rec.w)}`:""}</span>`
@@ -7572,6 +7676,17 @@ btnHead.onclick=()=>{
 // ズームボタン(中心=自分の位置を保ったまま拡大縮小)
 document.getElementById("zoomIn").onclick=()=>map.zoomIn();
 document.getElementById("zoomOut").onclick=()=>map.zoomOut();
+// 🔢 回数バッジのオンオフ(地図左のボタン。設定の「回数バッジ」と同じ値)
+function countBtnPaint(){ const b=document.getElementById("btnCount"); if(!b) return;
+  b.style.background=showCountBadge?"#f5a623":"rgba(19,26,42,.92)"; b.style.color=showCountBadge?"#1a1206":"#8b98ad";
+  b.style.textDecoration=showCountBadge?"none":"line-through"; }
+document.getElementById("btnCount").onclick=()=>{
+  showCountBadge=!showCountBadge; localStorage.setItem("opt-countbadge", showCountBadge?"1":"0");
+  countBtnPaint(); render();
+  document.querySelectorAll('.opt-btn[data-opt="countbadge"]').forEach(x=>x.classList.toggle("on",showCountBadge));
+  const h=document.getElementById("hint"); if(h){ h.textContent=showCountBadge?"回数の数字を表示":"回数の数字を非表示"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },1500); }
+};
+countBtnPaint();
 
 // ===== 追加(地図タップ → フォーム) =====
 let addMode=false, pendingLL=null;
@@ -7702,12 +7817,20 @@ function importText(text, silent){
     if(c.length>=6 && !isNaN(+c[3]) && !isNaN(+c[4]) && !isNaN(+c[5].replace(/[,¥\s]/g,""))){
       const rec={ d:c[0], t:c[1], p:c[2], lat:+c[3], lng:+c[4], f:+c[5].replace(/[,¥\s]/g,""),
         dst:c[6]||"", m:(c[7]==="st"||c[7]==="流し")?"st":"app", drv:(c[8]||"").trim() };
-      const exists=rides.some(r=>r.d===rec.d && r.t===rec.t && r.f===rec.f && r.lat===rec.lat && r.lng===rec.lng);
-      if(exists){ dup++; return; }
-      rides.push({id:"i"+Date.now()+Math.random(), ...rec});
+      const ok=rec.d+"|"+rec.t+"|"+rec.f+"|"+rec.lat+"|"+rec.lng;
+      const ed=(typeof reLoad==="function")?reLoad():{};
+      if(ed[ok] && ed[ok].del){ dup++; return; }                       // アプリで削除した乗車は取り込まない
+      const ex=rides.find(r=>(r.ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng))===ok);
+      if(ex){
+        // rides.csv側で配車区分・降車地が直っていれば反映(アプリでの修正は後で上書き適用)
+        if(!ed[ok]){ if(ex.m!==rec.m) ex.m=rec.m; if(rec.dst && ex.dst!==rec.dst) ex.dst=rec.dst; }
+        ex.ok=ok; dup++; return;
+      }
+      rides.push({id:"i"+Date.now()+Math.random(), ok, ...rec});
       added++;
     }else{ bad++; }
   });
+  if(typeof applyRideEdits==="function") applyRideEdits();
   save(); render();
   if(silent){
     if(added>0){ // 共有データ取り込み時は控えめに通知
