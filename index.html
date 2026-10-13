@@ -987,7 +987,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.11-2";
+const APP_VER = "2026.10.13-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6606,9 +6606,8 @@ let bigLayer=null, bigOn=false;
 const TRY_SINCE="2026-10-03";   // この営業日以降を「試行後」として数える
 const TRY_SPOTS=[
   {n:"両国2・3", ps:["墨田区両国2","墨田区両国3"], c:[35.69335,139.79343], when:"0時台",
-   note:"京葉道路沿いで張る。錦糸町側(江東橋・錦糸)は0-2時7件で万収ゼロなので寄らない"},
-  {n:"上野2・湯島3", ps:["台東区上野2","文京区湯島3"], c:[35.70807,139.77088], when:"1時台",
-   note:"仲町通り〜春日通り。22-23時は平均¥2,307と弱いので0時を過ぎてから"}
+   note:"京葉道路沿いで張る。錦糸町側(江東橋・錦糸)は0-2時7件で万収ゼロなので寄らない"}
+  // 上野2・湯島3 は地図上で邪魔なため表示をやめた(2026-10-13)
 ];
 function tryStats(s){
   const rs=myRides().filter(r=>s.ps.includes(r.p) && shiftHour(r.t)>=24 && shiftHour(r.t)<27);
