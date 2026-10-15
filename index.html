@@ -208,6 +208,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 #flowSim .detail .real{margin-top:10px}
 #flowSim .note{color:var(--fs-dim);font-size:12px;line-height:1.65;margin-top:26px;border-top:1px solid #1e293a;padding-top:12px}
 #flowSim *{transition:none!important}
+#hud.hud-off{height:0;overflow:hidden;pointer-events:none;}
 </style>
 </head>
 <body>
@@ -242,6 +243,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
   <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
   <button id="btnCount" title="回数の数字を表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">123</button>
+  <button id="btnHud" title="上の窓を表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">窓</button>
   <button id="btnSingles" title="乗車1回だけのエリアを表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">1回</button>
 </div>
 
@@ -985,6 +987,8 @@ function chomeCentroid(name, f){
 }
 let showCountBadge = localStorage.getItem("opt-countbadge")!=="0";
 let showSingles = localStorage.getItem("opt-singles")!=="0";
+let showEvents = localStorage.getItem("opt-events")!=="0";   // 🎪 イベントの表示
+let showHud = localStorage.getItem("opt-hud")!=="0";   // 上の窓(HUD)の表示
 let btnSide = localStorage.getItem("opt-btnside")==="right" ? "right" : "left";   // 地図ボタン列の位置   // 乗車1回だけの町丁目も塗るか
 // 単価→色(10段階・濃緑=低 → 黄 → 赤=高。青系は水域と紛らわしいため不使用)
 function fareTierColor(avg){
@@ -1001,7 +1005,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.15-1";
+const APP_VER = "2026.10.15-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1732,7 +1736,7 @@ function parseEventsFromText(text){
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
   lastEvents = events||[];
-  if(!events || !events.length) return;
+  if(!events || !events.length || !showEvents) return;
   const now=new Date();
   const ms=[];
   events.forEach(ev=>{
@@ -1756,8 +1760,8 @@ function showEventMarkers(events){
       icon:L.divIcon({className:"",iconSize:[74,40],iconAnchor:[37,36],
       html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;opacity:${op};">
         <div style="font-size:${state==="now"||state==="soon"?22:18}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">🎪</div>
-        <div style="background:rgba(19,26,42,.94);color:${col};border:1px solid ${col};border-radius:7px;
-          padding:1px 5px;font-size:9px;font-weight:800;margin-top:-2px;white-space:nowrap;">${label}${sub?" "+sub:""}</div>
+        ${(state==="now"||state==="soon")?`<div style="background:rgba(19,26,42,.94);color:${col};border:1px solid ${col};border-radius:7px;
+          padding:1px 5px;font-size:9px;font-weight:800;margin-top:-2px;white-space:nowrap;">${label}${sub?" "+sub:""}</div>`:""}
       </div>`})});
     m.bindPopup(`<b>${ev.n||""}</b><br>${ev.e||""}<br>`
       +`<span style="color:#8b98ad;">開始 ${ev.s||"?"} / 終演 ${ev.f||"?"}</span>`
@@ -5269,8 +5273,9 @@ function renderSettings(){
       <div style="display:flex;flex-wrap:wrap;gap:5px;">
         <button class="chip opt-btn${showCountBadge?" on":""}" data-opt="countbadge" style="font-size:12px;padding:7px 10px;">🔢 回数バッジ</button>
         <button class="chip opt-btn${waitOn?" on":""}" data-opt="waitspots" style="font-size:12px;padding:7px 10px;">📍 アプリ待機スポット</button>
+        <button class="chip opt-btn${showEvents?" on":""}" data-opt="events" style="font-size:12px;padding:7px 10px;">🎪 イベント</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin:10px 0 5px;">地図のボタン(◎ ＋ − 123 1回)の位置</div>
+      <div style="font-size:12px;color:var(--muted);margin:10px 0 5px;">地図のボタン(◎ ＋ − 123 窓 1回)の位置</div>
       <div style="display:flex;gap:5px;">
         <button class="chip btn-side${btnSide==="left"?" on":""}" data-side="left" style="flex:1;font-size:13px;padding:8px 10px;">◀ 左</button>
         <button class="chip btn-side${btnSide==="right"?" on":""}" data-side="right" style="flex:1;font-size:13px;padding:8px 10px;">右 ▶</button>
@@ -5293,6 +5298,10 @@ function renderSettings(){
   body.querySelectorAll(".opt-btn").forEach(b=>b.onclick=()=>{
     if(b.dataset.opt==="waitspots"){
       toggleWaitSpots(); b.classList.toggle("on", waitOn); return;
+    }
+    if(b.dataset.opt==="events"){
+      showEvents=!showEvents; localStorage.setItem("opt-events", showEvents?"1":"0");
+      b.classList.toggle("on", showEvents); showEventMarkers(lastEvents); return;
     }
     if(b.dataset.opt==="countbadge"){
       showCountBadge=!showCountBadge;
@@ -7804,7 +7813,7 @@ document.getElementById("btnSingles").onclick=()=>{
   const h=document.getElementById("hint"); if(h){ h.textContent=showSingles?"1回だけのエリアも表示":"1回だけのエリアを非表示"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },1600); }
 };
 singlesBtnPaint();
-// 地図ボタン列(◎＋−123 1回)を左右どちらに置くか。凡例は反対側へ
+// 地図ボタン列(◎＋−123 窓 1回)を左右どちらに置くか。凡例は反対側へ
 function setBtnSide(side){
   btnSide = side==="right" ? "right" : "left";
   try{ localStorage.setItem("opt-btnside", btnSide); }catch(e){}
@@ -7814,6 +7823,19 @@ function setBtnSide(side){
     lg.style.justifyContent = btnSide==="left" ? "flex-end" : "flex-start"; }
 }
 setBtnSide(btnSide);
+// 上の窓(HUD)の表示/非表示。高さ0にするだけなので、下に並ぶボタン等の位置計算はそのまま使える
+function applyHud(){
+  const hud=document.getElementById("hud"), b=document.getElementById("btnHud");
+  if(hud) hud.classList.toggle("hud-off", !showHud);
+  if(b){ b.style.background=showHud?"#f5a623":"rgba(19,26,42,.92)"; b.style.color=showHud?"#1a1206":"#8b98ad"; b.style.textDecoration=showHud?"none":"line-through"; }
+  if(typeof layoutUnderHUD==="function") layoutUnderHUD();
+  if(typeof hankaOn!=="undefined" && hankaOn && typeof renderHanka==="function") try{ renderHanka(); }catch(e){}
+}
+document.getElementById("btnHud").onclick=()=>{
+  showHud=!showHud; try{ localStorage.setItem("opt-hud", showHud?"1":"0"); }catch(e){}
+  applyHud();
+};
+applyHud();
 
 // ===== 追加(地図タップ → フォーム) =====
 let addMode=false, pendingLL=null;
