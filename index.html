@@ -370,6 +370,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="rvSpAna_tsuke" style="flex:1;padding:9px;">🅿️ つけ待ち分析</button>
     <button class="btn" id="rvSpAna_hotel" style="flex:1;padding:9px;">🏨 ホテル分析</button>
   </div>
+  <button class="btn" id="rvAirAna" style="width:100%;padding:9px;margin-bottom:8px;">✈️ 空港(成田・羽田)の実績</button>
   <div id="coachOut" style="display:none;margin-bottom:10px;padding:11px;background:var(--panel2);border:1px solid var(--amber);border-radius:10px;font-size:13px;line-height:1.7;white-space:pre-wrap;"></div>
   <div id="reviewBody"></div>
 </div>
@@ -386,6 +387,15 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="spa-k" data-k="hotel" style="flex:1;padding:9px 0;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid #4dd0e1;background:transparent;color:#4dd0e1;">🏨 ホテル</button>
   </div>
   <div id="spAnaBody"></div>
+</div>
+<div id="airAnaPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1450;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;background:var(--bg);padding:2px 0 6px;z-index:3;">
+    <b style="font-size:16px;">✈️ 空港の実績</b>
+    <span style="flex:1"></span>
+    <span id="airAnaClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div id="airAnaBody"></div>
 </div>
 <div id="diaryPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
@@ -991,7 +1001,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.14-2";
+const APP_VER = "2026.10.15-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6590,7 +6600,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 function showTab(name){
   const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
-  { const sa=document.getElementById("spAnaPanel"); if(sa) sa.style.display="none"; }
+  ["spAnaPanel","airAnaPanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
   document.querySelectorAll(".tab-btn").forEach(b=>{
     const on=b.dataset.tab===name;
@@ -7528,6 +7538,89 @@ document.getElementById("spAnaClose").onclick=()=>{ document.getElementById("spA
   const a=document.getElementById("spAna_"+k); if(a) a.onclick=()=>openSpAna(k);
   const b=document.getElementById("rvSpAna_"+k); if(b) b.onclick=()=>openSpAna(k);
 });
+
+// ===== ✈️ 空港(成田・羽田)の実績ページ =====
+// 降車地で判定: 成田=成田市・芝山町・成田空港 / 羽田=羽田空港(大田区羽田1〜6丁目の住宅地は含めない)
+let airWho="me";   // me=自分だけ / all=全員
+function airKind(r){ const d=r.dst||"";
+  if(/成田市|成田空港|山武郡芝山町/.test(d)) return "nrt";
+  if(/羽田空港/.test(d)) return "hnd";
+  return null; }
+function airWard(p){ const m=(p||"").match(/^(.+?[区市町村])/); return m?m[1]:p||"?"; }
+function airHol(r){ const d=shiftDateStr(r); const w=new Date(d+"T12:00:00").getDay(); return w===0||w===6||(typeof isHoliday==="function"&&isHoliday(d)); }
+function renderAirAna(){
+  const base=airWho==="me" ? myRides() : rides.slice();
+  const N=base.filter(r=>airKind(r)==="nrt"), H=base.filter(r=>airKind(r)==="hnd"), A=N.concat(H);
+  const agg=l=>{ const n=l.length, sum=l.reduce((q,r)=>q+r.f,0); return {n, avg:n?Math.round(sum/n):0, sum}; };
+  const an=agg(N), ah=agg(H);
+  const days=new Set(base.map(r=>shiftDateStr(r))).size;
+  const chip=(v,l)=>`<button class="chip air-who${airWho===v?" on":""}" data-v="${v}" style="flex:1;padding:7px 0;font-size:12px;">${l}</button>`;
+  let h=`<div style="display:flex;gap:6px;margin-bottom:8px;">${chip("me","自分だけ")}${chip("all","全員(共有データ)")}</div>`;
+  h+=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${base.length}件・${days}乗務の中から、降車地が成田(成田市・芝山町)/羽田空港のものを集計</div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;">`
+    + spTile("🛫 成田", an.n+"本", an.n?`平均 ${yen(an.avg)}`:"まだなし")
+    + spTile("🛬 羽田", ah.n+"本", ah.n?`平均 ${yen(ah.avg)}`:"まだなし")
+    + spTile("空港の売上", yen(an.sum+ah.sum), `全売上の ${spPct(an.sum+ah.sum, base.reduce((q,r)=>q+r.f,0))}`)
+    + spTile("出現ペース", A.length?`${(days/A.length).toFixed(1)}乗務に1本`:"—", N.length?`成田は${(days/N.length).toFixed(0)}乗務に1本`:"成田はまだ")
+    + `</div>`;
+  if(N.length<10) h+=`<div style="font-size:11px;color:#ffb74d;margin-top:6px;">※成田は${N.length}本なので傾向はまだ参考程度。1本増えるごとに自動で更新されます</div>`;
+
+  const row=r=>{ const k=airKind(r); const own=!r.drv||normName(r.drv)===normName(MY_NAME);
+    return `<tr class="air-row" data-d="${shiftDateStr(r)}" data-own="${own?1:0}" style="border-top:1px solid var(--line);cursor:pointer;">
+      <td style="padding:6px 3px;color:var(--muted);white-space:nowrap;">${shiftDateStr(r).slice(5).replace("-","/")}(${"日月火水木金土"[new Date(shiftDateStr(r)+"T12:00:00").getDay()]}) ${r.t.slice(0,5)}</td>
+      <td style="padding:6px 3px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.p}</td>
+      <td style="padding:6px 3px;text-align:right;font-weight:800;color:${k==="nrt"?"#ffd54f":"var(--amber)"};font-variant-numeric:tabular-nums;">${yen(r.f)}</td>
+      <td style="padding:6px 2px;font-size:10px;color:var(--muted);white-space:nowrap;">${(r.m||"app")==="app"?"配車":"流し"}${own?"":"・"+(r.drv||"").split(/\s/)[0]}</td></tr>`; };
+  const table=l=>`<table style="border-collapse:collapse;width:100%;font-size:12px;">${l.join("")}</table>`;
+
+  h+=sectionTitle(`🛫 成田 ${N.length}本`);
+  h+= N.length ? table(N.slice().sort((a,b)=>shiftDateStr(b).localeCompare(shiftDateStr(a))||b.t.localeCompare(a.t)).map(row))
+    : `<div style="font-size:12px;color:var(--muted);">まだありません</div>`;
+
+  // 時間帯別: 空港の本数と、その時間帯の乗車に占める割合
+  h+=sectionTitle("時間帯別(空港行きの出やすさ)");
+  const bands=SP_BANDS.map(([lo,hi,l])=>{ const inB=r=>{ const v=spHf(r); return v>=lo&&v<hi; };
+    const all=base.filter(inB), n=N.filter(inB).length, hh=H.filter(inB).length;
+    return {l, all:all.length, n, h:hh, rate:all.length?(n+hh)/all.length:0}; }).filter(b=>b.all);
+  const mxR=Math.max(...bands.map(b=>b.rate),0.0001);
+  h+=bands.map(b=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px;">
+      <span style="width:66px;white-space:nowrap;">${b.l}</span>
+      <span style="flex:1;height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;"><span style="display:block;height:100%;width:${Math.round(b.rate/mxR*100)}%;background:#4dd0e1;"></span></span>
+      <span style="width:118px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">${b.n?`<b style="color:#ffd54f;">成${b.n}</b> `:""}羽${b.h}<span style="color:var(--muted);font-size:10px;"> / ${b.all}件 ${(b.rate*100).toFixed(1)}%</span></span></div>`).join("");
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:2px;">％＝その時間帯の乗車のうち空港行きだった割合</div>`;
+
+  // 乗車エリア別
+  h+=sectionTitle("乗せた場所(区)");
+  const wm=new Map(); A.forEach(r=>{ const w=airWard(r.p); const x=wm.get(w)||{w,n:0,h:0,sum:0}; if(airKind(r)==="nrt") x.n++; else x.h++; x.sum+=r.f; wm.set(w,x); });
+  const wards=[...wm.values()].sort((a,b)=>(b.n-a.n)||((b.n+b.h)-(a.n+a.h)));
+  h+= wards.length ? `<table style="border-collapse:collapse;width:100%;font-size:12px;">
+    <tr style="color:var(--muted);font-size:10px;text-align:right;"><th style="text-align:left;padding:3px;">区</th><th>成田</th><th>羽田</th><th style="padding-right:3px;">合計</th></tr>`
+    + wards.map(x=>`<tr style="border-top:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;"><td style="text-align:left;padding:6px 3px;">${x.w}</td>
+      <td style="color:${x.n?"#ffd54f":"var(--muted)"};font-weight:${x.n?800:400};">${x.n}</td><td>${x.h}</td><td style="padding-right:3px;">${yen(x.sum)}</td></tr>`).join("") + `</table>` : "";
+
+  // 配車/流し・平日/土日祝
+  h+=sectionTitle("配車か流しか・曜日");
+  const cnt=(l,f)=>l.filter(f).length;
+  const isApp=r=>(r.m||"app")==="app";
+  h+=`<table style="border-collapse:collapse;width:100%;font-size:12px;text-align:right;font-variant-numeric:tabular-nums;">
+    <tr style="color:var(--muted);font-size:10px;"><th></th><th>配車</th><th>流し</th><th>平日</th><th style="padding-right:3px;">土日祝</th></tr>
+    <tr style="border-top:1px solid var(--line);"><td style="text-align:left;padding:6px 3px;">🛫 成田</td><td>${cnt(N,isApp)}</td><td>${cnt(N,r=>!isApp(r))}</td><td>${cnt(N,r=>!airHol(r))}</td><td style="padding-right:3px;">${cnt(N,airHol)}</td></tr>
+    <tr style="border-top:1px solid var(--line);"><td style="text-align:left;padding:6px 3px;">🛬 羽田</td><td>${cnt(H,isApp)}</td><td>${cnt(H,r=>!isApp(r))}</td><td>${cnt(H,r=>!airHol(r))}</td><td style="padding-right:3px;">${cnt(H,airHol)}</td></tr></table>`;
+
+  h+=sectionTitle(`🛬 羽田 ${H.length}本`);
+  h+= H.length ? table(H.slice().sort((a,b)=>shiftDateStr(b).localeCompare(shiftDateStr(a))||b.t.localeCompare(a.t)).map(row))
+    : `<div style="font-size:12px;color:var(--muted);">まだありません</div>`;
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:6px;">自分の行をタップすると、その日の日報を開きます</div>`;
+  return h;
+}
+function openAirAna(){
+  const p=document.getElementById("airAnaPanel"), body=document.getElementById("airAnaBody");
+  body.innerHTML=renderAirAna(); p.style.display="block";
+  body.querySelectorAll(".air-who").forEach(b=>b.onclick=()=>{ airWho=b.dataset.v; const y=p.scrollTop; openAirAna(); p.scrollTop=y; });
+  body.querySelectorAll(".air-row").forEach(tr=>tr.onclick=()=>{ if(tr.dataset.own!=="1") return; p.style.display="none"; showTab("diary"); showDayReport(tr.dataset.d); });
+}
+document.getElementById("rvAirAna").onclick=()=>{ openAirAna(); document.getElementById("airAnaPanel").scrollTop=0; };
+document.getElementById("airAnaClose").onclick=()=>{ document.getElementById("airAnaPanel").style.display="none"; };
 
 // ===== エリア別ランキング(タップで オフ→区別→町別 を切替) =====
 let wardLayer=null, wardsOn=false, areaMode=0; // 0:オフ 1:区別 2:町別
