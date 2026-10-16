@@ -339,7 +339,6 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip bd-mode" data-m="app" style="font-size:11px;padding:6px 10px;">📲 アプリ</button>
   </div>
   <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
-  <div id="eventBoard"></div>
   <div id="demandBoard"></div>
   <div style="border-top:1px solid var(--line);margin:14px 0 10px;"></div>
   <div id="briefBody" style="font-size:13px;"></div>
@@ -391,6 +390,12 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="spa-k" data-k="hotel" style="flex:1;padding:9px 0;font-size:14px;font-weight:800;border-radius:10px;border:1.5px solid #4dd0e1;background:transparent;color:#4dd0e1;">🏨 ホテル</button>
   </div>
   <div id="spAnaBody"></div>
+</div>
+<div id="eventPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div id="eventBoard"></div>
+  <div id="eventEmpty" style="display:none;font-size:13px;color:var(--muted);line-height:1.7;padding:20px 4px;">
+    🎪 今日のイベントはまだありません。<br>「📋 今日」タブで「再取得」すると AI が今日のイベントを調べ、ここと地図に出ます。</div>
 </div>
 <div id="livePanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1460;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
@@ -617,6 +622,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="font-size:18px;line-height:1;">🌊</span>流れ</button>
   <button class="tab-btn" data-tab="brief" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📋</span>今日</button>
+  <button class="tab-btn" data-tab="event" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
+    <span style="font-size:18px;line-height:1;">🎪</span>イベント</button>
   <button class="tab-btn" data-tab="live" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📹</span>ライブ</button>
   <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
@@ -1030,7 +1037,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-4";
+const APP_VER = "2026.10.16-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1821,8 +1828,9 @@ function evH2s(h){ const hh=Math.floor(h+1e-6), mm=Math.round((h-hh)*60); return
 const EV_W={A:3,B:1.5,C:0.6};
 function renderEventBoard(){
   const el=document.getElementById("eventBoard"); if(!el) return;
-  const day=(typeof boardDay!=="undefined"&&boardDay)?boardDay:evShiftDay();
-  const evs=(day===evShiftDay() ? lastEvents : (EVENT_SEED[day]||[])).filter(ev=>evLL(ev));
+  const day=evShiftDay();
+  const evs=lastEvents.filter(ev=>evLL(ev));
+  const emp=document.getElementById("eventEmpty"); if(emp) emp.style.display=evs.length?"none":"block";
   if(!evs.length){ el.innerHTML=""; return; }
   const rkc=r=>r==="A"?"#ff5c8a":r==="B"?"#4dd0e1":"#3a465e", rkt=r=>r==="B"?"#062027":"#fff";
   const badge=r=>r?`<span style="display:inline-block;min-width:20px;text-align:center;background:${rkc(r)};color:${rkt(r)};border-radius:6px;padding:1px 5px;font-weight:900;font-size:11px;">${r}</span>`:"";
@@ -1841,7 +1849,7 @@ function renderEventBoard(){
   const nA=evs.filter(e=>e.rk==="A").length;
   const idx=Math.min(100, Math.round(evs.reduce((q,e)=>q+(EV_W[e.rk]||1),0)*4));
   const tile=(l,v,sub,c)=>`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 9px;"><div style="font-size:10px;color:var(--muted);">${l}</div><div style="font-size:${c||17}px;font-weight:900;margin-top:1px;line-height:1.2;">${v}</div><div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub||""}</div></div>`;
-  let h=`<div style="font-size:14px;font-weight:800;margin:4px 0 6px;">🎪 イベント需要ボード <span style="font-size:10px;color:var(--muted);font-weight:400;">${day.slice(5).replace("-","/")}・${evs.length}件</span></div>`;
+  let h=`<div style="font-size:16px;font-weight:800;margin:2px 0 8px;">🎪 イベント需要ボード <span style="font-size:10px;color:var(--muted);font-weight:400;">${day.slice(5).replace("-","/")}・${evs.length}件</span></div>`;
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">`
     + tile("需要指数", `<span style="color:${idx>=70?"#ff5c8a":idx>=40?"#f5a623":"var(--text)"};">${idx}</span><span style="font-size:11px;color:var(--muted);">/100</span>`, `Aランク ${nA}件`)
     + tile("最重要時間帯", pk?`${evH2s(pk[0])}〜${evH2s(pk[1])}`:"—", "流出が最も重なる時間", 16)
@@ -1889,7 +1897,7 @@ function renderEventBoard(){
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
   lastEvents = events||[];
-  try{ if(document.getElementById("briefPanel").style.display==="block") renderEventBoard(); }catch(e){}
+  try{ if(document.getElementById("eventPanel").style.display==="block") renderEventBoard(); }catch(e){}
   if(!events || !events.length || !showEvents) return;
   const now=new Date();
   const ms=[];
@@ -2382,7 +2390,7 @@ function renderDemandBoard(){
   box.querySelectorAll(".plan-area").forEach(b=>b.onclick=()=>{
     planArea=b.dataset.pa;
     localStorage.setItem("plan-area", planArea);
-    renderDemandBoard(); renderEventBoard();
+    renderDemandBoard();
   });
 }
 
@@ -2443,13 +2451,13 @@ ${COACH_TIPS}${kbForPrompt()}
   }
 }
 document.getElementById("btnBrief").onclick=()=>showTab("brief");
-document.getElementById("briefReload").onclick=()=>{ renderDemandBoard(); renderEventBoard(); buildBrief(true); };
+document.getElementById("briefReload").onclick=()=>{ renderDemandBoard(); buildBrief(true); };
 function bdShift(n){
   const base = boardDay ? new Date(boardDay+"T12:00:00") : (()=>{const t=new Date(); if(t.getHours()<5)t.setDate(t.getDate()-1); return t;})();
   base.setDate(base.getDate()+n);
   const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1);
   boardDay = (dsOf(base)===dsOf(t)) ? null : dsOf(base);
-  renderDemandBoard(); renderEventBoard();
+  renderDemandBoard();
   const el=document.getElementById("briefBody");
   const wx=document.getElementById("briefWx");
   if(boardDay){
@@ -2465,7 +2473,7 @@ function bdShift(n){
 document.querySelectorAll(".bd-mode").forEach(b=>b.onclick=()=>{
   bdMode=b.dataset.m;
   document.querySelectorAll(".bd-mode").forEach(x=>x.classList.toggle("on", x.dataset.m===bdMode));
-  renderDemandBoard(); renderEventBoard();
+  renderDemandBoard();
 });
 document.getElementById("evAdd").onclick=()=>{
   const v=prompt("イベントを追加(会場 内容 開始-終了)\n例: 東京ドーム 巨人vs阪神 18:00-21:20");
@@ -2487,7 +2495,7 @@ document.getElementById("evAdd").onclick=()=>{
 };
 document.getElementById("bdPrev").onclick=()=>bdShift(-1);
 document.getElementById("bdNext").onclick=()=>bdShift(1);
-document.getElementById("bdToday").onclick=()=>{ boardDay=null; renderDemandBoard(); renderEventBoard(); buildBrief(false); };
+document.getElementById("bdToday").onclick=()=>{ boardDay=null; renderDemandBoard(); buildBrief(false); };
 document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
 
 // ===== タクシー乗り場(OpenStreetMapのデータ・初回のみ取得して端末に保存) =====
@@ -6757,7 +6765,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 });
 // ===== 下部タブによる画面切替 =====
 function showTab(name){
-  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel"};
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel", event:"eventPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
   ["spAnaPanel","airAnaPanel","livePanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
@@ -6771,7 +6779,8 @@ function showTab(name){
   if(el) el.style.display="block";
   if(name==="diary"){ const on=document.querySelector(".diary-tab.on"); renderDiary(on?on.dataset.t:"y"); }
   if(name==="review") renderReview();
-  if(name==="brief"){ renderDemandBoard(); renderEventBoard(); buildBrief(false); }
+  if(name==="brief"){ renderDemandBoard(); buildBrief(false); }
+  if(name==="event") renderEventBoard();
   if(name==="settings") renderSettings();
   if(name==="live") openLive();
   if(name==="flow"){
@@ -8449,6 +8458,13 @@ setInterval(saveViewState, 30000);
 
 // ===== 起動時の初期状態(現在地ON・ヒートON・時間帯=今) =====
 (function initDefaults(){
+  // 今日のイベント(取り込み済み+AI取得済み)を地図と今日タブに復元。前回の表示状態を引き継ぐ場合も必ず行う
+  try{
+    const c=localStorage.getItem("brief-"+new Date().toISOString().slice(0,10));
+    const o=c?JSON.parse(c):{};
+    const ev=evMerge(EVENT_SEED[evShiftDay()]||[], o.events||[]);
+    if(ev.length) showEventMarkers(ev);
+  }catch(e){}
   const restored = restoreViewState();
   applyAppMode();
   if(restored){
@@ -8474,13 +8490,6 @@ setInterval(saveViewState, 30000);
   updateAirFare();
   applyHidden();
   setTimeout(layoutUnderHUD,60);
-  // 今日のブリーフィングを取得済みならイベントピンを復元
-  try{
-    const c=localStorage.getItem("brief-"+new Date().toISOString().slice(0,10));
-    const o=c?JSON.parse(c):{};
-    const ev=evMerge(EVENT_SEED[evShiftDay()]||[], o.events||[]);
-    if(ev.length) showEventMarkers(ev);
-  }catch(e){}
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
