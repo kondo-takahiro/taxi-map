@@ -393,9 +393,15 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 </div>
 <div id="eventPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;position:sticky;top:-10px;background:var(--bg);padding:4px 0;z-index:3;">
+    <button class="btn" id="evPrev" style="padding:8px 13px;font-size:15px;">◀</button>
+    <button class="btn" id="evToday" style="flex:1;padding:8px 0;font-size:13px;font-weight:700;">今日</button>
+    <button class="btn" id="evNext" style="padding:8px 13px;font-size:15px;">▶</button>
+  </div>
+  <button class="btn" id="evFetch" style="width:100%;padding:10px;margin-bottom:10px;">🔍 この日のイベントをAIで調べる</button>
+  <div id="evFetchMsg" style="display:none;font-size:12px;color:var(--amber);margin:-4px 0 10px;"></div>
   <div id="eventBoard"></div>
-  <div id="eventEmpty" style="display:none;font-size:13px;color:var(--muted);line-height:1.7;padding:20px 4px;">
-    🎪 今日のイベントはまだありません。<br>「📋 今日」タブで「再取得」すると AI が今日のイベントを調べ、ここと地図に出ます。</div>
+  <div id="eventEmpty" style="display:none;font-size:13px;color:var(--muted);line-height:1.7;padding:20px 4px;"></div>
 </div>
 <div id="livePanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1460;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
@@ -1037,7 +1043,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-8";
+const APP_VER = "2026.10.16-9";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1779,8 +1785,50 @@ const EVENT_SEED={
   {n:"サントリーホール",e:"日本フィル 第784回東京定期",o:"18:20",s:"19:00",e2:"21:00〜22:00",fs:"推定",f:"21:15",out:"21:15〜22:15",cap:"約2,000席",rk:"B"},
   {n:"東京オペラシティ",e:"東京フィル オペラシティ定期",o:"18:15",s:"19:00",e2:"20:45〜21:30",fs:"推定",f:"21:00",out:"21:00〜21:45",cap:"約1,600席",rk:"B"},
   {n:"東京ビッグサイト",e:"TOKYO PACK 2026(包装展)",s:"10:00",e2:"17:00",fs:"公式",f:"16:45",out:"16:45〜17:45",cap:"展示会",rk:"B"}
+ ],
+ "2026-10-17":[
+  {n:"代々木第一体育館",e:"吉川晃司 LIVE 2026 Tour Final(最終日)",s:"16:00",e2:"18:30〜19:30",fs:"推定",f:"18:30",out:"18:30〜19:45",cap:"最大 約1.3万人",rk:"A"},
+  {n:"日本武道館",e:"藤井フミヤ 2026 アリーナライブ",o:"15:15",s:"16:30",e2:"19:00〜19:45",fs:"推定",f:"19:00",out:"19:00〜20:15",cap:"約1万人・年齢層高め",rk:"B"},
+  {n:"東京ガーデンシアター",e:"milet live tour \"Made of Glass\"",o:"17:00",s:"18:00",e2:"20:00〜20:30",fs:"推定",f:"20:15",out:"20:15〜21:15",cap:"最大 約8千人・完売",rk:"B"},
+  {n:"歌舞伎座",e:"十月大歌舞伎 3回目(要確認)",s:"18:00",e2:"20:55",fs:"推定",f:"21:00",out:"21:00〜21:30",cap:"劇場",rk:"B"},
+  {n:"東京ビッグサイト",e:"SCAJ スペシャルティコーヒー展(最終日)",e2:"16:00〜17:00",fs:"推定",f:"16:00",out:"16:00〜17:30",cap:"展示会",rk:"C"},
+  {n:"東京ドーム",e:"TOKYO DOME PARK DAY",s:"8:00",e2:"19:00",fs:"公式",f:"17:00",out:"17:00〜19:30",cap:"家族連れ中心",rk:"C"}
+ ],
+ "2026-10-18":[
+  {n:"日本武道館",e:"藤井フミヤ 2026 アリーナライブ(2日目)",o:"14:45",s:"16:00",e2:"18:30〜19:15",fs:"推定",f:"18:15",out:"18:15〜19:30",cap:"約1万人・年齢層高め",rk:"B"},
+  {n:"代々木第一体育館",e:"murffin discs 20th \"murffin Carnival!!\"",s:"14:30",e2:"19:00〜20:00",fs:"推定",f:"19:00",out:"19:00〜20:15",cap:"対バン・若い客層",rk:"B"},
+  {n:"歌舞伎座",e:"十月大歌舞伎 3回目(要確認)",s:"18:00",e2:"20:55",fs:"推定",f:"21:00",out:"21:00〜21:30",cap:"劇場",rk:"B"},
+  {e:"森七菜(2回公演)",n:"大手町三井ホール",lat:35.6862,lng:139.7640,s:"18:30",e2:"20:15〜20:45",fs:"推定",f:"20:15",out:"20:15〜21:00",cap:"小規模",rk:"C"}
+ ],
+ "2026-10-24":[
+  {n:"代々木第一体育館",e:"Ado 有料会員限定LIVE",s:"17:00",e2:"19:00〜19:45",fs:"推定",f:"19:00",out:"19:00〜20:15",cap:"約1.3万人",rk:"A"},
+  {n:"日本武道館",e:"郷ひろみ THE GRAND FINAL",s:"17:00頃(未確認)",e2:"19:30〜20:15",fs:"推定",f:"19:30",out:"19:30〜20:45",cap:"約1万人・年齢層高め",rk:"B"},
+  {n:"TOYOTA ARENA TOKYO",e:"アルバルク東京 vs 三河",s:"15:05",e2:"17:00頃",fs:"推定",f:"17:00",out:"17:00〜18:00",cap:"約1万人",rk:"B"},
+  {n:"Zepp DiverCity",e:"ASIAN KUNG-FU GENERATION",s:"18:00",e2:"20:00〜20:30",fs:"推定",f:"20:00",out:"20:00〜21:00",cap:"約2,400人",rk:"C"},
+  {n:"豊洲PIT",e:"キャロフェス",s:"17:30",e2:"20:00〜21:00",fs:"推定",f:"20:00",out:"20:00〜21:15",cap:"約3,000人",rk:"C"},
+  {n:"東京ガーデンシアター",e:"オモコロチャンネル 爆走ワンダフルパレード！",fs:"推定",f:"20:00",out:"時刻未確認",cap:"最大 約8千人",rk:"C"}
+ ],
+ "2026-10-25":[
+  {n:"代々木第一体育館",e:"Ado 有料会員限定LIVE(2日目)",s:"16:00",e2:"18:00〜18:45",fs:"推定",f:"18:00",out:"18:00〜19:15",cap:"約1.3万人",rk:"A"},
+  {n:"日本武道館",e:"郷ひろみ THE GRAND FINAL(最終日)",s:"16:00頃(未確認)",e2:"18:30〜19:15",fs:"推定",f:"18:30",out:"18:30〜19:45",cap:"約1万人・年齢層高め",rk:"B"},
+  {n:"LINE CUBE SHIBUYA",e:"ビッケブランカ",s:"18:00",e2:"20:00〜20:30",fs:"推定",f:"20:00",out:"20:00〜21:00",cap:"約2,000席",rk:"C"},
+  {n:"Zepp DiverCity",e:"WATWING(2回公演)",s:"15:00 / 19:00",e2:"21:00頃",fs:"推定",f:"21:00",out:"21:00〜21:30",cap:"約2,400人",rk:"C"}
  ]
 };
+// AIで調べた日ごとのイベント(この端末に保存)
+const EV_CACHE="evcache-v1";
+function evCacheLoad(){ try{ return JSON.parse(localStorage.getItem(EV_CACHE))||{}; }catch(e){ return {}; } }
+function evCacheSave(v){ try{ localStorage.setItem(EV_CACHE, JSON.stringify(v)); }catch(e){} }
+let evDay=null;   // イベントタブで見ている日(null=今日)
+function evDayOf(){ return evDay||evShiftDay(); }
+function evEventsFor(day){
+  const c=evCacheLoad()[day];
+  if(day===evShiftDay()) return evMerge(lastEvents, c?c.events:[]);
+  return evMerge(EVENT_SEED[day]||[], c?c.events:[]);
+}
+function evDayLabel(day){ const d=new Date(day+"T12:00:00"); const t=evShiftDay();
+  const diff=Math.round((d-new Date(t+"T12:00:00"))/86400000);
+  return `${d.getMonth()+1}/${d.getDate()}(${"日月火水木金土"[d.getDay()]})${typeof isHoliday==="function"&&isHoliday(day)?"祝":""}`+(diff===0?" 今日":diff===1?" 明日":diff===2?" 明後日":""); }
 function evShiftDay(){ const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
 function evMerge(a,b){ const out=(a||[]).slice(); (b||[]).forEach(x=>{ if(!out.some(y=>(y.n||"")===(x.n||""))) out.push(x); }); return out; }
 // その会場から1km以内・流出時間帯(±30分)の自分の実績
@@ -1828,9 +1876,14 @@ function evH2s(h){ const hh=Math.floor(h+1e-6), mm=Math.round((h-hh)*60); return
 const EV_W={A:3,B:1.5,C:0.6};
 function renderEventBoard(){
   const el=document.getElementById("eventBoard"); if(!el) return;
-  const day=evShiftDay();
-  const evs=lastEvents.filter(ev=>evLL(ev));
-  const emp=document.getElementById("eventEmpty"); if(emp) emp.style.display=evs.length?"none":"block";
+  const day=evDayOf(), isToday=day===evShiftDay();
+  const tb=document.getElementById("evToday"); if(tb) tb.textContent=evDayLabel(day);
+  const c=evCacheLoad()[day];
+  const msg=document.getElementById("evFetchMsg");
+  if(msg && !msg.dataset.busy){ msg.style.display=c?"block":"none"; if(c) msg.textContent=`AIで調べた日時: ${new Date(c.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・${c.events.length}件`; }
+  const evs=evEventsFor(day).filter(ev=>evLL(ev));
+  const emp=document.getElementById("eventEmpty");
+  if(emp){ emp.style.display=evs.length?"none":"block"; emp.innerHTML=`🎪 ${evDayLabel(day)}のイベントはまだありません。<br>上の「🔍 この日のイベントをAIで調べる」を押すと、AI が会場の予定・チケットサイト・ニュースを調べて、ここに出します(20〜60秒)。`; }
   if(!evs.length){ el.innerHTML=""; return; }
   const rkc=r=>r==="A"?"#ff5c8a":r==="B"?"#4dd0e1":"#3a465e", rkt=r=>r==="B"?"#062027":"#fff";
   const badge=r=>r?`<span style="display:inline-block;min-width:20px;text-align:center;background:${rkc(r)};color:${rkt(r)};border-radius:6px;padding:1px 5px;font-weight:900;font-size:11px;">${r}</span>`:"";
@@ -1849,7 +1902,8 @@ function renderEventBoard(){
   const nA=evs.filter(e=>e.rk==="A").length;
   const idx=Math.min(100, Math.round(evs.reduce((q,e)=>q+(EV_W[e.rk]||1),0)*4));
   const tile=(l,v,sub,c)=>`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 9px;"><div style="font-size:10px;color:var(--muted);">${l}</div><div style="font-size:${c||17}px;font-weight:900;margin-top:1px;line-height:1.2;">${v}</div><div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub||""}</div></div>`;
-  let h=`<div style="font-size:16px;font-weight:800;margin:2px 0 8px;">🎪 イベント需要ボード <span style="font-size:10px;color:var(--muted);font-weight:400;">${day.slice(5).replace("-","/")}・${evs.length}件</span></div>`;
+  let h=`<div style="font-size:16px;font-weight:800;margin:2px 0 8px;">🎪 イベント需要ボード <span style="font-size:10px;color:var(--muted);font-weight:400;">${evDayLabel(day)}・${evs.length}件</span></div>`
+    + (c&&c.note?`<div style="font-size:12px;color:var(--amber);margin:-4px 0 8px;">💬 ${c.note}</div>`:"");
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">`
     + tile("需要指数", `<span style="color:${idx>=70?"#ff5c8a":idx>=40?"#f5a623":"var(--text)"};">${idx}</span><span style="font-size:11px;color:var(--muted);">/100</span>`, `Aランク ${nA}件`)
     + tile("最重要時間帯", pk?`${evH2s(pk[0])}〜${evH2s(pk[1])}`:"—", "流出が最も重なる時間", 16)
@@ -1889,10 +1943,54 @@ function renderEventBoard(){
   el.innerHTML=h;
   el.querySelectorAll(".evb-card").forEach(c=>c.onclick=()=>{
     const ev=ord[+c.dataset.k]; const ll=evLL(ev); if(!ll) return;
+    if(!isToday){ showTab("map"); map.setView(ll,16); setTimeout(()=>{ L.popup({maxWidth:290}).setLatLng(ll).setContent(evPopupHtml(ev,ll,"#f5a623",null,"future")).openOn(map); },400); return; }
     if(!showEvents){ showEvents=true; try{ localStorage.setItem("opt-events","1"); }catch(e){} if(typeof evtBtnPaint==="function") evtBtnPaint(); showEventMarkers(lastEvents); }
     showTab("map"); map.setView(ll,16);
     setTimeout(()=>{ if(eventLayer) eventLayer.eachLayer(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-ll[0])<1e-6 && Math.abs(p.lng-ll[1])<1e-6) m.openPopup(); }); },400);
   });
+}
+function evPromptFor(day){
+  const d=new Date(day+"T12:00:00"), M=d.getMonth()+1, D=d.getDate(), dow="日月火水木金土"[d.getDay()];
+  return `あなたは東京のタクシー乗務員向けのイベント調査員です。${day}(${dow}曜${typeof isHoliday==="function"&&isHoliday(day)?"・祝日":""})に東京23区とその周辺で行われる、15:30〜23:59にタクシー需要を生むイベントを調べてください。
+調べ方:
+- まず「${M}月${D}日 東京 ライブ」「${M}月${D}日 フェス 東京」「${M}月${D}日 花火 東京」「${M}月${D}日 お台場 イベント」「${M}月${D}日 東京ドーム」で検索する。
+- 次の会場は1つずつその日の公演を確認する: ${VENUES.join("、")}。東京ドーム・明治神宮球場はプロ野球の試合の有無も確認する(試合終了は開始の約3時間20分後が目安)。
+- 屋外の特設会場(お台場・青海の特設ステージ、海の森公園、日比谷公園、代々木公園)、天王洲・品川・豊洲・晴海の水辺イベント、都内の祭り・寺社行事、両国国技館の相撲以外の興行、ビッグサイトの展示会(最終日は早じまい)も調べる。
+- 公式の予定表に見当たらなくても「なし」と決めつけず、DISK GARAGE・e+・ぴあ・ローチケの公演カレンダーやニュースで日付と会場名で再確認する。
+- 開演・開場は公式やチケットサイトで確認できたものだけ使い、終演は推定でよい。
+出力: 前置きや説明は不要。1行目に「メモ: 」で始まるこの日の需要の一言(40字以内)。最後の行に、確認できたイベントだけを次の形式の1行で出力(なければ EVENTS:[]):
+EVENTS:[{"n":"会場名","e":"催し名","o":"開場","s":"開演","e2":"終演見込み","fs":"公式または推定","f":"人が出始める時刻","out":"流出予測の時間帯","cap":"来場規模","rk":"A/B/C","lat":35.0,"lng":139.0}]
+rk はタクシー需要(A=1万人級か年齢層が高い大型、B=数千人、C=小規模・電車帰り中心)。lat/lng は会場の緯度経度。`;
+}
+async function fetchEventsAI(day){
+  const key=getAIKey(); if(!key) return;
+  const msg=document.getElementById("evFetchMsg"), btn=document.getElementById("evFetch");
+  msg.dataset.busy="1"; msg.style.display="block"; msg.textContent=`${evDayLabel(day)}のイベントを調査中…(20〜60秒)`; btn.disabled=true;
+  try{
+    const r=await callSearchAI(key, evPromptFor(day));
+    if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です"); }
+    if(r.err) throw new Error(r.err);
+    const t=r.text||""; const m=t.match(/EVENTS:(\[[\s\S]*\])/);
+    let events=[]; if(m){ try{ events=JSON.parse(m[1]); }catch(e){ const m2=m[1].match(/\[[\s\S]*?\}\s*\]/); if(m2) try{ events=JSON.parse(m2[0]); }catch(_){} } }
+    events=events.filter(x=>x && (x.n||x.e));
+    const note=(t.match(/メモ[::]\s*(.+)/)||[])[1]||"";
+    const cc=evCacheLoad(); cc[day]={events, note, at:Date.now()};
+    // 古い日(7日より前)は消す
+    const lim=new Date(evShiftDay()+"T12:00:00"); lim.setDate(lim.getDate()-7);
+    Object.keys(cc).forEach(k=>{ if(new Date(k+"T12:00:00")<lim) delete cc[k]; });
+    evCacheSave(cc);
+    if(day===evShiftDay()) showEventMarkers(evMerge(lastEvents, events));
+    delete msg.dataset.busy; renderEventBoard();
+    if(!events.length){ msg.style.display="block"; msg.textContent="イベントは見つかりませんでした"+(note?`(${note})`:""); }
+  }catch(e){ delete msg.dataset.busy; msg.style.display="block"; msg.textContent="取得に失敗しました: "+e.message; }
+  btn.disabled=false;
+}
+function evNav(n){
+  const base=new Date(evDayOf()+"T12:00:00"); base.setDate(base.getDate()+n);
+  const t=new Date(evShiftDay()+"T12:00:00"); const max=new Date(t); max.setDate(max.getDate()+60);
+  if(base<t) base.setTime(t.getTime()); if(base>max) base.setTime(max.getTime());
+  const ds=base.getFullYear()+"-"+String(base.getMonth()+1).padStart(2,"0")+"-"+String(base.getDate()).padStart(2,"0");
+  evDay = ds===evShiftDay()?null:ds; const p=document.getElementById("eventPanel"); renderEventBoard(); p.scrollTop=0;
 }
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
@@ -7889,6 +7987,10 @@ document.getElementById("liveFull").onclick=()=>{ document.getElementById("liveF
 // 画面が裏に回って戻ってきたら、すぐ最新にする
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && document.getElementById("livePanel").style.display==="block") liveRefresh(); });
 
+document.getElementById("evPrev").onclick=()=>evNav(-1);
+document.getElementById("evNext").onclick=()=>evNav(1);
+document.getElementById("evToday").onclick=()=>{ evDay=null; renderEventBoard(); };
+document.getElementById("evFetch").onclick=()=>fetchEventsAI(evDayOf());
 document.getElementById("rvAirAna").onclick=()=>{ openAirAna(); document.getElementById("airAnaPanel").scrollTop=0; };
 document.getElementById("airAnaClose").onclick=()=>{ document.getElementById("airAnaPanel").style.display="none"; };
 
