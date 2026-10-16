@@ -390,6 +390,27 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   </div>
   <div id="spAnaBody"></div>
 </div>
+<div id="livePanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1460;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="position:sticky;top:0;background:var(--bg);padding:2px 0 6px;z-index:3;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <b style="font-size:16px;">📹 乗り場ライブ</b>
+      <span style="flex:1"></span>
+      <span id="liveClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+    </div>
+    <div id="liveJump" style="display:flex;gap:5px;margin-bottom:6px;"></div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);"><input type="checkbox" id="liveAuto" checked style="width:18px;height:18px;"> 自動更新 60秒ごと</label>
+      <span style="flex:1"></span>
+      <button class="btn" id="liveNow" style="padding:7px 12px;font-size:12px;">⟳ 今すぐ更新</button>
+    </div>
+  </div>
+  <div id="liveBody"></div>
+</div>
+<div id="liveFull" style="display:none;position:fixed;inset:0;z-index:3000;background:#000;align-items:center;justify-content:center;flex-direction:column;">
+  <img id="liveFullImg" style="max-width:100%;max-height:85vh;object-fit:contain;">
+  <div id="liveFullCap" style="color:#fff;font-size:13px;margin-top:8px;"></div>
+</div>
 <div id="airAnaPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1450;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;background:var(--bg);padding:2px 0 6px;z-index:3;">
@@ -661,6 +682,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnDiary">📓 日誌</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
+    <button class="btn" id="btnLive">📹 乗り場ライブ</button>
     <button class="btn" id="btnToilet">🚻 トイレ</button>
     <button class="btn" id="btnHotel">🏨 ホテル</button>
     <button class="btn" id="btnLand">🏙 住宅/繁華街</button>
@@ -1005,7 +1027,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.15-3";
+const APP_VER = "2026.10.16-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6609,7 +6631,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 function showTab(name){
   const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
-  ["spAnaPanel","airAnaPanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
+  ["spAnaPanel","airAnaPanel","livePanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
   document.querySelectorAll(".tab-btn").forEach(b=>{
     const on=b.dataset.tab===name;
@@ -7628,6 +7650,101 @@ function openAirAna(){
   body.querySelectorAll(".air-who").forEach(b=>b.onclick=()=>{ airWho=b.dataset.v; const y=p.scrollTop; openAirAna(); p.scrollTop=y; });
   body.querySelectorAll(".air-row").forEach(tr=>tr.onclick=()=>{ if(tr.dataset.own!=="1") return; p.style.display="none"; showTab("diary"); showDayReport(tr.dataset.d); });
 }
+// ===== 📹 乗り場ライブ(東京タクシーセンター公開の乗り場・待機所カメラ) =====
+// 画像のURLは各ページで画像を長押し→「画像のアドレスをコピー」して貼り付ける(端末に保存)
+const LIVE_SITES=[
+  {id:"t1",  tag:"T1",  name:"羽田 第1ターミナル",  sub:"乗り場", page:"https://ttc.taxi-inf.jp/hnd1.php",         cams:["第1乗り場","第2乗り場"]},
+  {id:"t2",  tag:"T2",  name:"羽田 第2ターミナル",  sub:"乗り場", page:"https://ttc.taxi-inf.jp/hnd2.php",         cams:["第3乗り場","第4乗り場"]},
+  {id:"t3",  tag:"T3",  name:"羽田 第3ターミナル",  sub:"乗り場", page:"https://ttc.taxi-inf.jp/No5TaxiStand.php", cams:["第5乗り場・画像1","第5乗り場・画像2"]},
+  {id:"w1",  tag:"待1", name:"羽田 第1タクシー待機所", sub:"待機所", page:"https://ttc.taxi-inf.jp/index.php",     cams:["第1待機所"]},
+  {id:"w34", tag:"待34",name:"羽田 第3・4タクシー待機所", sub:"待機所", page:"https://ttc.taxi-inf.jp/no23.php",   cams:["第3待機所・前方","第3待機所・後方","第4待機所"]},
+  {id:"tyo", tag:"東京",name:"東京駅 八重洲口",     sub:"乗り場・待機所", page:"https://svc01.p-counter.jp/doc-server-taxi/tokyo_taxi/yaesu_taxi_info.html", cams:["乗り場","待機所"]}
+];
+const LIVE_KEY="livecam-v1";
+function liveLoad(){ try{ return JSON.parse(localStorage.getItem(LIVE_KEY))||{}; }catch(e){ return {}; } }
+function liveSave(v){ try{ localStorage.setItem(LIVE_KEY, JSON.stringify(v)); }catch(e){} }
+let liveTimer=null, liveAt=null, liveFrame={};
+function liveCams(site, st){ const extra=(st["+"+site.id]||[]); return site.cams.concat(extra); }
+function liveBust(u){ return u + (u.includes("?")?"&":"?") + "_t=" + Date.now(); }
+function liveHm(d){ return d? String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0") : "—"; }
+function renderLive(){
+  const st=liveLoad(), body=document.getElementById("liveBody");
+  const card=(site,cam,i)=>{ const key=site.id+"|"+i, url=st[key];
+    return `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;">
+      ${url ? `<div style="position:relative;background:#000;aspect-ratio:16/9;"><img class="live-img" data-key="${key}" data-src="${url.replace(/"/g,"&quot;")}" data-cap="${site.name} ${cam}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">
+                 <span class="live-err" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:#f08080;font-size:11px;text-align:center;padding:6px;">読み込めません<br>URLを確認</span></div>`
+            : `<div class="live-set" data-key="${key}" style="aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:var(--panel2);cursor:pointer;color:var(--muted);font-size:11px;text-align:center;padding:6px;">
+                 <span style="font-size:20px;">📋</span>画像URLを貼る</div>`}
+      <div style="display:flex;align-items:center;gap:4px;padding:6px 8px;">
+        <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${cam}</div>
+          <div style="font-size:10px;color:var(--muted);">${url?`<span style="color:#7dd87d;">●</span> 取得 <span class="live-at">${liveHm(liveAt)}</span>`:"未設定"}</div></div>
+        ${url?`<span class="live-set" data-key="${key}" style="font-size:12px;color:var(--muted);cursor:pointer;padding:4px;">✎</span>`:""}
+      </div></div>`; };
+  let h=`<div style="font-size:11px;color:var(--muted);margin:2px 0 8px;line-height:1.6;">東京タクシーセンター公開のカメラです。各カードの「画像URLを貼る」→ 元ページで映像を長押し →「画像のアドレスをコピー」したものを貼り付けます(この端末に保存)。⚠️ 見るのは停車中だけ。</div>`;
+  LIVE_SITES.forEach(site=>{
+    const cams=liveCams(site,st);
+    h+=`<div id="live_${site.id}" style="display:flex;align-items:center;gap:8px;margin:14px 0 8px;scroll-margin-top:110px;">
+      <span style="font-size:11px;border:1px solid var(--line);border-radius:7px;padding:3px 7px;color:var(--muted);">${site.tag}</span>
+      <b style="font-size:15px;">${site.name}</b><span style="font-size:10px;color:var(--muted);">${site.sub}</span>
+      <span style="flex:1"></span>
+      <a href="${site.page}" target="_blank" rel="noopener" style="font-size:11px;color:var(--muted);text-decoration:none;white-space:nowrap;">元ページ ↗</a></div>`;
+    h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${cams.map((c,i)=>card(site,c,i)).join("")}</div>`;
+    h+=`<div style="display:flex;gap:6px;margin-top:6px;">
+      <button class="btn live-frame" data-id="${site.id}" style="flex:1;padding:7px;font-size:11px;">${liveFrame[site.id]?"▲ ページ表示を閉じる":"🖥 元ページをここに表示"}</button>
+      <button class="btn live-add" data-id="${site.id}" style="padding:7px 10px;font-size:11px;">＋ カメラ追加</button></div>`;
+    if(liveFrame[site.id]) h+=`<iframe src="${site.page}" style="width:100%;height:460px;border:1px solid var(--line);border-radius:10px;margin-top:6px;background:#fff;" referrerpolicy="no-referrer"></iframe>
+      <div style="font-size:10px;color:var(--muted);">真っ白なら、そのページはアプリ内表示を禁止しています(元ページ ↗ で開いてください)</div>`;
+  });
+  body.innerHTML=h;
+  document.getElementById("liveJump").innerHTML=LIVE_SITES.map(x=>{ const n=liveCams(x,st).filter((c,i)=>st[x.id+"|"+i]).length;
+    return `<button class="chip live-jump" data-id="${x.id}" style="flex:1;padding:6px 0;font-size:11px;">${x.tag}<span style="color:var(--muted);font-size:9px;"> ${n}</span></button>`; }).join("");
+  document.querySelectorAll(".live-jump").forEach(b=>b.onclick=()=>{ const el=document.getElementById("live_"+b.dataset.id); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); });
+  body.querySelectorAll(".live-set").forEach(el=>el.onclick=()=>{
+    const k=el.dataset.key, v=liveLoad();
+    const u=prompt("画像のアドレス(https://〜)を貼り付けてください。空にすると削除します", v[k]||"");
+    if(u===null) return;
+    const t=u.trim();
+    if(t && !/^https?:\/\//.test(t)){ alert("https:// で始まるアドレスを貼ってください"); return; }
+    if(t) v[k]=t; else delete v[k];
+    liveSave(v); renderLive(); liveRefresh();
+  });
+  body.querySelectorAll(".live-add").forEach(b=>b.onclick=()=>{
+    const n=prompt("追加するカメラの名前(例: 第3待機所・前方)"); if(!n||!n.trim()) return;
+    const v=liveLoad(), k="+"+b.dataset.id; v[k]=(v[k]||[]).concat([n.trim()]); liveSave(v); renderLive(); liveRefresh();
+  });
+  body.querySelectorAll(".live-frame").forEach(b=>b.onclick=()=>{ liveFrame[b.dataset.id]=!liveFrame[b.dataset.id]; const p=document.getElementById("livePanel"), y=p.scrollTop; renderLive(); liveRefresh(); p.scrollTop=y; });
+  body.querySelectorAll(".live-img").forEach(img=>{
+    img.onclick=()=>{ const f=document.getElementById("liveFull"); document.getElementById("liveFullImg").src=img.src; document.getElementById("liveFullCap").textContent=img.dataset.cap+"  (タップで閉じる)"; f.style.display="flex"; };
+    img.onerror=()=>{ const e=img.parentNode.querySelector(".live-err"); if(e) e.style.display="flex"; };
+    img.onload=()=>{ const e=img.parentNode.querySelector(".live-err"); if(e) e.style.display="none"; };
+  });
+}
+function liveRefresh(){
+  liveAt=new Date();
+  document.querySelectorAll("#liveBody .live-img").forEach(img=>{ img.src=liveBust(img.dataset.src); });
+  document.querySelectorAll("#liveBody .live-at").forEach(el=>el.textContent=liveHm(liveAt));
+  const f=document.getElementById("liveFull");
+  if(f.style.display==="flex"){ const cur=[...document.querySelectorAll("#liveBody .live-img")].find(i=>i.dataset.cap===document.getElementById("liveFullCap").textContent.replace(/\s+\(タップで閉じる\)$/,"")); if(cur) document.getElementById("liveFullImg").src=cur.src; }
+}
+function liveTick(on){
+  if(liveTimer){ clearInterval(liveTimer); liveTimer=null; }
+  if(on) liveTimer=setInterval(()=>{ const p=document.getElementById("livePanel"); if(p.style.display!=="block"){ liveTick(false); return; } liveRefresh(); }, 60000);
+}
+function openLive(){
+  const p=document.getElementById("livePanel");
+  renderLive(); p.style.display="block"; p.scrollTop=0; liveRefresh();
+  const auto=document.getElementById("liveAuto");
+  try{ auto.checked=localStorage.getItem("livecam-auto")!=="0"; }catch(e){}
+  liveTick(auto.checked);
+}
+document.getElementById("btnLive").onclick=openLive;
+document.getElementById("liveClose").onclick=()=>{ document.getElementById("livePanel").style.display="none"; liveTick(false); };
+document.getElementById("liveNow").onclick=liveRefresh;
+document.getElementById("liveAuto").onchange=e=>{ try{ localStorage.setItem("livecam-auto", e.target.checked?"1":"0"); }catch(_){} liveTick(e.target.checked); };
+document.getElementById("liveFull").onclick=()=>{ document.getElementById("liveFull").style.display="none"; };
+// 画面が裏に回って戻ってきたら、すぐ最新にする
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && document.getElementById("livePanel").style.display==="block") liveRefresh(); });
+
 document.getElementById("rvAirAna").onclick=()=>{ openAirAna(); document.getElementById("airAnaPanel").scrollTop=0; };
 document.getElementById("airAnaClose").onclick=()=>{ document.getElementById("airAnaPanel").style.display="none"; };
 
