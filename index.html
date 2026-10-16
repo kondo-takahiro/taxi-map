@@ -1037,7 +1037,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-6";
+const APP_VER = "2026.10.16-8";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1932,7 +1932,7 @@ function showEventMarkers(events){
 }
 // 5分ごとに残り時間と色を更新
 setInterval(()=>{ if(lastEvents.length) showEventMarkers(lastEvents); }, 300000);
-const VENUES=["東京ドーム(水道橋)","明治神宮球場","有明アリーナ","東京ガーデンシアター(有明)","日本武道館(九段下)","国立競技場(千駄ヶ谷)","代々木第一体育館","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)"];
+const VENUES=["東京ドーム(水道橋)","明治神宮球場","有明アリーナ","東京ガーデンシアター(有明)","日本武道館(九段下)","国立競技場(千駄ヶ谷)","代々木第一体育館","両国国技館","東京国際フォーラム(有楽町)","東京ビッグサイト","豊洲PIT","Zepp DiverCity(お台場)","LINE CUBE SHIBUYA","NHKホール","サントリーホール(赤坂)","歌舞伎座(銀座)","TOYOTA ARENA TOKYO(青海)","SGC HALL ARIAKE(有明)","新橋演舞場","東京オペラシティ(初台)","すみだトリフォニーホール(錦糸町)","東京体育館(千駄ヶ谷)","Zepp Haneda","LINE CUBE SHIBUYA"];
 async function fetchForecastDay(ds){
   const url="https://api.open-meteo.com/v1/forecast?latitude=35.6812&longitude=139.7671"
     +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=Asia%2FTokyo&forecast_days=8";
@@ -2000,8 +2000,8 @@ async function callSearchAI(key, promptText){
       method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,
         "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1500,
-        tools:[{type:"web_search_20250305",name:"web_search"}],
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:3500,
+        tools:[{type:"web_search_20250305",name:"web_search",max_uses:12}],
         messages:[{role:"user",content:promptText}]})
     });
     const data=await res.json();
@@ -2423,6 +2423,13 @@ async function buildBrief(force){
 そのうえで、次の主要会場について今日の開催情報を確認してください: 東京ドーム、明治神宮球場、有明アリーナ、東京ガーデンシアター、日本武道館、国立競技場、代々木第一体育館。
 東京ドームと明治神宮球場はプロ野球の試合の有無を必ず確認してください(試合終了は開始の約3時間20分後が目安)。
 さらに、次の会場のイベントと、都内の花火大会・大規模な祭り・大型展示会・マラソン等の交通規制を伴う行事も調べてください: ${VENUES.slice(7).join("、")}
+【見落とし防止(必ず守る)】
+- 屋外の特設会場も必ず調べる: お台場・青海の特設ステージ(野外フェス)、海の森公園、日比谷公園、代々木公園、上野公園。「${+today.slice(5,7)}月${+today.slice(8)}日 フェス 東京」「${+today.slice(5,7)}月${+today.slice(8)}日 お台場 イベント」でも検索する。
+- 都内の祭り・寺社行事(お会式・酉の市・例大祭など)と、両国国技館の相撲以外の興行(プロレス・ボクシング)も調べる。
+- 「${+today.slice(5,7)}月${+today.slice(8)}日 花火 東京」で花火大会を必ず検索する。天王洲・品川・豊洲・晴海・お台場の水辺イベント(運河まつり・アートフェス・マルシェ)も確認する。
+- 有明アリーナ・TOYOTA ARENA TOKYO・SGC HALL ARIAKE・東京ガーデンシアター・Zepp DiverCity の湾岸5会場は、1会場ずつ今日の公演を確認する(湾岸は終演が重なりやすい)。
+- 会場の公式予定表に見当たらなくても「予定なし」と決めつけない。DISK GARAGE・e+・ぴあ・ローチケの公演日カレンダーやニュースで、日付と会場名でもう一度検索してから判断する。
+- 開演・開場時刻は公式やチケットサイトで確認できたものだけ「公式」、それ以外は「推定」とする。
 そのうえで、以下を踏まえて今日これからの営業ブリーフィングを日本語で書いてください。
 - 今日の天気: ${wx||"不明"}
 - 本人の過去実績で夜(18-22時)に強いエリア: ${evening.join("、")||"データ少"}
