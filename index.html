@@ -615,6 +615,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="font-size:18px;line-height:1;">🌊</span>流れ</button>
   <button class="tab-btn" data-tab="brief" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📋</span>今日</button>
+  <button class="tab-btn" data-tab="live" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
+    <span style="font-size:18px;line-height:1;">📹</span>ライブ</button>
   <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">⚙️</span>設定</button>
 </nav>
@@ -682,7 +684,6 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnDiary">📓 日誌</button>
     <button class="btn" id="btnRank">🏆 ランキング</button>
     <button class="btn" id="btnStands">🚕 乗り場</button>
-    <button class="btn" id="btnLive">📹 乗り場ライブ</button>
     <button class="btn" id="btnToilet">🚻 トイレ</button>
     <button class="btn" id="btnHotel">🏨 ホテル</button>
     <button class="btn" id="btnLand">🏙 住宅/繁華街</button>
@@ -1027,7 +1028,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-1";
+const APP_VER = "2026.10.16-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6629,7 +6630,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 });
 // ===== 下部タブによる画面切替 =====
 function showTab(name){
-  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel"};
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
   ["spAnaPanel","airAnaPanel","livePanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
@@ -6645,6 +6646,7 @@ function showTab(name){
   if(name==="review") renderReview();
   if(name==="brief"){ renderDemandBoard(); buildBrief(false); }
   if(name==="settings") renderSettings();
+  if(name==="live") openLive();
   if(name==="flow"){
     const mt=document.getElementById("flowMount");
     if(!mt.dataset.ready){
@@ -7737,8 +7739,7 @@ function openLive(){
   try{ auto.checked=localStorage.getItem("livecam-auto")!=="0"; }catch(e){}
   liveTick(auto.checked);
 }
-document.getElementById("btnLive").onclick=openLive;
-document.getElementById("liveClose").onclick=()=>{ document.getElementById("livePanel").style.display="none"; liveTick(false); };
+document.getElementById("liveClose").onclick=()=>{ liveTick(false); showTab("map"); };
 document.getElementById("liveNow").onclick=liveRefresh;
 document.getElementById("liveAuto").onchange=e=>{ try{ localStorage.setItem("livecam-auto", e.target.checked?"1":"0"); }catch(_){} liveTick(e.target.checked); };
 document.getElementById("liveFull").onclick=()=>{ document.getElementById("liveFull").style.display="none"; };
