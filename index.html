@@ -238,13 +238,14 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   </div>
 </div>
 
-<div id="zoomBtns" style="position:fixed;left:10px;top:calc(96px + env(safe-area-inset-top));z-index:900;display:flex;flex-direction:column;gap:8px;">
-  <button id="btnCenter" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:20px;">◎</button>
-  <button id="zoomIn" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
-  <button id="zoomOut" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
-  <button id="btnCount" title="回数の数字を表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">123</button>
-  <button id="btnHud" title="上の窓を表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">窓</button>
-  <button id="btnSingles" title="乗車1回だけのエリアを表示/非表示" style="width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">1回</button>
+<div id="zoomBtns" style="position:fixed;left:10px;top:calc(96px + env(safe-area-inset-top));z-index:900;display:flex;flex-direction:column;gap:6px;">
+  <button id="btnCenter" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:20px;">◎</button>
+  <button id="zoomIn" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">＋</button>
+  <button id="zoomOut" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
+  <button id="btnCount" title="回数の数字を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">123</button>
+  <button id="btnHud" title="上の窓を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">窓</button>
+  <button id="btnEvt" title="イベント🎪を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🎪</button>
+  <button id="btnSingles" title="乗車1回だけのエリアを表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">1回</button>
 </div>
 
 <div id="hankaPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
@@ -1028,7 +1029,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-2";
+const APP_VER = "2026.10.16-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1719,7 +1720,7 @@ document.getElementById("btnAdvice").onclick=()=>{
 document.getElementById("adviceClose").onclick=()=>document.getElementById("advicePanel").style.display="none";
 
 // ===== 今日の営業ブリーフィング(天気予報+主要会場イベント+自分の実績) =====
-const VENUE_LL={"東京ドーム":[35.7056,139.7519],"後楽園ホール":[35.7056,139.7519],"ベルーナドーム":[35.7690,139.4195],"武蔵野の森":[35.6620,139.5290],"Kアリーナ":[35.4650,139.6270],"さいたまスーパーアリーナ":[35.8950,139.6310],"横浜アリーナ":[35.5110,139.6180],"東京体育館":[35.6805,139.7130],"日比谷公園":[35.6740,139.7560],"上野公園":[35.7150,139.7740],"お台場":[35.6270,139.7760],"明治神宮球場":[35.6745,139.7169],"有明アリーナ":[35.6445,139.7920],"東京ガーデンシアター":[35.6420,139.7913],"日本武道館":[35.6934,139.7497],"国立競技場":[35.6779,139.7145],"代々木第一体育館":[35.6668,139.6994],"両国国技館":[35.6970,139.7936],"東京国際フォーラム":[35.6767,139.7639],"東京ビッグサイト":[35.6298,139.7947],"豊洲PIT":[35.6455,139.7842],"Zepp DiverCity":[35.6251,139.7756],"LINE CUBE SHIBUYA":[35.6620,139.7005],"NHKホール":[35.6633,139.6994],"サントリーホール":[35.6663,139.7407],"歌舞伎座":[35.6697,139.7679]};
+const VENUE_LL={"東京ドーム":[35.7056,139.7519],"後楽園ホール":[35.7056,139.7519],"ベルーナドーム":[35.7690,139.4195],"武蔵野の森":[35.6620,139.5290],"Kアリーナ":[35.4650,139.6270],"さいたまスーパーアリーナ":[35.8950,139.6310],"横浜アリーナ":[35.5110,139.6180],"東京体育館":[35.6805,139.7130],"日比谷公園":[35.6740,139.7560],"上野公園":[35.7150,139.7740],"お台場":[35.6270,139.7760],"明治神宮球場":[35.6745,139.7169],"有明アリーナ":[35.6445,139.7920],"東京ガーデンシアター":[35.6420,139.7913],"日本武道館":[35.6934,139.7497],"国立競技場":[35.6779,139.7145],"代々木第一体育館":[35.6668,139.6994],"両国国技館":[35.6970,139.7936],"東京国際フォーラム":[35.6767,139.7639],"東京ビッグサイト":[35.6298,139.7947],"豊洲PIT":[35.6455,139.7842],"Zepp DiverCity":[35.6251,139.7756],"LINE CUBE SHIBUYA":[35.6620,139.7005],"NHKホール":[35.6633,139.6994],"サントリーホール":[35.6663,139.7407],"歌舞伎座":[35.6697,139.7679],"TOYOTA ARENA TOKYO":[35.6246,139.7787],"SGC HALL ARIAKE":[35.6372,139.7929],"新橋演舞場":[35.6672,139.7669],"東京オペラシティ":[35.6836,139.6866],"代々木競技場":[35.6668,139.6994]};
 let eventLayer=null;
 window._evRoute=(lat,lng)=>{ map.closePopup(); showRoute(lat,lng); };
 let lastEvents=[];
@@ -1756,6 +1757,53 @@ function parseEventsFromText(text){
   });
   return out;
 }
+// 手入力・取り込み済みのイベント(営業日ごと)。AIの今日の情報が取れていなくても地図に出す
+// o=開場 s=開演 f=人が出始める時刻(ラベル表示の基準) e2=終演の見込み out=流出予測 cap=規模 rk=需要ランク fs=公式/推定
+const EVENT_SEED={
+ "2026-10-16":[
+  {n:"TOYOTA ARENA TOKYO",e:"=LOVE 9th ANNIVERSARY PREMIUM CONCERT",o:"16:30",s:"18:00",e2:"20:00〜21:30",fs:"推定",f:"20:30",out:"20:30〜22:00",cap:"最大 約1万人",rk:"A"},
+  {n:"代々木第一体育館",e:"吉川晃司 LIVE 2026 Tour Final",o:"17:30",s:"18:30",e2:"20:30〜21:30",fs:"推定",f:"20:45",out:"20:45〜22:00",cap:"最大 約1.3万人",rk:"A"},
+  {n:"東京ガーデンシアター",e:"&TEAM CONCERT TOUR 'Mark on You'",o:"17:00",s:"18:00",e2:"20:00〜21:30",fs:"推定",f:"20:30",out:"20:30〜22:00",cap:"最大 約8千人",rk:"A"},
+  {n:"SGC HALL ARIAKE",e:"山下達郎 PERFORMANCE 2026",o:"17:30",s:"18:30",e2:"21:00〜22:00",fs:"推定(長尺)",f:"21:15",out:"21:15〜22:30",cap:"3,767席・年齢層高め",rk:"A"},
+  {n:"新橋演舞場",e:"IMPACT26",s:"18:00",e2:"20:50",fs:"公式",f:"21:00",out:"21:00〜21:30",cap:"劇場公演",rk:"A"},
+  {n:"歌舞伎座",e:"錦秋十月大歌舞伎 第三部",s:"18:00",e2:"20:55",fs:"公式",f:"21:00",out:"21:00〜21:30",cap:"劇場",rk:"B"},
+  {n:"東京国際フォーラム",e:"ディズニー・オン・クラシック 2026",o:"17:30",s:"18:30",e2:"20:45〜21:45",fs:"推定",f:"21:00",out:"21:00〜22:15",cap:"5,012席",rk:"B"},
+  {n:"サントリーホール",e:"日本フィル 第784回東京定期",o:"18:20",s:"19:00",e2:"21:00〜22:00",fs:"推定",f:"21:15",out:"21:15〜22:15",cap:"約2,000席",rk:"B"},
+  {n:"東京オペラシティ",e:"東京フィル オペラシティ定期",o:"18:15",s:"19:00",e2:"20:45〜21:30",fs:"推定",f:"21:00",out:"21:00〜21:45",cap:"約1,600席",rk:"B"},
+  {n:"東京ビッグサイト",e:"TOKYO PACK 2026(包装展)",s:"10:00",e2:"17:00",fs:"公式",f:"16:45",out:"16:45〜17:45",cap:"展示会",rk:"B"}
+ ]
+};
+function evShiftDay(){ const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
+function evMerge(a,b){ const out=(a||[]).slice(); (b||[]).forEach(x=>{ if(!out.some(y=>(y.n||"")===(x.n||""))) out.push(x); }); return out; }
+// その会場から1km以内・流出時間帯(±30分)の自分の実績
+function evMyStats(ll, ev){
+  const rng=(ev.out||"").match(/(\d{1,2})[::](\d{2})\s*[〜~-]\s*(\d{1,2})[::](\d{2})/);
+  const toH=(h,m)=>{ h=+h; return (h<5?h+24:h)+(+m)/60; };
+  let lo, hi;
+  if(rng){ lo=toH(rng[1],rng[2])-0.5; hi=toH(rng[3],rng[4])+0.5; }
+  else { const f=(ev.f||"").match(/(\d{1,2})[::](\d{2})/); if(!f) return null; lo=toH(f[1],f[2])-0.5; hi=lo+2; }
+  const rs=myRides().filter(r=>{ const v=shiftHour(r.t)+(parseInt(r.t.split(":")[1],10)||0)/60; return v>=lo && v<hi && haversineKm(ll,[r.lat,r.lng])<=1.0; });
+  const n=rs.length; if(!n) return {n:0};
+  return {n, avg:Math.round(rs.reduce((q,r)=>q+r.f,0)/n), big:rs.filter(r=>r.f>=10000).length};
+}
+function evPopupHtml(ev, ll, col, mins, state){
+  const rkc=ev.rk==="A"?"#ff5c8a":ev.rk==="B"?"#4dd0e1":"#8b98ad";
+  const chip=(l,v,extra)=>v?`<span style="display:inline-block;background:#1a2336;border-radius:6px;padding:2px 6px;margin:2px 3px 0 0;font-size:11px;white-space:nowrap;">${l} <b>${v}</b>${extra||""}</span>`:"";
+  const ms=evMyStats(ll, ev);
+  let h=`<div style="min-width:230px;">`
+    + `<div style="display:flex;align-items:flex-start;gap:6px;"><b style="flex:1;font-size:13px;">${ev.e||"開催あり"}</b>`
+    + (ev.rk?`<span style="background:${rkc};color:${ev.rk==="B"?"#062027":"#fff"};border-radius:6px;padding:1px 6px;font-weight:900;font-size:12px;">${ev.rk}</span>`:"")+`</div>`
+    + `<div style="color:#8b98ad;font-size:11px;margin:2px 0 4px;">📍 ${ev.n||""}${ev.cap?" ・ "+ev.cap:""}</div>`
+    + chip("開場",ev.o) + chip("開演",ev.s)
+    + chip("終演", ev.e2 || (ev.out?"":ev.f), ev.fs?` <span style="color:${/公式/.test(ev.fs)?"#7dd87d":"#ffb74d"};font-size:9px;">${ev.fs}</span>`:"")
+    + (ev.out?`<div style="margin-top:4px;font-size:12px;color:#f5a623;">🚶 流出予測 <b>${ev.out}</b></div>`:"")
+    + (mins!=null&&mins>0?`<div style="margin-top:3px;font-size:12px;"><b style="color:${col}">あと約${mins}分で流出開始</b></div>`:"")
+    + (state==="now"?`<div style="margin-top:3px;"><b style="color:#ff5252">いま流出中・需要のピーク</b></div>`:"");
+  if(ms) h+=`<div style="margin-top:5px;padding-top:5px;border-top:1px solid #26324a;font-size:11px;color:#8b98ad;">あなたの実績(1km以内・この時間帯)：`
+    + (ms.n?`<b style="color:#e8edf5;">${ms.n}件・平均${yen(ms.avg)}</b>${ms.big?`・<b style="color:#ffd54f;">万収${ms.big}</b>`:""}`:`<b style="color:#f08080;">0件(未開拓)</b>`)+`</div>`;
+  h+=`<button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:7px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この地図で経路</button></div>`;
+  return h;
+}
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
   lastEvents = events||[];
@@ -1774,7 +1822,7 @@ function showEventMarkers(events){
       if(mins<-90) state="done";                 // 終演から90分超
       else if(mins<=0) state="now";              // 終演直後(需要のピーク)
       else if(mins<=60) state="soon";            // 終演1時間前
-      label = mins>0 ? `${ev.f}終` : (mins>-90 ? "終演直後" : `${ev.f}終`);
+      label = ev.out ? (mins>0 ? `${ev.f}〜流出` : (mins>-90 ? "流出中" : `${ev.f}〜`)) : (mins>0 ? `${ev.f}終` : (mins>-90 ? "終演直後" : `${ev.f}終`));
     }
     const col = state==="now" ? "#ff5252" : state==="soon" ? "#ffd54f" : state==="done" ? "#78909c" : "#f5a623";
     const op  = state==="done" ? .45 : 1;
@@ -1786,11 +1834,7 @@ function showEventMarkers(events){
         ${(state==="now"||state==="soon")?`<div style="background:rgba(19,26,42,.94);color:${col};border:1px solid ${col};border-radius:7px;
           padding:1px 5px;font-size:9px;font-weight:800;margin-top:-2px;white-space:nowrap;">${label}${sub?" "+sub:""}</div>`:""}
       </div>`})});
-    m.bindPopup(`<b>${ev.n||""}</b><br>${ev.e||""}<br>`
-      +`<span style="color:#8b98ad;">開始 ${ev.s||"?"} / 終演 ${ev.f||"?"}</span>`
-      +(mins!=null&&mins>0?`<br><b style="color:${col}">終演まで約${mins}分</b>`:"")
-      +(state==="now"?`<br><b style="color:#ff5252">いま終演直後・需要のピーク</b>`:"")
-      +`<br><button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この地図で経路</button>`);
+    m.bindPopup(()=>evPopupHtml(ev, ll, col, mins, state), {maxWidth:290});
     ms.push(m);
   });
   if(ms.length){ eventLayer=L.layerGroup(ms).addTo(map); }
@@ -2271,7 +2315,7 @@ async function buildBrief(force){
     if(c){ const o=JSON.parse(c);
       document.getElementById("briefWx").textContent=o.wx||"";
       document.getElementById("briefBody").innerHTML=briefFormat(o.text||"");
-      showEventMarkers(o.events||[]);
+      showEventMarkers(evMerge(EVENT_SEED[evShiftDay()]||[], o.events||[]));
       return; }
   }
   document.getElementById("briefWx").textContent="";
@@ -2297,7 +2341,7 @@ ${COACH_TIPS}${kbForPrompt()}
 形式: 前置きなし。「イベント」: **開催が確認できた会場だけ**を記載し、内容と開始/終了目安を書く(「不明」「なし」の会場は一切書かない)。1件も確認できなければ「イベント: 確認できたものなし」の1行のみ。花火・祭り・その他会場も開催があるものだけ書く。
 「狙い」はクールの流れ(第1→第2→第3→青タン)で構成し、研修方針の推奨エリア・連続配車の使い分け・今日の曜日特性・イベント終演を織り込むこと。
 イベントがある場合は「終演後どこへ流れるか」と「その後の二次需要(二次会・帰宅)がどこで出るか」まで一手先を書くこと。会場前で長時間待つのではなく、流れの先回りをする前提で。→「狙い」(時間帯ごとの立ち回りを3〜4文。イベント終演後の会場周辺と、雨なら駅・繁華街の需要増を考慮)の2部構成。「狙い」は3〜4文で簡潔に。
-最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","s":"18:00","f":"21:20","lat":35.7056,"lng":139.7519}]`;
+最後の行に、開催が確認できた催しだけを次の形式の1行で出力(なければ EVENTS:[]): EVENTS:[{"n":"東京ドーム","e":"巨人vs阪神","o":"16:30","s":"18:00","e2":"21:00〜21:30","fs":"推定","f":"21:00","out":"21:00〜22:00","cap":"約4万人","rk":"A","lat":35.7056,"lng":139.7519}] (n=会場名, e=催し名, o=開場, s=開始, e2=終演見込み, fs=終演が公式発表なら"公式"・推定なら"推定", f=人が出始める時刻, out=流出予測の時間帯, cap=来場規模, rk=タクシー需要ランクA/B/C)`;
     const r=await callSearchAI(key, promptText);
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です。もう一度お試しください。"); }
     if(r.err) throw new Error(r.err);
@@ -2309,7 +2353,7 @@ ${COACH_TIPS}${kbForPrompt()}
     }
     if(!events.length) events=parseEventsFromText(text);   // 出力が無ければ本文から拾う
     document.getElementById("briefBody").innerHTML=briefFormat(text);
-    showEventMarkers(events);
+    showEventMarkers(evMerge(EVENT_SEED[evShiftDay()]||[], events));
     localStorage.setItem(cacheKey, JSON.stringify({wx, text, events}));
   }catch(err){
     document.getElementById("briefBody").textContent="取得に失敗しました: "+err.message;
@@ -5298,7 +5342,7 @@ function renderSettings(){
         <button class="chip opt-btn${waitOn?" on":""}" data-opt="waitspots" style="font-size:12px;padding:7px 10px;">📍 アプリ待機スポット</button>
         <button class="chip opt-btn${showEvents?" on":""}" data-opt="events" style="font-size:12px;padding:7px 10px;">🎪 イベント</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin:10px 0 5px;">地図のボタン(◎ ＋ − 123 窓 1回)の位置</div>
+      <div style="font-size:12px;color:var(--muted);margin:10px 0 5px;">地図のボタン(◎ ＋ − 123 窓 🎪 1回)の位置</div>
       <div style="display:flex;gap:5px;">
         <button class="chip btn-side${btnSide==="left"?" on":""}" data-side="left" style="flex:1;font-size:13px;padding:8px 10px;">◀ 左</button>
         <button class="chip btn-side${btnSide==="right"?" on":""}" data-side="right" style="flex:1;font-size:13px;padding:8px 10px;">右 ▶</button>
@@ -5324,7 +5368,7 @@ function renderSettings(){
     }
     if(b.dataset.opt==="events"){
       showEvents=!showEvents; localStorage.setItem("opt-events", showEvents?"1":"0");
-      b.classList.toggle("on", showEvents); showEventMarkers(lastEvents); return;
+      b.classList.toggle("on", showEvents); evtBtnPaint(); showEventMarkers(lastEvents); return;
     }
     if(b.dataset.opt==="countbadge"){
       showCountBadge=!showCountBadge;
@@ -7954,6 +7998,16 @@ document.getElementById("btnHud").onclick=()=>{
   applyHud();
 };
 applyHud();
+// 🎪 イベントの表示/非表示(設定の「🎪 イベント」と同じ値)
+function evtBtnPaint(){ const b=document.getElementById("btnEvt"); if(!b) return;
+  b.style.background=showEvents?"#f5a623":"rgba(19,26,42,.92)"; b.style.opacity=showEvents?"1":".55"; }
+document.getElementById("btnEvt").onclick=()=>{
+  showEvents=!showEvents; try{ localStorage.setItem("opt-events", showEvents?"1":"0"); }catch(e){}
+  evtBtnPaint(); showEventMarkers(lastEvents);
+  document.querySelectorAll('.opt-btn[data-opt="events"]').forEach(x=>x.classList.toggle("on",showEvents));
+  const h=document.getElementById("hint"); if(h){ h.textContent=showEvents?"🎪 イベントを表示":"🎪 イベントを非表示"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },1500); }
+};
+evtBtnPaint();
 
 // ===== 追加(地図タップ → フォーム) =====
 let addMode=false, pendingLL=null;
@@ -8340,7 +8394,9 @@ setInterval(saveViewState, 30000);
   // 今日のブリーフィングを取得済みならイベントピンを復元
   try{
     const c=localStorage.getItem("brief-"+new Date().toISOString().slice(0,10));
-    if(c){ const o=JSON.parse(c); if(o.events&&o.events.length) showEventMarkers(o.events); }
+    const o=c?JSON.parse(c):{};
+    const ev=evMerge(EVENT_SEED[evShiftDay()]||[], o.events||[]);
+    if(ev.length) showEventMarkers(ev);
   }catch(e){}
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
