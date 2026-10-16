@@ -398,7 +398,18 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="evToday" style="flex:1;padding:8px 0;font-size:13px;font-weight:700;">今日</button>
     <button class="btn" id="evNext" style="padding:8px 13px;font-size:15px;">▶</button>
   </div>
-  <button class="btn" id="evFetch" style="width:100%;padding:10px;margin-bottom:10px;">🔍 この日のイベントをAIで調べる</button>
+  <div style="display:flex;gap:6px;margin-bottom:10px;">
+    <button class="btn" id="evPaste" style="flex:1;padding:10px;font-weight:700;">📋 貼り付けて取り込む</button>
+    <button class="btn" id="evFetch" style="flex:1;padding:10px;">🔍 AIで調べる(有料)</button>
+  </div>
+  <div id="evPasteBox" style="display:none;background:var(--panel);border:1px solid var(--amber);border-radius:12px;padding:10px;margin-bottom:10px;">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">チャットで受け取った「EVDATA:」から始まる文字を貼り付けてください</div>
+    <textarea id="evPasteText" style="width:100%;height:120px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;box-sizing:border-box;"></textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <button class="btn on" id="evPasteOk" style="flex:1;padding:9px;">取り込む</button>
+      <button class="btn" id="evPasteCancel" style="padding:9px 14px;">閉じる</button>
+    </div>
+  </div>
   <div id="evFetchMsg" style="display:none;font-size:12px;color:var(--amber);margin:-4px 0 10px;"></div>
   <div id="eventBoard"></div>
   <div id="eventEmpty" style="display:none;font-size:13px;color:var(--muted);line-height:1.7;padding:20px 4px;"></div>
@@ -1043,7 +1054,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-10";
+const APP_VER = "2026.10.16-12";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1880,10 +1891,10 @@ function renderEventBoard(){
   const tb=document.getElementById("evToday"); if(tb) tb.textContent=evDayLabel(day);
   const c=evCacheLoad()[day];
   const msg=document.getElementById("evFetchMsg");
-  if(msg && !msg.dataset.busy){ msg.style.display=c?"block":"none"; if(c) msg.textContent=`AIで調べた日時: ${new Date(c.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・${c.events.length}件`+(c.model?`・${c.model.replace("claude-","").replace(/-(\d)-(\d)$/," $1.$2")}`:""); }
+  if(msg && !msg.dataset.busy){ msg.style.display=c?"block":"none"; if(c) msg.textContent=(c.model==="chat"?"チャットから取り込み: ":"AIで調べた日時: ")+`${new Date(c.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・${c.events.length}件`+(c.model&&c.model!=="chat"?`・${c.model.replace("claude-","").replace(/-(\d)-(\d)$/," $1.$2")}`:"")+(c.yen!=null?`・今回の料金 約${c.yen}円`:""); }
   const evs=evEventsFor(day).filter(ev=>evLL(ev));
   const emp=document.getElementById("eventEmpty");
-  if(emp){ emp.style.display=evs.length?"none":"block"; emp.innerHTML=`🎪 ${evDayLabel(day)}のイベントはまだありません。<br>上の「🔍 この日のイベントをAIで調べる」を押すと、AI が会場の予定・チケットサイト・ニュースを調べて、ここに出します(1〜3分・1回 約60〜90円)。`; }
+  if(emp){ emp.style.display=evs.length?"none":"block"; emp.innerHTML=`🎪 ${evDayLabel(day)}のイベントはまだありません。<br>チャットで「○日のイベントを出して」と頼み、受け取った文字を上の「📋 貼り付けて取り込む」に貼ってください。「🔍 AIで調べる」でも調べられます(有料・30秒〜1分)。`; }
   if(!evs.length){ el.innerHTML=""; return; }
   const rkc=r=>r==="A"?"#ff5c8a":r==="B"?"#4dd0e1":"#3a465e", rkt=r=>r==="B"?"#062027":"#fff";
   const badge=r=>r?`<span style="display:inline-block;min-width:20px;text-align:center;background:${rkc(r)};color:${rkt(r)};border-radius:6px;padding:1px 5px;font-weight:900;font-size:11px;">${r}</span>`:"";
@@ -1965,16 +1976,16 @@ rk はタクシー需要(A=1万人級か年齢層が高い大型、B=数千人�
 async function fetchEventsAI(day){
   const key=getAIKey(); if(!key) return;
   const msg=document.getElementById("evFetchMsg"), btn=document.getElementById("evFetch");
-  msg.dataset.busy="1"; msg.style.display="block"; msg.textContent=`${evDayLabel(day)}のイベントを Opus で調査中…(1〜3分)`; btn.disabled=true;
+  msg.dataset.busy="1"; msg.style.display="block"; msg.textContent=`${evDayLabel(day)}のイベントを調査中…(30秒〜1分)`; btn.disabled=true;
   try{
-    const r=await callSearchAI(key, evPromptFor(day), {model:AI_MODEL.event, maxTokens:6000, maxUses:20});
+    const r=await callSearchAI(key, evPromptFor(day), {model:AI_MODEL.event, maxTokens:4000, maxUses:8, maxTurns:1});
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です"); }
     if(r.err) throw new Error(r.err);
     const t=r.text||""; const m=t.match(/EVENTS:(\[[\s\S]*\])/);
     let events=[]; if(m){ try{ events=JSON.parse(m[1]); }catch(e){ const m2=m[1].match(/\[[\s\S]*?\}\s*\]/); if(m2) try{ events=JSON.parse(m2[0]); }catch(_){} } }
     events=events.filter(x=>x && (x.n||x.e));
     const note=(t.match(/メモ[::]\s*(.+)/)||[])[1]||"";
-    const cc=evCacheLoad(); cc[day]={events, note, at:Date.now(), model:r.model||""};
+    const cc=evCacheLoad(); cc[day]={events, note, at:Date.now(), model:r.model||"", yen:r.yen};
     // 古い日(7日より前)は消す
     const lim=new Date(evShiftDay()+"T12:00:00"); lim.setDate(lim.getDate()-7);
     Object.keys(cc).forEach(k=>{ if(new Date(k+"T12:00:00")<lim) delete cc[k]; });
@@ -1982,7 +1993,7 @@ async function fetchEventsAI(day){
     if(day===evShiftDay()) showEventMarkers(evMerge(lastEvents, events));
     delete msg.dataset.busy; renderEventBoard();
     if(!events.length){ msg.style.display="block"; msg.textContent="イベントは見つかりませんでした"+(note?`(${note})`:""); }
-  }catch(e){ delete msg.dataset.busy; msg.style.display="block"; msg.textContent="取得に失敗しました: "+e.message; }
+  }catch(e){ delete msg.dataset.busy; msg.style.display="block"; msg.textContent=/credit balance/i.test(e.message)?"Anthropic のクレジットが残っていません(Claude Platform の Plans & Billing で確認)":"取得に失敗しました: "+e.message; }
   btn.disabled=false;
 }
 function evNav(n){
@@ -2093,7 +2104,15 @@ function myTopAreas(band){ // 今夜の自分の実績上位(時間帯指定)
   return [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
 }
 // AIのモデル(Anthropic)。イベント調査は精度重視で Opus、それ以外は速さ重視
-const AI_MODEL={ event:"claude-opus-5-5", brief:"claude-haiku-5-5", fast:"claude-haiku-5-5", strong:"claude-sonnet-5-5" };
+const AI_MODEL={ event:"claude-haiku-5-5", brief:"claude-haiku-5-5", fast:"claude-haiku-5-5", strong:"claude-sonnet-5-5" };
+// 料金表(USD/100万トークン)。Web検索は1回 $0.01。1ドル=150円で概算
+const AI_PRICE={"claude-opus-5-5":[4,20],"claude-sonnet-5-5":[2,10],"claude-haiku-5-5":[0.10,0.50]};
+function aiCostYen(model, u){
+  const p=AI_PRICE[model]||[4,20];
+  const inTok=(u.in||0)+(u.cw||0)*1.25+(u.cr||0)*0.1;
+  const hp=(model==="claude-haiku-5-5" && u.maxPrompt>100000) ? [0.5,2.5] : p;
+  return Math.round(((inTok*hp[0] + (u.out||0)*hp[1])/1e6 + (u.search||0)*0.01)*150);
+}
 async function callSearchAI(key, promptText, opt){
   opt=opt||{};
   if(key.startsWith("sk-ant-")){
@@ -2102,7 +2121,8 @@ async function callSearchAI(key, promptText, opt){
     let lastErr=null;
     for(const model of chain){
       let messages=[{role:"user",content:promptText}], text="", data=null;
-      for(let turn=0; turn<4; turn++){   // 検索が長いと pause_turn で一旦止まるので続きを頼む
+      const use={in:0,out:0,cw:0,cr:0,search:0,maxPrompt:0};
+      for(let turn=0; turn<(opt.maxTurns||1); turn++){   // 検索が長いと pause_turn で一旦止まるので続きを頼む
         const res=await fetch("https://api.anthropic.com/v1/messages",{
           method:"POST",
           headers:{"content-type":"application/json","x-api-key":key,
@@ -2114,6 +2134,9 @@ async function callSearchAI(key, promptText, opt){
         if(res.status===401) return {auth:false};
         data=await res.json();
         if(data.error) break;
+        const u=data.usage||{};
+        use.in+=u.input_tokens||0; use.out+=u.output_tokens||0; use.cw+=u.cache_creation_input_tokens||0; use.cr+=u.cache_read_input_tokens||0;
+        use.search+=(u.server_tool_use&&u.server_tool_use.web_search_requests)||0; use.maxPrompt=Math.max(use.maxPrompt,u.input_tokens||0);
         text+=(data.content||[]).map(c=>c.type==="text"?c.text:"").join("");
         if(data.stop_reason!=="pause_turn") break;
         messages=[...messages, {role:"assistant", content:data.content}];
@@ -2123,7 +2146,9 @@ async function callSearchAI(key, promptText, opt){
         if(/model|not_found|not found|permission|access/i.test(lastErr)) continue;   // モデルが使えない→次へ
         return {auth:true, err:lastErr};
       }
-      return {auth:true, text:text.trim(), model};
+      const yen=aiCostYen(model,use);
+      try{ const log=JSON.parse(localStorage.getItem("ai-cost-log")||"[]"); log.push({at:Date.now(),model,yen,use}); localStorage.setItem("ai-cost-log", JSON.stringify(log.slice(-100))); }catch(e){}
+      return {auth:true, text:text.trim(), model, yen, use};
     }
     return {auth:true, err:lastErr||"AIの呼び出しに失敗しました"};
   }
@@ -8011,6 +8036,35 @@ document.getElementById("evPrev").onclick=()=>evNav(-1);
 document.getElementById("evNext").onclick=()=>evNav(1);
 document.getElementById("evToday").onclick=()=>{ evDay=null; renderEventBoard(); };
 document.getElementById("evFetch").onclick=()=>fetchEventsAI(evDayOf());
+// チャットで作ったイベントデータを貼り付けで取り込む。形式: EVDATA:{"2026-10-19":{"note":"…","events":[…]}, …}
+function evImportText(t){
+  t=(t||"").replace(/[“”]/g,'"').replace(/[‘’]/g,"'");
+  const i=t.indexOf("EVDATA:"); if(i<0) throw new Error("「EVDATA:」が見つかりません");
+  const body=t.slice(i+7).trim(); const st=body.indexOf("{"), en=body.lastIndexOf("}");
+  if(st<0||en<0) throw new Error("データの形が正しくありません");
+  const obj=JSON.parse(body.slice(st,en+1));
+  const cc=evCacheLoad(); const days=[];
+  Object.keys(obj).forEach(day=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    const v=obj[day]||{}; const events=(v.events||[]).filter(x=>x&&(x.n||x.e));
+    cc[day]={events, note:v.note||"", at:Date.now(), model:"chat"}; days.push(day);
+  });
+  if(!days.length) throw new Error("日付のデータがありません");
+  evCacheSave(cc);
+  if(days.includes(evShiftDay())){ const c=cc[evShiftDay()]; showEventMarkers(evMerge(lastEvents, c.events)); }
+  return days.sort();
+}
+document.getElementById("evPaste").onclick=()=>{ const b=document.getElementById("evPasteBox"); b.style.display=b.style.display==="block"?"none":"block"; if(b.style.display==="block") document.getElementById("evPasteText").focus(); };
+document.getElementById("evPasteCancel").onclick=()=>{ document.getElementById("evPasteBox").style.display="none"; };
+document.getElementById("evPasteOk").onclick=()=>{
+  const ta=document.getElementById("evPasteText"), msg=document.getElementById("evFetchMsg");
+  try{
+    const days=evImportText(ta.value);
+    ta.value=""; document.getElementById("evPasteBox").style.display="none";
+    evDay = days[0]===evShiftDay()?null:days[0]; renderEventBoard();
+    msg.style.display="block"; msg.textContent=`取り込みました: ${days.map(d=>evDayLabel(d).replace(/ .*/,"")).join("・")}(◀ ▶ で切り替え)`;
+  }catch(e){ msg.style.display="block"; msg.textContent="取り込めませんでした: "+e.message; }
+};
 document.getElementById("rvAirAna").onclick=()=>{ openAirAna(); document.getElementById("airAnaPanel").scrollTop=0; };
 document.getElementById("airAnaClose").onclick=()=>{ document.getElementById("airAnaPanel").style.display="none"; };
 
