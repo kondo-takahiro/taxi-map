@@ -1043,7 +1043,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-9";
+const APP_VER = "2026.10.16-10";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1880,10 +1880,10 @@ function renderEventBoard(){
   const tb=document.getElementById("evToday"); if(tb) tb.textContent=evDayLabel(day);
   const c=evCacheLoad()[day];
   const msg=document.getElementById("evFetchMsg");
-  if(msg && !msg.dataset.busy){ msg.style.display=c?"block":"none"; if(c) msg.textContent=`AIで調べた日時: ${new Date(c.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・${c.events.length}件`; }
+  if(msg && !msg.dataset.busy){ msg.style.display=c?"block":"none"; if(c) msg.textContent=`AIで調べた日時: ${new Date(c.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}・${c.events.length}件`+(c.model?`・${c.model.replace("claude-","").replace(/-(\d)-(\d)$/," $1.$2")}`:""); }
   const evs=evEventsFor(day).filter(ev=>evLL(ev));
   const emp=document.getElementById("eventEmpty");
-  if(emp){ emp.style.display=evs.length?"none":"block"; emp.innerHTML=`🎪 ${evDayLabel(day)}のイベントはまだありません。<br>上の「🔍 この日のイベントをAIで調べる」を押すと、AI が会場の予定・チケットサイト・ニュースを調べて、ここに出します(20〜60秒)。`; }
+  if(emp){ emp.style.display=evs.length?"none":"block"; emp.innerHTML=`🎪 ${evDayLabel(day)}のイベントはまだありません。<br>上の「🔍 この日のイベントをAIで調べる」を押すと、AI が会場の予定・チケットサイト・ニュースを調べて、ここに出します(1〜3分・1回 約60〜90円)。`; }
   if(!evs.length){ el.innerHTML=""; return; }
   const rkc=r=>r==="A"?"#ff5c8a":r==="B"?"#4dd0e1":"#3a465e", rkt=r=>r==="B"?"#062027":"#fff";
   const badge=r=>r?`<span style="display:inline-block;min-width:20px;text-align:center;background:${rkc(r)};color:${rkt(r)};border-radius:6px;padding:1px 5px;font-weight:900;font-size:11px;">${r}</span>`:"";
@@ -1965,16 +1965,16 @@ rk はタクシー需要(A=1万人級か年齢層が高い大型、B=数千人�
 async function fetchEventsAI(day){
   const key=getAIKey(); if(!key) return;
   const msg=document.getElementById("evFetchMsg"), btn=document.getElementById("evFetch");
-  msg.dataset.busy="1"; msg.style.display="block"; msg.textContent=`${evDayLabel(day)}のイベントを調査中…(20〜60秒)`; btn.disabled=true;
+  msg.dataset.busy="1"; msg.style.display="block"; msg.textContent=`${evDayLabel(day)}のイベントを Opus で調査中…(1〜3分)`; btn.disabled=true;
   try{
-    const r=await callSearchAI(key, evPromptFor(day));
+    const r=await callSearchAI(key, evPromptFor(day), {model:AI_MODEL.event, maxTokens:6000, maxUses:20});
     if(!r.auth){ clearAIKey(); throw new Error("APIキーが無効です"); }
     if(r.err) throw new Error(r.err);
     const t=r.text||""; const m=t.match(/EVENTS:(\[[\s\S]*\])/);
     let events=[]; if(m){ try{ events=JSON.parse(m[1]); }catch(e){ const m2=m[1].match(/\[[\s\S]*?\}\s*\]/); if(m2) try{ events=JSON.parse(m2[0]); }catch(_){} } }
     events=events.filter(x=>x && (x.n||x.e));
     const note=(t.match(/メモ[::]\s*(.+)/)||[])[1]||"";
-    const cc=evCacheLoad(); cc[day]={events, note, at:Date.now()};
+    const cc=evCacheLoad(); cc[day]={events, note, at:Date.now(), model:r.model||""};
     // 古い日(7日より前)は消す
     const lim=new Date(evShiftDay()+"T12:00:00"); lim.setDate(lim.getDate()-7);
     Object.keys(cc).forEach(k=>{ if(new Date(k+"T12:00:00")<lim) delete cc[k]; });
@@ -2092,20 +2092,40 @@ function myTopAreas(band){ // 今夜の自分の実績上位(時間帯指定)
   });
   return [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]);
 }
-async function callSearchAI(key, promptText){
+// AIのモデル(Anthropic)。イベント調査は精度重視で Opus、それ以外は速さ重視
+const AI_MODEL={ event:"claude-opus-5-5", brief:"claude-haiku-5-5", fast:"claude-haiku-5-5", strong:"claude-sonnet-5-5" };
+async function callSearchAI(key, promptText, opt){
+  opt=opt||{};
   if(key.startsWith("sk-ant-")){
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"content-type":"application/json","x-api-key":key,
-        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:3500,
-        tools:[{type:"web_search_20250305",name:"web_search",max_uses:12}],
-        messages:[{role:"user",content:promptText}]})
-    });
-    const data=await res.json();
-    if(res.status===401) return {auth:false};
-    if(data.error) return {auth:true, err:data.error.message};
-    return {auth:true, text:(data.content||[]).map(c=>c.type==="text"?c.text:"").join("").trim()};
+    // 使えないモデルだった場合は1段ずつ軽いモデルに落とす
+    const chain=[opt.model||AI_MODEL.brief, "claude-sonnet-5-5", "claude-haiku-5-5"].filter((m,i,a)=>a.indexOf(m)===i);
+    let lastErr=null;
+    for(const model of chain){
+      let messages=[{role:"user",content:promptText}], text="", data=null;
+      for(let turn=0; turn<4; turn++){   // 検索が長いと pause_turn で一旦止まるので続きを頼む
+        const res=await fetch("https://api.anthropic.com/v1/messages",{
+          method:"POST",
+          headers:{"content-type":"application/json","x-api-key":key,
+            "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+          body:JSON.stringify({model, max_tokens:opt.maxTokens||3500,
+            tools:[{type:"web_search_20250305",name:"web_search",max_uses:opt.maxUses||12}],
+            messages})
+        });
+        if(res.status===401) return {auth:false};
+        data=await res.json();
+        if(data.error) break;
+        text+=(data.content||[]).map(c=>c.type==="text"?c.text:"").join("");
+        if(data.stop_reason!=="pause_turn") break;
+        messages=[...messages, {role:"assistant", content:data.content}];
+      }
+      if(data && data.error){
+        lastErr=data.error.message||"error";
+        if(/model|not_found|not found|permission|access/i.test(lastErr)) continue;   // モデルが使えない→次へ
+        return {auth:true, err:lastErr};
+      }
+      return {auth:true, text:text.trim(), model};
+    }
+    return {auth:true, err:lastErr||"AIの呼び出しに失敗しました"};
   }
   // OpenAI: 検索対応モデルを試し、非対応なら通常モデル(天気+実績のみ)に切り替え
   let res=null, data=null;
@@ -2795,7 +2815,7 @@ async function callAI(key, prompt_, strong){
       method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,
         "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:strong?"claude-sonnet-4-6":"claude-haiku-4-5-20251001",max_tokens:strong?2000:400,
+      body:JSON.stringify({model:strong?AI_MODEL.strong:AI_MODEL.fast,max_tokens:strong?2000:400,
         messages:[{role:"user",content:prompt_}]})
     }, strong?110000:45000);
     if(res.status===401) return {auth:false};
@@ -2890,7 +2910,7 @@ async function callVisionAI(key, promptText, dataURLs){
       method:"POST",
       headers:{"content-type":"application/json","x-api-key":key,
         "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:4000,
+      body:JSON.stringify({model:AI_MODEL.fast,max_tokens:4000,
         messages:[{role:"user",content}]})
     });
     if(res.status===401) return {auth:false};
