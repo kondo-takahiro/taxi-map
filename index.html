@@ -339,6 +339,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip bd-mode" data-m="app" style="font-size:11px;padding:6px 10px;">📲 アプリ</button>
   </div>
   <div id="briefWx" style="font-size:13px;color:var(--amber);margin-bottom:8px;"></div>
+  <div id="eventBoard"></div>
   <div id="demandBoard"></div>
   <div style="border-top:1px solid var(--line);margin:14px 0 10px;"></div>
   <div id="briefBody" style="font-size:13px;"></div>
@@ -1029,7 +1030,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-3";
+const APP_VER = "2026.10.16-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1804,9 +1805,91 @@ function evPopupHtml(ev, ll, col, mins, state){
   h+=`<button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:7px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この地図で経路</button></div>`;
   return h;
 }
+function evLL(ev){
+  for(const k in VENUE_LL){ if((ev.n||"").includes(k)) return VENUE_LL[k]; }
+  if(isFinite(ev.lat) && isFinite(ev.lng) && ev.lat>35.4 && ev.lat<36.0) return [+ev.lat,+ev.lng];
+  return null;
+}
+// ===== 🎪 イベント需要ボード(今日タブ) =====
+const EV_AREA={"TOYOTA ARENA TOKYO":"青海","東京ガーデンシアター":"有明","SGC HALL ARIAKE":"有明","有明アリーナ":"有明","Zepp DiverCity":"台場","東京ビッグサイト":"有明","豊洲PIT":"豊洲","新橋演舞場":"銀座・新橋","歌舞伎座":"銀座・新橋","東京国際フォーラム":"有楽町","サントリーホール":"赤坂","東京オペラシティ":"初台","代々木第一体育館":"代々木","代々木競技場":"代々木","国立競技場":"千駄ヶ谷","明治神宮球場":"神宮","東京ドーム":"水道橋","日本武道館":"九段下","両国国技館":"両国","LINE CUBE SHIBUYA":"渋谷","NHKホール":"渋谷","東京体育館":"千駄ヶ谷"};
+function evArea(ev){ for(const k in EV_AREA){ if((ev.n||"").includes(k)) return EV_AREA[k]; } return (ev.n||"").slice(0,8); }
+function evHm2h(t){ const m=(t||"").match(/(\d{1,2})[::](\d{2})/); if(!m) return null; const h=+m[1]; return (h<5?h+24:h)+(+m[2])/60; }
+function evOut(ev){ const m=(ev.out||"").match(/(\d{1,2}[::]\d{2})\s*[〜~-]\s*(\d{1,2}[::]\d{2})/);
+  if(m) return [evHm2h(m[1]), evHm2h(m[2])];
+  const f=evHm2h(ev.f); return f!=null?[f,f+1]:null; }
+function evH2s(h){ const hh=Math.floor(h+1e-6), mm=Math.round((h-hh)*60); return String(hh%24).padStart(2,"0")+":"+String(mm).padStart(2,"0"); }
+const EV_W={A:3,B:1.5,C:0.6};
+function renderEventBoard(){
+  const el=document.getElementById("eventBoard"); if(!el) return;
+  const day=(typeof boardDay!=="undefined"&&boardDay)?boardDay:evShiftDay();
+  const evs=(day===evShiftDay() ? lastEvents : (EVENT_SEED[day]||[])).filter(ev=>evLL(ev));
+  if(!evs.length){ el.innerHTML=""; return; }
+  const rkc=r=>r==="A"?"#ff5c8a":r==="B"?"#4dd0e1":"#3a465e", rkt=r=>r==="B"?"#062027":"#fff";
+  const badge=r=>r?`<span style="display:inline-block;min-width:20px;text-align:center;background:${rkc(r)};color:${rkt(r)};border-radius:6px;padding:1px 5px;font-weight:900;font-size:11px;">${r}</span>`:"";
+  // ピーク(30分刻みの重み合計が最大の連続区間)
+  const slots=[]; for(let t=15.5;t<24;t+=0.5){ let w=0; evs.forEach(ev=>{ const o=evOut(ev); if(o && o[0]<t+0.5 && o[1]>t) w+=EV_W[ev.rk]||1; }); slots.push({t,w}); }
+  const mx=Math.max(...slots.map(x=>x.w)); let pk=null;
+  if(mx>0){ const i0=slots.findIndex(x=>x.w>=mx*0.8); let i1=i0; while(i1+1<slots.length && slots[i1+1].w>=mx*0.8) i1++; pk=[slots[i0].t, slots[i1].t+0.5]; }
+  // エリアごとのまとまり
+  const night=evs.filter(ev=>{ const o=evOut(ev); return o && o[0]>=18; });   // 夜の流出だけでまとまりを見る(昼の展示会は除く)
+  const am=new Map(); night.forEach(ev=>{ const a=evArea(ev); const x=am.get(a)||{a,evs:[],w:0}; x.evs.push(ev); x.w+=EV_W[ev.rk]||1; am.set(a,x); });
+  // 有明・青海・台場は1つの湾岸エリアとして扱う
+  const BAY=["有明","青海","台場"]; const bay=[...am.values()].filter(x=>BAY.includes(x.a));
+  if(bay.length>1){ const m={a:bay.map(x=>x.a).join("・"),evs:[].concat(...bay.map(x=>x.evs)),w:bay.reduce((q,x)=>q+x.w,0)}; bay.forEach(x=>am.delete(x.a)); am.set(m.a,m); }
+  const areas=[...am.values()].map(x=>{ const os=x.evs.map(evOut).filter(Boolean); return Object.assign(x,{lo:Math.min(...os.map(o=>o[0])), hi:Math.max(...os.map(o=>o[1]))}); }).sort((a,b)=>b.w-a.w);
+  const top=areas[0];
+  const nA=evs.filter(e=>e.rk==="A").length;
+  const idx=Math.min(100, Math.round(evs.reduce((q,e)=>q+(EV_W[e.rk]||1),0)*4));
+  const tile=(l,v,sub,c)=>`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 9px;"><div style="font-size:10px;color:var(--muted);">${l}</div><div style="font-size:${c||17}px;font-weight:900;margin-top:1px;line-height:1.2;">${v}</div><div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub||""}</div></div>`;
+  let h=`<div style="font-size:14px;font-weight:800;margin:4px 0 6px;">🎪 イベント需要ボード <span style="font-size:10px;color:var(--muted);font-weight:400;">${day.slice(5).replace("-","/")}・${evs.length}件</span></div>`;
+  h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">`
+    + tile("需要指数", `<span style="color:${idx>=70?"#ff5c8a":idx>=40?"#f5a623":"var(--text)"};">${idx}</span><span style="font-size:11px;color:var(--muted);">/100</span>`, `Aランク ${nA}件`)
+    + tile("最重要時間帯", pk?`${evH2s(pk[0])}〜${evH2s(pk[1])}`:"—", "流出が最も重なる時間", 16)
+    + tile("最大の流出エリア", top?top.a:"—", top?`${top.evs.length}会場 ${evH2s(top.lo)}〜${evH2s(top.hi)}`:"", 16)
+    + tile("終演の重なり", (areas.find(x=>x.evs.length>=2 && x!==top)||{}).a||"—", (()=>{ const x=areas.find(y=>y.evs.length>=2 && y!==top); return x?x.evs.map(e=>(e.e2||e.f||"")+"").join(" / "):"2会場以上の重なりなし"; })(), 16)
+    + `</div>`;
+  // 自分の実績で注意喚起
+  if(top){ const st=top.evs.map(ev=>evMyStats(evLL(ev),ev)).filter(Boolean); const n=st.reduce((q,x)=>q+x.n,0);
+    if(!n) h+=`<div style="margin-top:7px;background:rgba(240,128,128,.12);border:1px solid rgba(240,128,128,.4);border-radius:10px;padding:7px 9px;font-size:12px;line-height:1.55;">⚠️ いちばん需要が出る<b>${top.a}</b>は、その時間帯のあなたの実績が<b>0件</b>(未開拓)です。</div>`; }
+  // イベント一覧
+  h+=`<div style="font-size:12px;font-weight:800;color:var(--amber);margin:12px 0 5px;">🏆 主要イベント(需要順)<span style="font-size:10px;color:var(--muted);font-weight:400;"> タップで地図</span></div>`;
+  const ord=evs.slice().sort((a,b)=>((EV_W[b.rk]||1)-(EV_W[a.rk]||1)) || ((evOut(a)||[99])[0]-(evOut(b)||[99])[0]));
+  const ch=(l,v,x)=>v?`<span style="font-size:10px;background:var(--panel2);border-radius:6px;padding:2px 5px;white-space:nowrap;">${l} <b style="font-size:11px;">${v}</b>${x||""}</span>`:"";
+  h+=ord.map((ev,i)=>{ const ms=evMyStats(evLL(ev),ev);
+    return `<div class="evb-card" data-i="${lastEvents.indexOf(ev)}" data-k="${i}" style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 9px;margin-bottom:6px;cursor:pointer;">
+      <div style="display:flex;gap:6px;align-items:flex-start;"><b style="flex:1;font-size:13px;line-height:1.35;">${ev.e||"開催あり"}</b>${badge(ev.rk)}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin:2px 0 5px;">📍 ${ev.n||""}${ev.cap?" ・ "+ev.cap:""}</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;">${ch("開場",ev.o)}${ch("開演",ev.s)}${ch("終演",ev.e2,ev.fs?` <span style="font-size:9px;color:${/公式/.test(ev.fs)?"#7dd87d":"#ffb74d"};">${ev.fs}</span>`:"")}`
+      + (ev.out?`<span style="font-size:10px;background:rgba(245,166,35,.15);color:var(--amber);border-radius:6px;padding:2px 5px;white-space:nowrap;">流出 <b style="font-size:11px;">${ev.out}</b></span>`:"")+`</div>`
+      + (ms?`<div style="font-size:10px;color:var(--muted);margin-top:4px;">あなたの実績(1km以内・この時間帯)：${ms.n?`<b style="color:var(--text);">${ms.n}件・平均${yen(ms.avg)}</b>${ms.big?`・<b style="color:#ffd54f;">万収${ms.big}</b>`:""}`:`<b style="color:#f08080;">0件</b>`}</div>`:"")
+      + `</div>`; }).join("");
+  // 時間帯別
+  const BANDS=[[15.5,17.5,"15:30〜17:29"],[17.5,19.5,"17:30〜19:29"],[19.5,21.5,"19:30〜21:29"],[21.5,22.5,"21:30〜22:29"],[22.5,24,"22:30〜23:59"]];
+  h+=`<div style="font-size:12px;font-weight:800;color:var(--amber);margin:12px 0 5px;">⏰ 時間帯ごとの流出</div><table style="width:100%;border-collapse:collapse;font-size:11.5px;">`;
+  h+=BANDS.map(([lo,hi,l])=>{ const es=evs.filter(ev=>{ const o=evOut(ev); return o && o[0]<hi && o[1]>lo; });
+    const r=es.some(e=>e.rk==="A")?"A":es.some(e=>e.rk==="B")?"B":es.length?"C":"";
+    const ar=[...new Set(es.map(evArea))].join("・");
+    return `<tr style="border-top:1px solid var(--line);${r==="A"?"background:rgba(255,92,138,.08);":""}"><td style="padding:6px 3px;white-space:nowrap;vertical-align:top;${r==="A"?"font-weight:800;":""}">${l}</td><td style="padding:6px 3px;vertical-align:top;">${badge(r)}</td>
+      <td style="padding:6px 3px;vertical-align:top;">${es.length?ar:`<span style="color:var(--muted);">目立った流出なし</span>`}</td></tr>`; }).join("")+`</table>`;
+  // 重なり
+  const ov=areas.filter(x=>x.evs.length>=2);
+  if(ov.length){
+    h+=`<div style="font-size:12px;font-weight:800;color:var(--amber);margin:12px 0 5px;">🔁 終演の重なり</div>`;
+    h+=ov.map(x=>`<div style="display:flex;gap:6px;font-size:11.5px;padding:5px 2px;border-top:1px solid var(--line);"><b style="white-space:nowrap;">${evH2s(x.lo)}〜${evH2s(x.hi)}</b><span style="flex:1;">${x.a}(${x.evs.map(e=>e.n).join("・")})</span>${badge(x.evs.some(e=>e.rk==="A")?"A":"B")}</div>`).join("");
+  }
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:6px;">終演の「推定」はAIの見込み、「公式」は主催者発表。地図の🎪は左のボタンで表示/非表示</div>`;
+  el.innerHTML=h;
+  el.querySelectorAll(".evb-card").forEach(c=>c.onclick=()=>{
+    const ev=ord[+c.dataset.k]; const ll=evLL(ev); if(!ll) return;
+    if(!showEvents){ showEvents=true; try{ localStorage.setItem("opt-events","1"); }catch(e){} if(typeof evtBtnPaint==="function") evtBtnPaint(); showEventMarkers(lastEvents); }
+    showTab("map"); map.setView(ll,16);
+    setTimeout(()=>{ if(eventLayer) eventLayer.eachLayer(m=>{ const p=m.getLatLng(); if(Math.abs(p.lat-ll[0])<1e-6 && Math.abs(p.lng-ll[1])<1e-6) m.openPopup(); }); },400);
+  });
+}
 function showEventMarkers(events){
   if(eventLayer){ map.removeLayer(eventLayer); eventLayer=null; }
   lastEvents = events||[];
+  try{ if(document.getElementById("briefPanel").style.display==="block") renderEventBoard(); }catch(e){}
   if(!events || !events.length || !showEvents) return;
   const now=new Date();
   const ms=[];
@@ -2299,7 +2382,7 @@ function renderDemandBoard(){
   box.querySelectorAll(".plan-area").forEach(b=>b.onclick=()=>{
     planArea=b.dataset.pa;
     localStorage.setItem("plan-area", planArea);
-    renderDemandBoard();
+    renderDemandBoard(); renderEventBoard();
   });
 }
 
@@ -2360,13 +2443,13 @@ ${COACH_TIPS}${kbForPrompt()}
   }
 }
 document.getElementById("btnBrief").onclick=()=>showTab("brief");
-document.getElementById("briefReload").onclick=()=>{ renderDemandBoard(); buildBrief(true); };
+document.getElementById("briefReload").onclick=()=>{ renderDemandBoard(); renderEventBoard(); buildBrief(true); };
 function bdShift(n){
   const base = boardDay ? new Date(boardDay+"T12:00:00") : (()=>{const t=new Date(); if(t.getHours()<5)t.setDate(t.getDate()-1); return t;})();
   base.setDate(base.getDate()+n);
   const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1);
   boardDay = (dsOf(base)===dsOf(t)) ? null : dsOf(base);
-  renderDemandBoard();
+  renderDemandBoard(); renderEventBoard();
   const el=document.getElementById("briefBody");
   const wx=document.getElementById("briefWx");
   if(boardDay){
@@ -2382,7 +2465,7 @@ function bdShift(n){
 document.querySelectorAll(".bd-mode").forEach(b=>b.onclick=()=>{
   bdMode=b.dataset.m;
   document.querySelectorAll(".bd-mode").forEach(x=>x.classList.toggle("on", x.dataset.m===bdMode));
-  renderDemandBoard();
+  renderDemandBoard(); renderEventBoard();
 });
 document.getElementById("evAdd").onclick=()=>{
   const v=prompt("イベントを追加(会場 内容 開始-終了)\n例: 東京ドーム 巨人vs阪神 18:00-21:20");
@@ -2404,7 +2487,7 @@ document.getElementById("evAdd").onclick=()=>{
 };
 document.getElementById("bdPrev").onclick=()=>bdShift(-1);
 document.getElementById("bdNext").onclick=()=>bdShift(1);
-document.getElementById("bdToday").onclick=()=>{ boardDay=null; renderDemandBoard(); buildBrief(false); };
+document.getElementById("bdToday").onclick=()=>{ boardDay=null; renderDemandBoard(); renderEventBoard(); buildBrief(false); };
 document.getElementById("briefClose").onclick=()=>document.getElementById("briefPanel").style.display="none";
 
 // ===== タクシー乗り場(OpenStreetMapのデータ・初回のみ取得して端末に保存) =====
@@ -6688,7 +6771,7 @@ function showTab(name){
   if(el) el.style.display="block";
   if(name==="diary"){ const on=document.querySelector(".diary-tab.on"); renderDiary(on?on.dataset.t:"y"); }
   if(name==="review") renderReview();
-  if(name==="brief"){ renderDemandBoard(); buildBrief(false); }
+  if(name==="brief"){ renderDemandBoard(); renderEventBoard(); buildBrief(false); }
   if(name==="settings") renderSettings();
   if(name==="live") openLive();
   if(name==="flow"){
