@@ -724,6 +724,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnHeat">ヒート</button>
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
+    <button class="btn" id="btnAirMk">✈️ 空港</button>
     <button class="btn" id="btnHanka">🏮 繁華街</button>
     <button class="btn" id="btnWait">📍 待機スポット</button>
     <button class="btn" id="btnTsuke">🅿️ つけ待ち</button>
@@ -1054,7 +1055,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.16-12";
+const APP_VER = "2026.10.17-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1235,6 +1236,7 @@ function render(){
   markerLayer.clearLayers();
   if(typeof drawWardRank==="function") drawWardRank();
   if(typeof drawBig==="function") drawBig();
+  if(typeof drawAirMk==="function" && airMkOn) drawAirMk();
   if(typeof drawAppRing==="function") drawAppRing();
   if(typeof drawWaitSpots==="function") drawWaitSpots();
   const list = filtered();
@@ -5551,7 +5553,7 @@ async function showRoads(d){
 // ===== 表示ボタンの設定(使わない機能を隠す) =====
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
-  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
@@ -6995,6 +6997,43 @@ document.getElementById("btnMetric").onclick=e=>{
   document.getElementById("quadLegend").style.display = metric==="cnt" ? "flex" : "none";
   document.getElementById("heatLegend").querySelector(".legend-bar").style.display = metric==="cnt" ? "none" : "";
   render();
+};
+// ===== ✈️ 空港行きの乗車地(万収の⭐と同じ形で表示) =====
+// 降車地が成田(成田市・芝山町)/羽田空港の乗車を、乗車地ごとにまとめて表示。時間帯などのフィルターに関係なく全件
+let airMkLayer=null, airMkOn=false;
+function drawAirMk(){
+  if(airMkLayer){ map.removeLayer(airMkLayer); airMkLayer=null; }
+  if(!airMkOn) return;
+  const g=new Map();
+  rides.forEach(r=>{ const k=airKind(r); if(!k) return;
+    const key=k+"|"+r.p; const a=g.get(key)||{k,p:r.p,la:0,lo:0,n:0,items:[]};
+    a.la+=r.lat; a.lo+=r.lng; a.n++; a.items.push(r); g.set(key,a); });
+  const items=[];
+  g.forEach(a=>{
+    const ll=[a.la/a.n, a.lo/a.n];
+    a.items.sort((x,y)=>(y.d+y.t).localeCompare(x.d+x.t));
+    const nrt=a.k==="nrt", col=nrt?"#ffd54f":"#4dd0e1";
+    const label=a.n>1?"×"+a.n:a.items[0].t;
+    const best=a.items.reduce((m,r)=>r.f>m.f?r:m,a.items[0]);
+    items.push(L.marker(ll,{zIndexOffset:nrt?900:600,icon:L.divIcon({className:"",iconSize:[50,36],iconAnchor:[25,32],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="font-size:${nrt?22:19}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">${nrt?"🛫":"✈️"}</div>
+        <div style="background:rgba(19,26,42,.92);color:${col};border:1px solid ${col};border-radius:7px;padding:1px 4px;font-size:9px;font-weight:800;margin-top:-1px;white-space:nowrap;">${nrt?"成田 ":"羽田 "}${label}</div>
+      </div>`})})
+      .bindPopup(`<b>${a.p}</b><br><span style="color:#8b98ad;font-size:11px;">${nrt?"🛫 成田":"✈️ 羽田"}行き ${a.n}本・最高 ${yen(best.f)}</span><br>`
+        + a.items.slice(0,8).map(r=>{ const own=!r.drv||normName(r.drv)===normName(MY_NAME);
+            return `<div style="margin-top:4px;font-size:12px;">${shiftDateStr(r).slice(5).replace("-","/")}(${"日月火水木金土"[new Date(shiftDateStr(r)+"T12:00:00").getDay()]}) ${r.t.slice(0,5)} → ${r.dst||"?"} <b>${yen(r.f)}</b> <span style="color:#8b98ad;">${(r.m||"app")==="app"?"配車":"流し"}${own?"":"・"+r.drv}</span></div>`; }).join("")
+        + (a.items.length>8?`<div style="font-size:11px;color:#8b98ad;margin-top:4px;">ほか${a.items.length-8}本</div>`:"")
+        + `<div style="margin-top:6px;font-size:11px;"><span style="color:#f5a623;cursor:pointer;" onclick="map.closePopup();openAirAna();">✈️ 空港の実績ページを開く</span></div>`, {maxWidth:290}));
+  });
+  airMkLayer=L.layerGroup(items).addTo(map);
+  return [...g.values()].reduce((q,a)=>q+a.n,0);
+}
+function airMkHint(n){
+  const h=document.getElementById("hint"); if(h){ h.textContent=`✈️ 空港行き ${n}本(🛫成田=金 / ✈️羽田=水色)`; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2200); }
+}
+document.getElementById("btnAirMk").onclick=e=>{
+  airMkOn=!airMkOn; e.target.classList.toggle("on",airMkOn); const n=drawAirMk(); if(airMkOn) airMkHint(n);
 };
 document.getElementById("btnBig").onclick=e=>{
   bigOn=!bigOn; e.target.classList.toggle("on",bigOn); render();
@@ -8543,7 +8582,7 @@ function saveViewState(){
     const st={
       minFare, modeFilter, weatherFilter, metric, appMode, coolAuto,
       dows:[...dowSet], tMin, tMax,
-      heatOn, areaMode, bigOn, predictOn, hankaOn, tsukeOn:SP_ON.tsuke, hotelRecOn:SP_ON.hotel,
+      heatOn, areaMode, bigOn, airMkOn, predictOn, hankaOn, tsukeOn:SP_ON.tsuke, hotelRecOn:SP_ON.hotel,
       standsOn, toiletOn, memoOn, railOn, lastOn,
       roads:Object.keys(roadOn).filter(k=>roadOn[k]),
       pois:(typeof poiOn==="object")?Object.keys(poiOn).filter(k=>poiOn[k]):[],
@@ -8596,6 +8635,7 @@ function restoreViewState(){
     if(areaMode===1) ensureChome(); if(areaMode===2) ensureTowns();
   }
   if(st.bigOn){ bigOn=true; const b=document.getElementById("btnBig"); if(b) b.classList.add("on"); }
+  if(st.airMkOn){ airMkOn=true; const b=document.getElementById("btnAirMk"); if(b) b.classList.add("on"); setTimeout(drawAirMk,300); }
   if(st.tsukeOn){ SP_ON.tsuke=true; const b=document.getElementById("btnTsuke"); if(b) b.classList.add("on"); }
   if(st.hotelRecOn){ SP_ON.hotel=true; const b=document.getElementById("btnHotelRec"); if(b) b.classList.add("on"); }
   if(st.hankaOn){ hankaOn=true; hankaList=false; const b=document.getElementById("btnHanka"); if(b) b.classList.add("on"); ensureChome(); }
