@@ -1074,7 +1074,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.18-1";
+const APP_VER = "2026.10.18-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7018,13 +7018,13 @@ document.getElementById("btnMetric").onclick=e=>{
   render();
 };
 // ===== ✈️ 空港行きの乗車地(万収の⭐と同じ形で表示) =====
-// 降車地が成田(成田市・芝山町)/羽田空港の乗車を、乗車地ごとにまとめて表示。時間帯などのフィルターに関係なく全件
+// 降車地が成田(成田市・芝山町)/羽田空港の乗車を、乗車地ごとにまとめて表示。万収の⭐と同じくフィルター(時間帯・曜日・配車区分・天気・単価)に連動
 let airMkLayer=null, airMkOn=false;
 function drawAirMk(){
   if(airMkLayer){ map.removeLayer(airMkLayer); airMkLayer=null; }
   if(!airMkOn) return;
   const g=new Map();
-  rides.forEach(r=>{ const k=airKind(r); if(!k) return;
+  filtered().forEach(r=>{ const k=airKind(r); if(!k) return;
     const key=k+"|"+r.p; const a=g.get(key)||{k,p:r.p,la:0,lo:0,n:0,items:[]};
     a.la+=r.lat; a.lo+=r.lng; a.n++; a.items.push(r); g.set(key,a); });
   const items=[];
@@ -7049,7 +7049,7 @@ function drawAirMk(){
   return [...g.values()].reduce((q,a)=>q+a.n,0);
 }
 function airMkHint(n){
-  const h=document.getElementById("hint"); if(h){ h.textContent=`✈️ 空港行き ${n}本(🛫成田=金 / ✈️羽田=水色)`; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2200); }
+  const h=document.getElementById("hint"); if(h){ h.textContent=n?`✈️ 空港行き ${n}本(今のフィルター条件・🛫成田=金 / ✈️羽田=水色)`:"✈️ 今のフィルター条件では空港行きは0本(時間帯や曜日を広げると出ます)"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2200); }
 }
 document.getElementById("btnAirMk").onclick=e=>{
   airMkOn=!airMkOn; e.target.classList.toggle("on",airMkOn); const n=drawAirMk(); if(airMkOn) airMkHint(n);
