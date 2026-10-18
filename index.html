@@ -233,6 +233,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     </div>
     <div id="hudHot" class="hudl" style="font-size:12px;color:var(--amber);margin-top:2px;">🔥 現在地を取得すると表示されます</div>
     <div id="hudPlan" class="hudl" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;"></div>
+    <div id="hudStrat" class="hudl" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;display:none;"></div>
     <div id="hudAir" class="hudl" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;font-size:11px;"></div>
     <div id="bigWin" class="hudl" style="border-top:1px solid var(--line);margin-top:4px;padding-top:3px;-webkit-line-clamp:3;"></div>
   </div>
@@ -244,6 +245,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="zoomOut" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:24px;font-weight:700;">−</button>
   <button id="btnCount" title="回数の数字を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">123</button>
   <button id="btnHud" title="上の窓を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">窓</button>
+  <button id="btnStrat" title="🧭戦略の窓を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🧭</button>
   <button id="btnEvt" title="イベント🎪を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🎪</button>
   <button id="btnSingles" title="乗車1回だけのエリアを表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">1回</button>
 </div>
@@ -431,6 +433,14 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <div id="evFetchMsg" style="display:none;font-size:12px;color:var(--amber);margin:-4px 0 10px;"></div>
   <div id="eventBoard"></div>
   <div id="eventEmpty" style="display:none;font-size:13px;color:var(--muted);line-height:1.7;padding:20px 4px;"></div>
+</div>
+<div id="stratPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+    <b style="font-size:16px;">🧭 曜日別 税抜10万の戦略</b><span style="flex:1"></span>
+    <span id="stratClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div id="stratBody"></div>
 </div>
 <div id="livePanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1460;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch;">
@@ -661,6 +671,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="font-size:18px;line-height:1;">🎪</span>イベント</button>
   <button class="tab-btn" data-tab="live" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">📹</span>ライブ</button>
+  <button class="tab-btn" data-tab="strat" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
+    <span style="font-size:18px;line-height:1;">🧭</span>戦略</button>
   <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">⚙️</span>設定</button>
 </nav>
@@ -1074,7 +1086,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.18-2";
+const APP_VER = "2026.10.19-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1362,6 +1374,10 @@ function planNow(){
 function updatePlan(){
   const el=document.getElementById("hudPlan");
   if(!el) return;
+  // 10/19〜 「今やること」の行は🧭戦略の行に一本化(曜日を問わない作戦と食い違うため非表示)
+  el.style.display="none";
+  try{ if(typeof updateStratHud==="function") updateStratHud(); }catch(e){}
+  return;
   let p=planNow();
   if(!p){ el.style.display="none"; return; }
   // アプリ営業(配車フィルター)の平日は、配車万収の窓に合わせた文言に差し替える(土日祝は配車万収の実績なし)
@@ -1373,10 +1389,11 @@ function updatePlan(){
   el.innerHTML=`<span style="color:${col};font-weight:800;font-size:12px;">${p.t}</span>`
     + `<span style="font-size:11px;color:var(--muted);margin-left:6px;">${p.d}</span>`;
   setTimeout(layoutUnderHUD,0);
+  try{ if(typeof updateStratHud==="function") updateStratHud(); }catch(e){}
 }
 setInterval(updatePlan, 60000);
 // HUDの行は最大2行まで表示。タップすると全文を開く(12秒で自動的に戻る)
-["hudHot","hudPlan","hudAir","bigWin"].forEach(id=>{
+["hudHot","hudPlan","hudStrat","hudAir","bigWin"].forEach(id=>{
   const el=document.getElementById(id);
   if(!el) return;
   let timer=null;
@@ -6936,7 +6953,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 });
 // ===== 下部タブによる画面切替 =====
 function showTab(name){
-  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel", event:"eventPanel"};
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel", event:"eventPanel", strat:"stratPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
   ["spAnaPanel","airAnaPanel","livePanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
@@ -6952,6 +6969,7 @@ function showTab(name){
   if(name==="review") renderReview();
   if(name==="brief"){ renderDemandBoard(); buildBrief(false); }
   if(name==="event") renderEventBoard();
+  if(name==="strat") renderStrat();
   if(name==="settings") renderSettings();
   if(name==="live") openLive();
   if(name==="flow"){
@@ -8335,6 +8353,149 @@ function applyHud(){
   if(typeof layoutUnderHUD==="function") layoutUnderHUD();
   if(typeof hankaOn!=="undefined" && hankaOn && typeof renderHanka==="function") try{ renderHanka(); }catch(e){}
 }
+// ===== 🧭 曜日別 税抜10万の戦略(rides.csv 10/18時点の曜日平均から作成) =====
+// 金額は税込。目標は税込11万(税抜10万)。hは営業時間(5〜29時、0時=24)
+const STRAT_BANDS=[{k:"c1",n:"第1",lo:5,hi:13},{k:"c2",n:"第2",lo:13,hi:18},{k:"c3",n:"第3",lo:18,hi:22},{k:"ao",n:"青タン",lo:22,hi:29}];
+const STRAT={
+ 1:{name:"月", avg:78373, gap:31600, head:"夜が弱い日。朝の羽田行きで先に稼ぐ",
+   now:[27500,16100,14500,20300], tgt:[32000,23000,20000,35000],
+   items:[
+    {lo:5,hi:9,t:"✈️ 羽田行きの山",d:"週初めの出張で羽田行きが一番出る日。7時には芝・浜松町・品川にいる"},
+    {lo:9,hi:13,t:"東京駅・ホテル",d:"東京駅・八重洲の新幹線客と、ホテルのチェックアウト"},
+    {lo:13,hi:18,t:"一番弱い時間",d:"平均¥16,100。14〜16時に港区・品川で羽田行きの第2波を狙い、+7,000"},
+    {lo:18,hi:22,t:"残業帰り",d:"大手町・虎ノ門の残業帰り"},
+    {lo:22,hi:29,t:"⭐ 新橋・両国",d:"新橋(万収2)と両国(万収3)。両国は千葉方面の長距離が出る"}]},
+ 2:{name:"火", avg:88001, gap:22000, head:"夜にも万収が出る。青タンで伸ばす",
+   now:[29000,21500,16200,21400], tgt:[32000,24000,18000,36000],
+   items:[
+    {lo:5,hi:13,t:"✈️ 羽田の型",d:"月曜と同じ。平均¥29,000と強いので維持"},
+    {lo:13,hi:18,t:"羽田の第2波",d:"港区・東京駅で羽田行きを狙う"},
+    {lo:18,hi:22,t:"⭐ 新橋・八重洲",d:"新橋(万収2)・八重洲(万収1)。夜に万収が出る数少ない曜日"},
+    {lo:22,hi:29,t:"⭐ 六本木・新橋・上野",d:"六本木(万収4)・新橋(万収3)・上野(万収2)。ここで+1.5万"}]},
+ 3:{name:"水", avg:79751, gap:30200, head:"朝が一番弱い。羽田の型を徹底する",
+   now:[25100,19900,15200,19600], tgt:[32000,25000,18000,35000],
+   items:[
+    {lo:5,hi:13,t:"✈️ 羽田の型を徹底",d:"朝が一番弱い(平均¥25,100)。7時に港区南部で+7,000"},
+    {lo:13,hi:18,t:"⭐ 東上野・成田",d:"東上野(万収3、成田¥32,180)。上野・秋葉原のホテルから成田行き"},
+    {lo:18,hi:22,t:"回転で稼ぐ",d:"無理に伸ばさず回転"},
+    {lo:22,hi:29,t:"⭐ 上野・両国",d:"上野(万収4)・両国(万収2)。東側で千葉・埼玉方面の長距離"}]},
+ 4:{name:"木", avg:90083, gap:19900, head:"青タンの銀座・築地が全曜日で一番の当たり",
+   now:[27300,19900,15900,27000], tgt:[30000,22000,18000,40000],
+   items:[
+    {lo:5,hi:9,t:"⭐ 荒川・虎ノ門",d:"荒川(万収2)・虎ノ門(万収1)。足立・荒川で出庫してそのまま羽田の型へ"},
+    {lo:9,hi:13,t:"✈️ 羽田の型",d:"港区南部・東京駅・ホテル"},
+    {lo:13,hi:18,t:"羽田の第2波",d:"港区・東京駅で羽田行き"},
+    {lo:18,hi:22,t:"回転→銀座へ",d:"回転で稼ぎ、21時台は銀座に寄っておく"},
+    {lo:22,hi:25,t:"⭐⭐ 銀座・築地から動かない",d:"銀座(万収7)・築地(万収6)・六本木(万収4)。22〜1時はここ。+1.3万"},
+    {lo:25,hi:29,t:"六本木・帰庫",d:"六本木が残る。2時以降は北東方向の客で帰庫"}]},
+ 5:{name:"金", avg:101241, gap:8800, head:"平均で目標目前。新橋で万収をあと1本",
+   now:[30700,21700,16700,32200], tgt:[32000,22000,18000,38000],
+   items:[
+    {lo:5,hi:13,t:"⭐ 猿楽町・羽田の型",d:"猿楽町(万収2)・三鷹・千住元町。一番強い朝。いつもの羽田の型でよい"},
+    {lo:13,hi:18,t:"週末の旅行客",d:"東京駅・羽田へ向かう旅行客。東京駅・八重洲に寄せる"},
+    {lo:18,hi:22,t:"⭐ 日本橋本町・上野公園",d:"日本橋本町(万収4、成田あり)・上野公園"},
+    {lo:22,hi:29,t:"⭐⭐ 新橋・烏森口が軸",d:"新橋(6件 平均¥7,498・万収2)・上野・歌舞伎町(各万収2)・虎ノ門。万収1本で達成"}]},
+ 6:{name:"土", avg:85290, gap:24700, head:"🎪イベントの終演で夜の谷を埋める",
+   now:[26800,19400,12900,26100], tgt:[30000,22000,18000,40000],
+   items:[
+    {lo:5,hi:8,t:"⭐ 歌舞伎町の朝帰り",d:"歌舞伎町(万収1)"},
+    {lo:8,hi:13,t:"旅行客",d:"羽田・東京駅行きは平日より遅く8〜11時に出る"},
+    {lo:13,hi:18,t:"🎪 会場へ向かう客",d:"開演前の会場行き。有明・ビッグサイトの展示会の終わり"},
+    {lo:18,hi:22,t:"🎪 終演で埋める",d:"一番弱い(平均¥12,900)。武道館・代々木・有明・歌舞伎座の終演。+5,000"},
+    {lo:22,hi:29,t:"⭐ 湯島・上野で粘る",d:"湯島(万収3)・上野(万収1)。22時以降18件 平均¥5,692。遅いほど単価が上がる"}]},
+ 0:{name:"日", avg:76098, gap:33900, head:"夜は万収ゼロ。昼までに稼ぎ切る",
+   now:[27500,21400,16100,11200], tgt:[33000,26000,20000,16000], real:"現実的には税込9.5万＋空港1本",
+   items:[
+    {lo:5,hi:13,t:"✈️ 旅行帰りの羽田・東京駅",d:"羽田行きと東京駅へ向かう客。+5,500"},
+    {lo:13,hi:18,t:"🎪 昼公演・空港帰り",d:"平均¥21,400と強い。昼公演の終わり(15〜17時)と羽田・東京駅からの帰り。+4,500"},
+    {lo:18,hi:22,t:"🎪 早い終演",d:"日曜は終演が早い"},
+    {lo:22,hi:29,t:"深追いしない",d:"平均¥11,200で万収ゼロ。羽田・東京駅の到着客を狙い、繁華街は深追いしない"}]}
+};
+const STRAT_HANEDA=[
+ ["拾う時間","出発便のピークは7〜10時。都内で拾うなら7〜9:30と14〜17時"],
+ ["拾う場所","芝・浜松町・田町・品川、東京駅・八重洲、外資系ホテルと有明のホテル"],
+ ["料金","港区・中央区・江東区・品川・目黒・大田は定額の対象外でメーター料金"],
+ ["羽田で付けるか","📹ライブで待ち60分以内なら付ける。超えるなら空車で都心へ。待ち込みで時給5,500〜6,000円を下回るなら付けない"]
+];
+let showStrat = localStorage.getItem("opt-strat")!=="0";
+let stratDow = null;   // 戦略タブで見ている曜日(null=今日)
+function stratShiftHour(){ const d=new Date(); const h=d.getHours()+d.getMinutes()/60; return h<5?h+24:h; }
+function stratTodayDow(){ return new Date(evShiftDay()+"T12:00:00").getDay(); }
+function stratSalesToday(){
+  const ds=evShiftDay(); let s=0, n=0;
+  try{ myRides().forEach(r=>{ if(shiftDateStr(r)===ds){ s+=r.f||0; n++; } }); }catch(e){}
+  return {s,n};
+}
+// その時刻までの累計目標(クール内は直線で按分)
+function stratTargetAt(st, h){
+  let acc=0;
+  for(let i=0;i<STRAT_BANDS.length;i++){
+    const b=STRAT_BANDS[i];
+    if(h>=b.hi){ acc+=st.tgt[i]; continue; }
+    if(h>b.lo) acc+=st.tgt[i]*(h-b.lo)/(b.hi-b.lo);
+    break;
+  }
+  return Math.round(acc);
+}
+function stratItemAt(st,h){ return st.items.find(x=>h>=x.lo&&h<x.hi)||null; }
+function stratBandIdx(h){ return STRAT_BANDS.findIndex(b=>h>=b.lo&&h<b.hi); }
+const sbH=h=>(h>=24?h-24:h)+"時";
+function updateStratHud(){
+  const el=document.getElementById("hudStrat"); if(!el) return;
+  if(!showStrat){ el.style.display="none"; setTimeout(layoutUnderHUD,0); return; }
+  const dow=stratTodayDow(), st=STRAT[dow], h=stratShiftHour();
+  const it=stratItemAt(st,h), bi=stratBandIdx(h);
+  const {s}=stratSalesToday(), tg=stratTargetAt(st,h), diff=s-tg;
+  const dc=diff>=0?"#7dd87d":"#f08080";
+  el.style.display="";
+  el.innerHTML=`<span style="color:#b39ddb;font-weight:800;font-size:12px;">🧭${st.name} ${bi>=0?STRAT_BANDS[bi].n:""}${it?" "+it.t:""}</span>`
+   +`<span style="font-size:11px;margin-left:6px;">¥${s.toLocaleString()}/目安¥${tg.toLocaleString()} <b style="color:${dc}">${diff>=0?"+":""}${diff.toLocaleString()}</b></span>`
+   +(it?`<span style="font-size:11px;color:var(--muted);margin-left:6px;">${it.d}</span>`:"");
+  setTimeout(layoutUnderHUD,0);
+}
+function stratBtnPaint(){ const b=document.getElementById("btnStrat"); if(!b) return;
+  b.style.background=showStrat?"#b39ddb":"rgba(19,26,42,.92)"; b.style.color=showStrat?"#1a1206":"#8b98ad"; }
+function renderStrat(){
+  const body=document.getElementById("stratBody"); if(!body) return;
+  const today=stratTodayDow(), dow=stratDow==null?today:stratDow, st=STRAT[dow];
+  const isToday=dow===today, h=stratShiftHour();
+  const order=[1,2,3,4,5,6,0];
+  let html=`<div style="display:flex;gap:4px;margin-bottom:10px;">`+order.map(d=>{
+    const on=d===dow, t=d===today;
+    return `<button class="btn st-dow" data-d="${d}" style="flex:1;padding:8px 0;font-size:14px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}${t&&!on?"border-color:#b39ddb;color:#b39ddb;":""}">${STRAT[d].name}</button>`;}).join("")+`</div>`;
+  const tot=st.tgt.reduce((a,b)=>a+b,0);
+  html+=`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 11px;margin-bottom:8px;">
+   <div style="font-size:15px;font-weight:800;">${st.name}曜 ${st.head}</div>
+   <div style="font-size:12px;color:var(--muted);margin-top:4px;">平均 ¥${st.avg.toLocaleString()} ・ 目標 ¥${tot.toLocaleString()} ・ 不足 <b style="color:#f08080">-¥${st.gap.toLocaleString()}</b>${st.real?`<br>${st.real}`:""}</div>`;
+  if(isToday){
+    const {s,n}=stratSalesToday(), tg=stratTargetAt(st,h), diff=s-tg;
+    html+=`<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--line);font-size:13px;">今日 <b>¥${s.toLocaleString()}</b>(${n}件) ・ この時点の目安 ¥${tg.toLocaleString()} <b style="color:${diff>=0?"#7dd87d":"#f08080"}">${diff>=0?"+":""}${diff.toLocaleString()}</b></div>`;
+  }
+  html+=`</div>`;
+  STRAT_BANDS.forEach((b,i)=>{
+    const cur=isToday&&h>=b.lo&&h<b.hi;
+    const its=st.items.filter(x=>x.lo<b.hi&&x.hi>b.lo);
+    html+=`<div style="background:var(--panel);border:1px solid ${cur?"#b39ddb":"var(--line)"};border-radius:12px;padding:9px 11px;margin-bottom:7px;">
+     <div style="display:flex;align-items:baseline;gap:6px;"><b style="font-size:14px;color:${cur?"#b39ddb":"var(--amber)"};">${b.n} ${sbH(b.lo)}〜${sbH(b.hi)}${cur?" ◀今":""}</b><span style="flex:1"></span>
+     <span style="font-size:11px;color:var(--muted);">平均¥${st.now[i].toLocaleString()} → <b style="color:var(--text);font-size:13px;">¥${st.tgt[i].toLocaleString()}</b></span></div>`
+     +its.map(x=>{ const now=isToday&&h>=x.lo&&h<x.hi;
+       return `<div style="margin-top:6px;font-size:12.5px;line-height:1.55;${now?"background:rgba(179,157,219,.12);border-radius:8px;padding:4px 6px;":""}"><b>${x.lo!==b.lo||x.hi!==b.hi?`<span style="color:var(--muted);font-weight:400;">${sbH(x.lo)}〜${sbH(x.hi)} </span>`:""}${x.t}</b><br><span style="color:var(--muted);">${x.d}</span></div>`;}).join("")
+     +`</div>`;
+  });
+  html+=`<div style="font-size:12px;font-weight:800;color:var(--amber);margin:12px 0 5px;">✈️ 羽田の狙い方</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px 11px;">`
+   +STRAT_HANEDA.map(([k,v])=>`<div style="font-size:12.5px;line-height:1.55;padding:6px 0;border-bottom:1px solid var(--line);"><b>${k}</b><br><span style="color:var(--muted);">${v}</span></div>`).join("")+`</div>`;
+  html+=`<div style="font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.6;">金額は税込。目標は税込11万(税抜10万)。曜日ごとの平均は10/18までの日報(各6〜9乗務)から計算した目安です。鳴った配車は必ず受ける前提です。</div>`;
+  body.innerHTML=html;
+  body.querySelectorAll(".st-dow").forEach(b=>b.onclick=()=>{ const d=+b.dataset.d; stratDow=d===today?null:d; renderStrat(); });
+}
+document.getElementById("btnStrat").onclick=()=>{
+  showStrat=!showStrat; try{ localStorage.setItem("opt-strat", showStrat?"1":"0"); }catch(e){}
+  stratBtnPaint(); updateStratHud();
+};
+document.getElementById("stratClose").onclick=()=>showTab("map");
+stratBtnPaint(); updateStratHud();
+setInterval(updateStratHud, 60000);
+
 document.getElementById("btnHud").onclick=()=>{
   showHud=!showHud; try{ localStorage.setItem("opt-hud", showHud?"1":"0"); }catch(e){}
   applyHud();
