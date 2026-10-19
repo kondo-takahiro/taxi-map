@@ -755,6 +755,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
     <button class="btn" id="btnAirMk">✈️ 空港</button>
+    <button class="btn" id="btnAirHotel">🏨 空港ホテル</button>
     <button class="btn" id="btnHanka">🏮 繁華街</button>
     <button class="btn" id="btnWait">📍 待機スポット</button>
     <button class="btn" id="btnTsuke">🅿️ つけ待ち</button>
@@ -1086,7 +1087,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.19-2";
+const APP_VER = "2026.10.19-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5589,7 +5590,7 @@ async function showRoads(d){
 // ===== 表示ボタンの設定(使わない機能を隠す) =====
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
-  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnAirHotel","🏨 空港ホテル"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
@@ -7072,6 +7073,84 @@ function airMkHint(n){
 document.getElementById("btnAirMk").onclick=e=>{
   airMkOn=!airMkOn; e.target.classList.toggle("on",airMkOn); const n=drawAirMk(); if(airMkOn) airMkHint(n);
 };
+// ===== 🏨✈️ 空港客が出やすいホテル(2026/10 リサーチ・城東重点) =====
+// r: ◎/○/△(リサーチの推定評価) w: 狙い目の時間帯[開始,終了](営業時間、0時=24) lane: 専用乗り場(他社は原則入れない) bus: リムジン停留所
+const AIR_HOTELS=[
+ {n:"浅草ビューホテル",ll:[35.7151,139.7899],ward:"台東区",r:"◎",w:[[4.5,7],[10,11]],bus:"羽田始発7:10(1,300円)・成田3,100円",note:"城東最大級。7:10の羽田バス始発より前の客はタクシーしかない。2026/7/25に一部便が通過した実績あり"},
+ {n:"リッチモンドホテルプレミア浅草",ll:[35.7139,139.7934],ward:"台東区",r:"○",w:[[4.5,7],[10,11]],note:"インバウンド中心。車寄せが小さく付け待ちしにくい。空港バスは浅草ビューホテルから。浅草線で羽田直通約50分なので電車派も多い"},
+ {n:"ザ・ゲートホテル雷門",ll:[35.7108,139.7957],ward:"台東区",r:"○",w:[[4.5,7],[10,11]],note:"インバウンド中心。車寄せが小さく付け待ちしにくい"},
+ {n:"東武ホテルレバント東京",ll:[35.6957,139.8146],ward:"墨田区",r:"◎",w:[[4.5,7.5],[10,11]],bus:"羽田 錦糸町7:30発",note:"ビジネス＋インバウンド。成田は最安ゾーン1の21,000円で客が乗りやすい"},
+ {n:"押上のホテル(スカイツリー周辺)",ll:[35.7101,139.8131],ward:"墨田区",r:"○",w:[[4.5,7]],note:"京成・浅草線の直通で電車派が多い。始発前と、荷物の多い家族連れが狙い目",grp:1},
+ {n:"両国のホテル",ll:[35.6963,139.7937],ward:"墨田区",r:"○",w:[[4.5,7]],note:"ビジネスホテル中心。始発前と、荷物の多い家族連れが狙い目",grp:1},
+ {n:"ホテルイースト21東京",ll:[35.6697,139.8169],ward:"江東区",r:"○",w:[[5,7],[10,11]],bus:"東陽町に停留所",note:"成田向き(ゾーン1 21,000円)。羽田は定額の対象外で距離も短め"},
+ {n:"ラビスタ東京ベイ",ll:[35.6533,139.7896],ward:"江東区",r:"△",w:[[5,7]],lane:"日本交通",note:"羽田は近すぎて万収になりにくい。成田○。ビッグサイトのイベント最終日の翌朝"},
+ {n:"東京ベイ有明ワシントンホテル",ll:[35.6318,139.7917],ward:"江東区",r:"△",w:[[5,7],[10,11]],bus:"有明に停留所",note:"羽田は近すぎて万収になりにくい。成田○。イベント最終日の翌朝"},
+ {n:"相鉄グランドフレッサ東京ベイ有明",ll:[35.6350,139.7937],ward:"江東区",r:"△",w:[[5,7],[10,11]],bus:"有明に停留所",note:"羽田は近すぎて万収になりにくい。成田○。イベント最終日の翌朝"},
+ {n:"上野・湯島のホテル",ll:[35.7085,139.7738],ward:"台東区",r:"△",w:[[4.5,7]],note:"京成上野のスカイライナーなど鉄道が強く、タクシー率は低め",grp:1},
+ {n:"ロイヤルパークホテル",ll:[35.6817,139.7869],ward:"中央区",r:"○",w:[[5,8]],lane:"km(平日8〜22時・土日祝10〜19時)",note:"隣がT-CATでバス客が多い。専用乗り場の時間外の早朝なら一般車にも余地あり"},
+ {n:"マンダリン オリエンタル 東京",ll:[35.6871,139.7731],ward:"中央区",r:"◎",w:[[5,8],[10,11]],bus:"成田行きのみ",note:"富裕層・外資。周辺の流しで拾う"},
+ {n:"丸ノ内ホテル",ll:[35.6840,139.7660],ward:"千代田区",r:"○",w:[[5,8]],lane:"km(全日8〜22時)",bus:"成田行き",note:"専用乗り場の時間外の早朝に余地"},
+ {n:"フォーシーズンズホテル東京大手町",ll:[35.6882,139.7649],ward:"千代田区",r:"◎",w:[[5,11]],lane:"日本交通",note:"他社の一般車は原則入れない。離れた大通りの手上げを狙う"},
+ {n:"シャングリ・ラ 東京",ll:[35.6824,139.7696],ward:"千代田区",r:"◎",w:[[5,11]],lane:"日本交通",note:"他社の一般車は原則入れない"},
+ {n:"パレスホテル東京",ll:[35.6853,139.7612],ward:"千代田区",r:"◎",w:[[5,11]],bus:"停留所あり",note:"専用乗り場の有無は不明"},
+ {n:"帝国ホテル東京",ll:[35.6729,139.7584],ward:"千代田区",r:"○",w:[[5,22]],lane:"ホテル管理(並べる)",bus:"停留所あり",note:"日生劇場側に並ぶ・最後尾ハザード・施設内4台。ディスパッチャーの指示に従う。空港客の比率は高くない"},
+ {n:"The Okura Tokyo",ll:[35.6670,139.7426],ward:"港区",r:"○",w:[[5,11]],note:"羽田定額の対象外。専用乗り場の有無は不明"},
+ {n:"ホテルニューオータニ",ll:[35.6800,139.7343],ward:"千代田区",r:"○",w:[[5,11]],note:"館内2か所に乗り場。時間によりタクシーが常駐していない"},
+ {n:"グランドハイアット東京",ll:[35.6598,139.7290],ward:"港区",r:"◎",w:[[5,11]],lane:"日本交通",note:"他社は原則入れない"},
+ {n:"ザ・リッツ・カールトン東京",ll:[35.6655,139.7312],ward:"港区",r:"◎",w:[[5,11]],lane:"日本交通",note:"他社は原則入れない"},
+ {n:"パークハイアット東京",ll:[35.6857,139.6909],ward:"新宿区",r:"◎",w:[[5,11]],lane:"日本交通・km",note:"他社は原則入れない"},
+ {n:"コンラッド東京",ll:[35.6640,139.7604],ward:"港区",r:"◎",w:[[5,11]],lane:"km(全日7〜23時)",note:"7時前なら専用乗り場の時間外"},
+ {n:"ザ・キャピトルホテル東急",ll:[35.6737,139.7414],ward:"千代田区",r:"○",w:[[5,11]],lane:"km(平日7〜21時)・帝都・日本交通",note:""},
+ {n:"インターコンチネンタル東京ベイ",ll:[35.6527,139.7613],ward:"港区",r:"○",w:[[5,11]],lane:"日本交通",note:"羽田定額の対象外"},
+ {n:"新宿の大型ホテル(京王プラザ・ヒルトンほか)",ll:[35.6905,139.6945],ward:"新宿区",r:"○",w:[[5,8],[10,11]],bus:"羽田・成田とも停留所あり",note:"成田ゾーン3の28,000円で単価は高いが、バスに流れる客が多い",grp:1}
+];
+// 区ごとの定額(2026/4/20改定・日中/深夜早朝)。null=羽田定額の対象外(メーター)
+const AIR_FARE_HND={"台東区":"9,100円/10,800円","墨田区":"9,100円/10,700円","千代田区":"7,600円/9,000円","新宿区":"9,000円/10,700円","文京区":"9,300円/10,900円","江東区":null,"中央区":null,"港区":null};
+const AIR_FARE_NRT={"墨田区":"21,000円/25,000円(ゾーン1)","江東区":"21,000円/25,000円(ゾーン1)","台東区":"26,000円/30,000円(ゾーン2)","千代田区":"26,000円/30,000円(ゾーン2)","中央区":"26,000円/30,000円(ゾーン2)","文京区":"26,000円/30,000円(ゾーン2)","港区":"28,000円/33,000円(ゾーン3)","新宿区":"28,000円/33,000円(ゾーン3)"};
+let airHotelLayer=null, airHotelOn=false;
+const ahFmt=h=>{ const hh=Math.floor(h)%24, mm=Math.round((h-Math.floor(h))*60); return hh+":"+String(mm).padStart(2,"0"); };
+function airHotelNow(h){ const sh=h<4?h+24:h; return x=>x.w.some(([a,b])=>sh>=a&&sh<b); }
+function airHotelMine(ll){   // 自分の実績: ホテルから250m以内で乗せた空港行き
+  let hnd=0,nrt=0,best=0;
+  try{ myRides().forEach(r=>{ const k=airKind(r); if(!k||r.lat==null) return;
+    if(haversineKm(ll,[r.lat,r.lng])>0.25) return; if(k==="nrt") nrt++; else hnd++; best=Math.max(best,r.f||0); }); }catch(e){}
+  return {hnd,nrt,best};
+}
+function drawAirHotel(){
+  if(airHotelLayer){ map.removeLayer(airHotelLayer); airHotelLayer=null; }
+  if(!airHotelOn) return;
+  const d=new Date(), isNow=airHotelNow(d.getHours()+d.getMinutes()/60);
+  const items=AIR_HOTELS.map(x=>{
+    const now=isNow(x), col=x.r==="◎"?"#ffd54f":x.r==="○"?"#4dd0e1":"#8b98ad";
+    const lock=!!x.lane&&!/ホテル管理/.test(x.lane);
+    const short=x.n.replace(/(ホテル|東京|\(.*?\))/g,"").replace(/\s+/g,"").slice(0,7)||x.n.slice(0,7);
+    const html=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;opacity:${lock?.6:1};">
+      <div style="font-size:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));${now?"animation:ahPulse 1.4s infinite;":""}">🏨</div>
+      <div style="background:${now?col:"rgba(19,26,42,.92)"};color:${now?"#1a1206":col};border:1px ${lock?"dashed":"solid"} ${col};border-radius:7px;padding:1px 4px;font-size:9px;font-weight:800;margin-top:-1px;white-space:nowrap;">${x.r}${lock?"🔒":""}${short}</div></div>`;
+    const hnd=AIR_FARE_HND[x.ward], nrt=AIR_FARE_NRT[x.ward], me=airHotelMine(x.ll);
+    const pop=`<b style="font-size:14px;">${x.n}</b> <span style="color:${col};font-weight:800;">${x.r}</span><br>
+      <span style="color:#8b98ad;font-size:11px;">${x.ward}${x.grp?"・エリアの目安位置":""}</span>
+      <div style="margin-top:6px;font-size:13px;"><b style="color:#f5a623;">⏰ 出やすい時間</b><br>${x.w.map(([a,b])=>`<b>${ahFmt(a)}〜${ahFmt(b)}</b>`).join("　")}${now?` <span style="color:#7dd87d;font-weight:800;">◀ 今</span>`:""}</div>
+      <div style="margin-top:6px;font-size:12px;line-height:1.55;">✈️ 羽田定額 ${hnd===undefined?"—":hnd?hnd:"<b>対象外(メーター)</b>"}<br>🛫 成田定額 ${nrt||"—"}<br><span style="color:#8b98ad;font-size:11px;">定額は予約・GO空港定額だけ。流し・付け待ちはメーター</span></div>`
+      +(x.lane?`<div style="margin-top:6px;font-size:12px;color:#f08080;">🔒 専用乗り場：${x.lane}</div>`:"")
+      +(x.bus?`<div style="margin-top:4px;font-size:12px;">🚌 リムジン：${x.bus}</div>`:"")
+      +(x.note?`<div style="margin-top:4px;font-size:12px;color:#c9d1dd;line-height:1.5;">${x.note}</div>`:"")
+      +`<div style="margin-top:6px;font-size:11px;color:#8b98ad;">あなたの実績(250m以内)：${me.hnd+me.nrt?`<b style="color:#e8edf5;">羽田${me.hnd}・成田${me.nrt}本 最高${yen(me.best)}</b>`:"空港行きなし"}</div>`;
+    return L.marker(x.ll,{zIndexOffset:now?800:500,icon:L.divIcon({className:"",iconSize:[64,34],iconAnchor:[32,30],html})}).bindPopup(pop,{maxWidth:280});
+  });
+  airHotelLayer=L.layerGroup(items).addTo(map);
+  return AIR_HOTELS.filter(isNow).length;
+}
+(function(){ const st=document.createElement("style"); st.textContent="@keyframes ahPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.35)}}"; document.head.appendChild(st); })();
+document.getElementById("btnAirHotel").onclick=e=>{
+  airHotelOn=!airHotelOn; e.target.classList.toggle("on",airHotelOn);
+  try{ localStorage.setItem("opt-airhotel",airHotelOn?"1":"0"); }catch(_){}
+  const n=drawAirHotel();
+  if(airHotelOn){ const h=document.getElementById("hint"); if(h){ h.textContent=`🏨 空港客ホテル ${AIR_HOTELS.length}件・今が狙い時 ${n}件(◎金 ○水色 △灰・🔒専用乗り場)`; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2600); } }
+};
+if(localStorage.getItem("opt-airhotel")==="1"){ airHotelOn=true; document.getElementById("btnAirHotel").classList.add("on"); setTimeout(drawAirHotel,400); }
+setInterval(()=>{ if(airHotelOn) drawAirHotel(); },300000);
+
 document.getElementById("btnBig").onclick=e=>{
   bigOn=!bigOn; e.target.classList.toggle("on",bigOn); render();
 };
