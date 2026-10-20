@@ -1088,7 +1088,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.21-2";
+const APP_VER = "2026.10.21-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7467,6 +7467,17 @@ function applyRideEdits(){
     if(e.dst!=null && r.dst!==e.dst){ r.dst=e.dst; changed=true; }
     if(e.p && r.p!==e.p){ r.p=e.p; r.lat=e.lat; r.lng=e.lng; changed=true; }
   });
+  // 同じ乗車が2件になっていたら1件にまとめる(乗車地を直した乗車が、直した後の値で再度取り込まれた場合など)
+  // 日付・時刻・料金・位置・乗務員が全部同じものを同じ乗車とみなし、修正の記録が付いている方を残す
+  const seen=new Map(), drop=new Set();
+  rides.forEach(r=>{
+    const k=[r.d,r.t,r.f,r.lat,r.lng,normName(r.drv||"")].join("|");
+    const o=seen.get(k);
+    if(!o){ seen.set(k,r); return; }
+    const keepR = !!ed[r.ok] && !ed[o.ok];
+    if(keepR){ drop.add(o); seen.set(k,r); } else drop.add(r);
+  });
+  if(drop.size){ rides=rides.filter(r=>!drop.has(r)); changed=true; }
   if(changed) save();
 }
 applyRideEdits();
@@ -8850,8 +8861,8 @@ function importText(text, silent){
       const ex=rides.find(r=>(r.ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng))===ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng)===ok);   // 乗車地を直した乗車(今の値で書き出されたもの)も同じ乗車とみなす
       if(ex){
         // rides.csv側で配車区分・降車地が直っていれば反映(アプリでの修正は後で上書き適用)
-        if(!ed[ok]){ if(ex.m!==rec.m) ex.m=rec.m; if(rec.dst && ex.dst!==rec.dst) ex.dst=rec.dst; }
-        ex.ok=ok; dup++; return;
+        if(!ed[ok] && !(ex.ok && ed[ex.ok])){ if(ex.m!==rec.m) ex.m=rec.m; if(rec.dst && ex.dst!==rec.dst) ex.dst=rec.dst; }
+        if(!ex.ok) ex.ok=ok; dup++; return;
       }
       rides.push({id:"i"+Date.now()+Math.random(), ok, ...rec});
       added++;
