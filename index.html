@@ -770,6 +770,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnScan">📷 日報を読み取り</button>
     <input type="file" id="fileScan" accept="image/*,application/pdf" style="display:none">
     <button class="btn" id="btnCsvOut">CSV書き出し</button>
+    <button class="btn" id="btnSpAllOut">📦 全部まとめて書き出し</button>
     <button class="btn" id="btnMemoOut">📝 メモ書き出し</button>
     <button class="btn" id="btnPaste">貼り付け読み込み</button>
     <button class="btn" id="btnCsvIn">ファイル読み込み</button>
@@ -1087,7 +1088,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.19-4";
+const APP_VER = "2026.10.20-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5593,7 +5594,7 @@ const BTN_GROUPS=[
   {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnAirHotel","🏨 空港ホテル"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
-  {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
+  {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnSpAllOut","📦 全部まとめて書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
 ];
 function loadHidden(){ try{ return new Set(JSON.parse(localStorage.getItem("hidden-btns"))||[]); }catch(e){ return new Set(); } }
 function applyHidden(){
@@ -7102,20 +7103,20 @@ const AIR_HOTELS=[
  {n:"コンラッド東京",ll:[35.6640,139.7604],ward:"港区",r:"◎",w:[[5,11]],lane:"km(全日7〜23時)",note:"7時前なら専用乗り場の時間外"},
  {n:"ザ・キャピトルホテル東急",ll:[35.6737,139.7414],ward:"千代田区",r:"○",w:[[5,11]],lane:"km(平日7〜21時)・帝都・日本交通",note:""},
  {n:"インターコンチネンタル東京ベイ",ll:[35.6527,139.7613],ward:"港区",r:"○",w:[[5,11]],lane:"日本交通",note:"羽田定額の対象外"},
- {n:"ANAインターコンチネンタルホテル東京",ll:[35.6697,139.7409],ward:"港区",r:"○",w:[[5,8],[10,11]],bus:"溜池山王 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"アンダーズ東京(虎ノ門ヒルズ)",ll:[35.6667,139.7497],ward:"港区",r:"◎",w:[[5,8],[10,11]],bus:"虎ノ門 羽田・成田",note:"外資ラグジュアリー。港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"東京エディション虎ノ門",ll:[35.6627,139.7446],ward:"港区",r:"◎",w:[[5,8],[10,11]],note:"外資ラグジュアリー。乗り場・バスの情報は確認できず。港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"東京プリンスホテル",ll:[35.6577,139.7478],ward:"港区",r:"○",w:[[5,8],[10,11]],bus:"御成門 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"ザ・プリンス パークタワー東京",ll:[35.6556,139.7472],ward:"港区",r:"○",w:[[5,8],[10,11]],bus:"赤羽橋・芝公園 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"芝パークホテル",ll:[35.6602,139.7522],ward:"港区",r:"△",w:[[5,8]],bus:"御成門 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"ザ・プリンスギャラリー東京紀尾井町",ll:[35.6793,139.7372],ward:"千代田区",r:"○",w:[[5,8],[10,11]],bus:"永田町・赤坂見附 羽田・成田",note:"千代田区なので羽田定額7,600円。成田26,000円(ゾーン2)"},
- {n:"シェラトン都ホテル東京",ll:[35.6398,139.7282],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"白金台。港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
- {n:"ザ・プリンス さくらタワー東京",ll:[35.6318,139.7348],ward:"港区",r:"◎",w:[[5,8],[10,11]],note:"高輪のプリンス4館の最上位。成田バスは品川プリンス経由(2023/4再開)。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
- {n:"グランドプリンスホテル高輪",ll:[35.6312,139.7337],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"成田バスは品川プリンス経由。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
- {n:"グランドプリンスホテル新高輪",ll:[35.6296,139.7326],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"大宴会場・国際会議場あり。会議の最終日翌朝。成田バスは品川プリンス経由。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
- {n:"品川プリンスホテル",ll:[35.6282,139.7367],ward:"港区",r:"△",w:[[5,8],[10,11]],bus:"成田行き(2023/4/14再開)",note:"客室数が多いが団体・修学旅行・ビジネス中心。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
- {n:"ストリングスホテル東京インターコンチネンタル",ll:[35.6283,139.7428],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"品川駅港南口。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
- {n:"東京マリオットホテル",ll:[35.6214,139.7386],ward:"品川区",r:"○",w:[[5,8],[10,11]],note:"御殿山。品川駅へホテルの送迎バスあり(要確認)。品川区は羽田定額の対象外。成田28,000円(ゾーン3)"},
+ {n:"ANAインターコンチネンタルホテル東京",g:1,ll:[35.6697,139.7409],ward:"港区",r:"○",w:[[5,8],[10,11]],bus:"溜池山王 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"アンダーズ東京(虎ノ門ヒルズ)",g:1,ll:[35.6667,139.7497],ward:"港区",r:"◎",w:[[5,8],[10,11]],bus:"虎ノ門 羽田・成田",note:"外資ラグジュアリー。港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"東京エディション虎ノ門",g:1,ll:[35.6627,139.7446],ward:"港区",r:"◎",w:[[5,8],[10,11]],note:"外資ラグジュアリー。乗り場・バスの情報は確認できず。港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"東京プリンスホテル",g:1,ll:[35.6577,139.7478],ward:"港区",r:"○",w:[[5,8],[10,11]],bus:"御成門 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"ザ・プリンス パークタワー東京",g:1,ll:[35.6556,139.7472],ward:"港区",r:"○",w:[[5,8],[10,11]],bus:"赤羽橋・芝公園 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"芝パークホテル",g:1,ll:[35.6602,139.7522],ward:"港区",r:"△",w:[[5,8]],bus:"御成門 羽田・成田",note:"港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"ザ・プリンスギャラリー東京紀尾井町",g:1,ll:[35.6793,139.7372],ward:"千代田区",r:"○",w:[[5,8],[10,11]],bus:"永田町・赤坂見附 羽田・成田",note:"千代田区なので羽田定額7,600円。成田26,000円(ゾーン2)"},
+ {n:"シェラトン都ホテル東京",g:1,ll:[35.6398,139.7282],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"白金台。港区は羽田定額の対象外で羽田まで近く、羽田は万収になりにくい。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"ザ・プリンス さくらタワー東京",g:1,ll:[35.6318,139.7348],ward:"港区",r:"◎",w:[[5,8],[10,11]],note:"高輪のプリンス4館の最上位。成田バスは品川プリンス経由(2023/4再開)。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"グランドプリンスホテル高輪",g:1,ll:[35.6312,139.7337],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"成田バスは品川プリンス経由。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"グランドプリンスホテル新高輪",g:1,ll:[35.6296,139.7326],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"大宴会場・国際会議場あり。会議の最終日翌朝。成田バスは品川プリンス経由。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"品川プリンスホテル",g:1,ll:[35.6282,139.7367],ward:"港区",r:"△",w:[[5,8],[10,11]],bus:"成田行き(2023/4/14再開)",note:"客室数が多いが団体・修学旅行・ビジネス中心。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"ストリングスホテル東京インターコンチネンタル",g:1,ll:[35.6283,139.7428],ward:"港区",r:"○",w:[[5,8],[10,11]],note:"品川駅港南口。品川の高輪側は羽田まで近くメーターでも万収になりにくい。京急で羽田直通(品川〜羽田 最速11分)なので羽田は電車派が多い。狙いは成田(ゾーン3 28,000円)。"},
+ {n:"東京マリオットホテル",g:1,ll:[35.6214,139.7386],ward:"品川区",r:"○",w:[[5,8],[10,11]],note:"御殿山。品川駅へホテルの送迎バスあり(要確認)。品川区は羽田定額の対象外。成田28,000円(ゾーン3)"},
  {n:"新宿の大型ホテル(京王プラザ・ヒルトンほか)",ll:[35.6905,139.6945],ward:"新宿区",r:"○",w:[[5,8],[10,11]],bus:"羽田・成田とも停留所あり",note:"成田ゾーン3の28,000円で単価は高いが、バスに流れる客が多い",grp:1}
 ];
 // 区ごとの定額(2026/4/20改定・日中/深夜早朝)。null=羽田定額の対象外(メーター)
@@ -7124,11 +7125,25 @@ const AIR_FARE_NRT={"墨田区":"21,000円/25,000円(ゾーン1)","江東区":"2
 let airHotelLayer=null, airHotelOn=false;
 const ahFmt=h=>{ const hh=Math.floor(h)%24, mm=Math.round((h-Math.floor(h))*60); return hh+":"+String(mm).padStart(2,"0"); };
 function airHotelNow(h){ const sh=h<4?h+24:h; return x=>x.w.some(([a,b])=>sh>=a&&sh<b); }
-function airHotelMine(ll){   // 自分の実績: ホテルから250m以内で乗せた空港行き
-  let hnd=0,nrt=0,best=0;
+// 自分の実績: ホテルから500m以内で乗せた空港行き(新しい順)。なければ同じ区の空港行き
+function airHotelMine(x){
+  const near=[], ward=[];
   try{ myRides().forEach(r=>{ const k=airKind(r); if(!k||r.lat==null) return;
-    if(haversineKm(ll,[r.lat,r.lng])>0.25) return; if(k==="nrt") nrt++; else hnd++; best=Math.max(best,r.f||0); }); }catch(e){}
-  return {hnd,nrt,best};
+    const o={k,r,ds:shiftDateStr(r)};
+    if(haversineKm(x.ll,[r.lat,r.lng])<=0.5) near.push(o); else if((r.p||"").startsWith(x.ward)) ward.push(o); }); }catch(e){}
+  const byTime=(a,b)=>a.r.t.localeCompare(b.r.t);
+  return {near:near.sort(byTime), ward:ward.sort(byTime)};
+}
+function airHotelMineHtml(x){
+  const m=airHotelMine(x);
+  const row=o=>`<div style="font-size:12px;margin-top:2px;"><b>${o.r.t.slice(0,5)}</b> ${o.k==="nrt"?"🛫成田":"✈️羽田"} ${yen(o.r.f)} <span style="color:#8b98ad;">${o.ds.slice(5).replace("-","/")}(${"日月火水木金土"[new Date(o.ds+"T12:00:00").getDay()]})${(o.r.m||"app")==="app"?"配車":"流し"}${o.near?"":" "+(o.r.p||"").replace(x.ward,"")}</span></div>`;
+  let h=`<div style="margin-top:7px;padding-top:6px;border-top:1px solid #26324a;"><b style="color:#7dd87d;font-size:12.5px;">📊 自分の実績(乗せた時刻)</b>`;
+  if(m.near.length){ m.near.forEach(o=>o.near=1); h+=`<div style="font-size:11px;color:#8b98ad;">500m以内 ${m.near.length}本</div>`+m.near.map(row).join(""); }
+  else{
+    h+=`<div style="font-size:11px;color:#8b98ad;">500m以内はまだなし</div>`;
+    if(m.ward.length) h+=`<div style="font-size:11px;color:#8b98ad;margin-top:3px;">参考：${x.ward}の空港行き ${m.ward.length}本</div>`+m.ward.slice(0,6).map(row).join("")+(m.ward.length>6?`<div style="font-size:11px;color:#8b98ad;">ほか${m.ward.length-6}本</div>`:"");
+  }
+  return h+`</div>`;
 }
 function drawAirHotel(){
   if(airHotelLayer){ map.removeLayer(airHotelLayer); airHotelLayer=null; }
@@ -7141,15 +7156,15 @@ function drawAirHotel(){
     const html=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;opacity:${lock?.6:1};">
       <div style="font-size:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));${now?"animation:ahPulse 1.4s infinite;":""}">🏨</div>
       <div style="background:${now?col:"rgba(19,26,42,.92)"};color:${now?"#1a1206":col};border:1px ${lock?"dashed":"solid"} ${col};border-radius:7px;padding:1px 4px;font-size:9px;font-weight:800;margin-top:-1px;white-space:nowrap;">${x.r}${lock?"🔒":""}${short}</div></div>`;
-    const hnd=AIR_FARE_HND[x.ward], nrt=AIR_FARE_NRT[x.ward], me=airHotelMine(x.ll);
+    const hnd=AIR_FARE_HND[x.ward], nrt=AIR_FARE_NRT[x.ward];
     const pop=`<b style="font-size:14px;">${x.n}</b> <span style="color:${col};font-weight:800;">${x.r}</span><br>
       <span style="color:#8b98ad;font-size:11px;">${x.ward}${x.grp?"・エリアの目安位置":""}</span>
-      <div style="margin-top:6px;font-size:13px;"><b style="color:#f5a623;">⏰ 出やすい時間</b><br>${x.w.map(([a,b])=>`<b>${ahFmt(a)}〜${ahFmt(b)}</b>`).join("　")}${now?` <span style="color:#7dd87d;font-weight:800;">◀ 今</span>`:""}</div>
+      <div style="margin-top:6px;font-size:13px;"><b style="color:#f5a623;">⏰ 出やすい時間</b> <span style="font-size:10.5px;color:${x.g?"#f08080":"#ffb74d"};">${x.g?"推測・根拠なし":"資料の推定"}</span><br>${x.w.map(([a,b])=>`<b>${ahFmt(a)}〜${ahFmt(b)}</b>`).join("　")}${now?` <span style="color:#7dd87d;font-weight:800;">◀ 今</span>`:""}</div>
       <div style="margin-top:6px;font-size:12px;line-height:1.55;">✈️ 羽田定額 ${hnd===undefined?"—":hnd?hnd:"<b>対象外(メーター)</b>"}<br>🛫 成田定額 ${nrt||"—"}<br><span style="color:#8b98ad;font-size:11px;">定額は予約・GO空港定額だけ。流し・付け待ちはメーター</span></div>`
       +(x.lane?`<div style="margin-top:6px;font-size:12px;color:#f08080;">🔒 専用乗り場：${x.lane}</div>`:"")
       +(x.bus?`<div style="margin-top:4px;font-size:12px;">🚌 リムジン：${x.bus}</div>`:"")
       +(x.note?`<div style="margin-top:4px;font-size:12px;color:#c9d1dd;line-height:1.5;">${x.note}</div>`:"")
-      +`<div style="margin-top:6px;font-size:11px;color:#8b98ad;">あなたの実績(250m以内)：${me.hnd+me.nrt?`<b style="color:#e8edf5;">羽田${me.hnd}・成田${me.nrt}本 最高${yen(me.best)}</b>`:"空港行きなし"}</div>`;
+      +airHotelMineHtml(x);
     return L.marker(x.ll,{zIndexOffset:now?800:500,icon:L.divIcon({className:"",iconSize:[64,34],iconAnchor:[32,30],html})}).bindPopup(pop,{maxWidth:280});
   });
   airHotelLayer=L.layerGroup(items).addTo(map);
@@ -7832,7 +7847,8 @@ SP_KEYS.forEach(k=>{
   document.getElementById("spFile_"+k).onchange=async e=>{
     const f=e.target.files[0]; if(!f) return;
     try{
-      const d=JSON.parse(await f.text());
+      let d=JSON.parse(await f.text());
+      if(d.kind==="all"){ if(!d[k]) throw new Error("このファイルに"+C.name+"の記録がありません"); d=Object.assign({kind:k},d[k]); }
       if(!Array.isArray(d.spots)||!Array.isArray(d.recs)) throw new Error("形式が違います");
       if(d.kind && d.kind!==k) throw new Error(`これは${SP_K[d.kind]?SP_K[d.kind].name:d.kind}のファイルです`);
       const sp=new Map(spLoad(C.spot).map(s=>[s.id,s])); d.spots.forEach(s=>sp.set(s.id,s));
@@ -7843,6 +7859,59 @@ SP_KEYS.forEach(k=>{
     e.target.value="";
   };
 });
+// GitHubに置いた tsuke.json / hotels-rec.json / venues-rec.json を起動時に読み込む
+// 端末にない地点・記録だけを足す(端末で直した内容はGitHubの古い版で上書きしない)
+function spMergeAdd(k,d){   // 端末にない地点・記録だけを足す
+  const C=SP_K[k];
+  const sp=spLoad(C.spot), spIds=new Set(sp.map(x=>x.id));
+  const rc=spLoad(C.rec), rcIds=new Set(rc.map(x=>x.k));
+  let ns=0, nr=0;
+  (d.spots||[]).forEach(x=>{ if(!spIds.has(x.id)){ sp.push(x); spIds.add(x.id); ns++; } });
+  (d.recs||[]).forEach(x=>{ if(!rcIds.has(x.k)){ rc.push(x); rcIds.add(x.k); nr++; } });
+  if(ns||nr){ spSave(C.spot,sp); spSave(C.rec,rc); if(SP_ON[k]) try{ spDraw(k); }catch(e){} }
+  return [ns,nr];
+}
+async function spLoadShared(silent){
+  const add={}; SP_KEYS.forEach(k=>add[k]=[0,0]);
+  const msg=[], seen=[];
+  const get=async f=>{ const r=await fetch(f+"?v="+Date.now(),{cache:"no-store"}); if(!r.ok){ if(r.status!==404) msg.push(`${f}: 読めません(HTTP ${r.status})`); return null; } seen.push(f); return r.json(); };
+  // 全部まとめ(backup.json): 乗車・メモ/KPIも取り込む
+  try{ const d=await get("backup.json");
+    if(d){
+      SP_KEYS.forEach(k=>{ if(d[k]&&Array.isArray(d[k].spots)){ const [a,b]=spMergeAdd(k,d[k]); add[k][0]+=a; add[k][1]+=b; } });
+      const txt=(d.rides||"")+"\n"+(d.memo||"");
+      if(txt.trim()){ const n=importText(txt, true); msg.push(`🚕乗車(backup.json): +${n}`); }
+    }
+  }catch(e){ msg.push("backup.json: 読み込み失敗"); }
+  // まとめファイル(spots.json)
+  try{ const d=await get("spots.json");
+    if(d) SP_KEYS.forEach(k=>{ if(d[k]&&Array.isArray(d[k].spots)){ const [a,b]=spMergeAdd(k,d[k]); add[k][0]+=a; add[k][1]+=b; } });
+  }catch(e){ msg.push("spots.json: 読み込み失敗"); }
+  // 種類ごとのファイル(前の書き出し形式)
+  for(const k of SP_KEYS){
+    try{ const d=await get(SP_K[k].file);
+      if(!d) continue;
+      if(!Array.isArray(d.spots)||!Array.isArray(d.recs)||(d.kind&&d.kind!==k)){ msg.push(`${SP_K[k].file}: 形式が違います`); continue; }
+      const [a,b]=spMergeAdd(k,d); add[k][0]+=a; add[k][1]+=b;
+    }catch(e){ msg.push(`${SP_K[k].file}: 読み込み失敗`); }
+  }
+  if(seen.length) SP_KEYS.forEach(k=>msg.push(`${SP_K[k].icon}${SP_K[k].name}: 地点+${add[k][0]}・記録+${add[k][1]}`));
+  return msg;
+}
+// 3種類をまとめて1ファイル(spots.json)に書き出す
+// 全部(乗車・つけ待ち/ホテル/施設・メモ/実車率/休憩/ノウハウ)を1ファイル backup.json に書き出す
+document.getElementById("btnSpAllOut").onclick=()=>{
+  const data={v:3, kind:"all", at:new Date().toISOString()};
+  SP_KEYS.forEach(k=>{ const C=SP_K[k]; data[k]={spots:spLoad(C.spot), recs:spLoad(C.rec)}; });
+  data.rides=ridesCsvText();
+  let mk={lines:[],memos:0,days:0}; try{ mk=memoKpiLines(); }catch(e){}
+  data.memo=mk.lines.join("\n");
+  const blob=new Blob([JSON.stringify(data)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="backup.json"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  alert(`backup.json に書き出しました\n乗車${rides.length}・${SP_KEYS.map(k=>SP_K[k].icon+data[k].recs.length).join("・")}・メモ${mk.memos}・実車率/休憩${mk.days}日\nGitHubに上げると、次に開いたときに自動で読み込みます`);
+};
+setTimeout(()=>spLoadShared(true),1500);
 
 // ===== 🅿️つけ待ち / 🏨ホテル の専用分析ページ =====
 // 記録(端末内)と乗車データを突き合わせて、どの地点・時間帯・待ち時間で稼げているかを1ページで見る
@@ -8637,16 +8706,19 @@ document.getElementById("rideForm").onsubmit=e=>{
 };
 
 // ===== CSV =====
-document.getElementById("btnCsvOut").onclick=()=>{
+function ridesCsvText(){
   const rows=[["date","time","pickup","lat","lng","fare","dropoff","mode","driver"],
     ...rides.map(r=>[r.d,r.t,r.p,r.lat,r.lng,r.f,r.dst||"",r.m||"app",r.drv||""])];
-  const csv="\uFEFF"+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  return rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+}
+document.getElementById("btnCsvOut").onclick=()=>{
+  const csv="\uFEFF"+ridesCsvText();
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
   a.download="rides.csv"; a.click();
 };
 // メモ・実車率・休憩の書き出し(貼り付け読み込みでそのまま復元できる形式)
-document.getElementById("btnMemoOut").onclick=()=>{
+function memoKpiLines(){
   const lines=[];
   loadKB().forEach(k=>{
     lines.push(["KB",(k.t||"").replace(/[,\n]/g," "),(k.b||"").replace(/\n/g,"§").replace(/,/g,"、"),k.d||""].join(","));
@@ -8662,6 +8734,11 @@ document.getElementById("btnMemoOut").onclick=()=>{
   [...days].sort().forEach(d=>{
     lines.push(["KPI",d,(kpi[d]!=null?kpi[d]:""),(brk[d]||"").replace(/[,\n]/g,"/")].join(","));
   });
+  return {lines, memos:memos.length, days:days.size};
+}
+document.getElementById("btnMemoOut").onclick=()=>{
+  const {lines, memos:mN, days:dN}=memoKpiLines();
+  const memos={length:mN}, days={size:dN};
   if(!lines.length){ alert("書き出せるメモ・記録がありません。"); return; }
   const txt="\uFEFF"+lines.join("\n");
   const a=document.createElement("a");
@@ -8779,7 +8856,7 @@ function loadShared(silent){
     });
 }
 loadShared(true); // 起動時は静かに実行
-document.getElementById("btnSync").onclick=()=>loadShared(false); // 手動時は結果を表示
+document.getElementById("btnSync").onclick=async()=>{ await loadShared(false); try{ const m=await spLoadShared(false); if(m.length) alert("GitHubのbackup.jsonなど\n"+m.join("\n")); }catch(e){} }; // 手動時は結果を表示
 
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
 document.getElementById("fileCsv").onchange=e=>{
