@@ -1088,7 +1088,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.20-3";
+const APP_VER = "2026.10.21-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5356,7 +5356,7 @@ function renderDiaryY(pick){
   h+=`<tr><td colspan="3" style="padding:6px 4px;font-weight:700;">合計 ${seqT.length}回</td>
       <td colspan="2" style="padding:6px 4px;text-align:right;font-weight:800;color:var(--amber);font-size:13px;">${yen(total)}</td></tr>`;
   h+=`</table></div>
-    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています<br>行をタップすると 🅿️つけ待ち / 🏨ホテル の記録と、✏️乗車の修正(配車⇔流し・料金・降車地・削除)ができます</div>`;
+    <div style="font-size:10px;color:var(--muted);margin-top:3px;">配=アプリ配車 / 流=流し　⭐の行は万収　※空転は除いています<br>行をタップすると 🅿️つけ待ち / 🏨ホテル の記録と、✏️乗車の修正(配車⇔流し・料金・乗車地・降車地・削除)ができます</div>`;
 
   const delRows=Object.entries(reMap).filter(([k,v])=>{ if(!v.del) return false; const [d,t]=k.split("|"); return shiftDateStr({d,t})===target; });
   if(delRows.length){
@@ -7465,6 +7465,7 @@ function applyRideEdits(){
     if(e.m && r.m!==e.m){ r.m=e.m; changed=true; }
     if(e.f!=null && r.f!==e.f){ r.f=e.f; changed=true; }
     if(e.dst!=null && r.dst!==e.dst){ r.dst=e.dst; changed=true; }
+    if(e.p && r.p!==e.p){ r.p=e.p; r.lat=e.lat; r.lng=e.lng; changed=true; }
   });
   if(changed) save();
 }
@@ -7478,6 +7479,8 @@ function spEditHtml(r){
     + `<button class="btn re-m${m==="app"?" on":""}" data-m="app" style="flex:1;padding:10px;">📲 アプリ配車</button>`
     + `<button class="btn re-m${m==="st"?" on":""}" data-m="st" style="flex:1;padding:10px;">🚕 流し・乗り場</button></div>`
     + `<div class="field"><label>料金(円)</label><input type="number" id="reFare" value="${r.f}" min="0" step="10"></div>`
+    + `<div class="field"><label>乗車地(町丁目) <span style="font-size:10.5px;color:var(--muted);">メーターが遅れた時など</span></label><input type="text" id="rePick" list="rePickList" value="${(r.p||"").replace(/"/g,"&quot;")}" autocomplete="off"><datalist id="rePickList"></datalist>`
+    + `<div id="rePickNear" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;"></div></div>`
     + `<div class="field"><label>降車地</label><input type="text" id="reDst" value="${(r.dst||"").replace(/"/g,"&quot;")}"></div>`
     + `<button class="btn on" id="reSave" style="width:100%;padding:11px;font-size:14px;margin-top:4px;">保存する</button>`
     + (ed?`<button class="btn" id="reUndo" style="width:100%;padding:9px;margin-top:8px;">↩︎ 修正を取り消して日報の値に戻す</button>`:"")
@@ -7489,23 +7492,53 @@ function spEditBind(r){
   let mode=r.m||"app";
   body.querySelectorAll(".re-m").forEach(b=>b.onclick=()=>{ mode=b.dataset.m; body.querySelectorAll(".re-m").forEach(x=>x.classList.toggle("on",x===b)); });
   const key=rideOrigKey(r);
+  // 乗車地の候補: 今の乗車地に近い町丁目(近い順)のボタンと、全町丁目の入力候補
+  const fillPick=()=>{
+    if(!chomeIndex) return false;
+    const near=[]; const base=[r.lat,r.lng];
+    chomeIndex.forEach((f,name)=>{ const c=chomeCentroid(name,f); if(!c) return; const d=haversineKm(base,c); if(d<=1.5) near.push([d,name]); });
+    near.sort((a,b)=>a[0]-b[0]);
+    const box=document.getElementById("rePickNear");
+    if(box){ box.innerHTML=near.slice(0,10).map(([d,n])=>`<button class="btn re-pn${n===r.p?" on":""}" data-n="${n}" style="padding:5px 8px;font-size:11.5px;">${n.replace(/^.+?区/,"")}<span style="color:var(--muted);font-size:10px;"> ${d<0.05?"今":Math.round(d*1000)+"m"}</span></button>`).join("");
+      box.querySelectorAll(".re-pn").forEach(b=>b.onclick=()=>{ document.getElementById("rePick").value=b.dataset.n; box.querySelectorAll(".re-pn").forEach(x=>x.classList.toggle("on",x===b)); }); }
+    const dl=document.getElementById("rePickList"); if(dl && !dl.childElementCount) dl.innerHTML=[...chomeIndex.keys()].map(n=>`<option value="${n}">`).join("");
+    return true;
+  };
+  if(!fillPick()){ ensureChome(); let tries=0; const iv=setInterval(()=>{ if(fillPick()||++tries>20) clearInterval(iv); },300); }
+  // 乗車地を変えたら、つけ待ち・ホテル・施設の紐付け(日付|時刻|乗車地)も付け替える
+  const moveSpRecs=(oldK,newK)=>{ if(oldK===newK) return; SP_KEYS.forEach(k=>{ const C=SP_K[k]; const rc=spLoad(C.rec); let ch=false; rc.forEach(x=>{ if(x.k===oldK){ x.k=newK; ch=true; } }); if(ch) spSave(C.rec,rc); }); };
   document.getElementById("reSave").onclick=()=>{
     const f=Math.round(+document.getElementById("reFare").value);
     if(!isFinite(f)||f<0){ alert("料金を確認してください"); return; }
     const dst=document.getElementById("reDst").value.trim();
+    const pick=document.getElementById("rePick").value.trim().replace(/\s+/g,"");
+    let pll=[r.lat,r.lng];
+    if(pick && pick!==r.p){
+      const ft=chomeIndex?chomeIndex.get(pick):null, c=ft?chomeCentroid(pick,ft):null;
+      if(!c){ alert(`「${pick}」が町丁目の一覧に見つかりません。\n候補のボタンか入力候補から選んでください(例: 港区芝5)`); return; }
+      pll=[+c[0].toFixed(5), +c[1].toFixed(5)];
+    }
+    const newP=pick||r.p;
     const ed=reLoad(); const cur=ed[key]||{};
     // 元の値(rides.csv由来)は orig に残しておき、取り消しで戻せるようにする
     if(!cur.orig) cur.orig={m:r.m||"app", f:r.f, dst:r.dst||""};
+    if(cur.orig.p==null){ cur.orig.p=r.p; cur.orig.lat=r.lat; cur.orig.lng=r.lng; }
     cur.m=mode; cur.f=f; cur.dst=dst;
-    if(cur.m===cur.orig.m && cur.f===cur.orig.f && cur.dst===cur.orig.dst) delete ed[key]; else ed[key]=cur;
+    if(newP!==cur.orig.p){ cur.p=newP; cur.lat=pll[0]; cur.lng=pll[1]; } else { delete cur.p; delete cur.lat; delete cur.lng; pll=[cur.orig.lat,cur.orig.lng]; }
+    if(cur.m===cur.orig.m && cur.f===cur.orig.f && cur.dst===cur.orig.dst && !cur.p) delete ed[key]; else ed[key]=cur;
     reSave(ed);
-    r.m=mode; r.f=f; r.dst=dst; save(); render();
+    const oldSk=spKey(r);
+    r.m=mode; r.f=f; r.dst=dst; r.p=newP; r.lat=pll[0]; r.lng=pll[1];
+    moveSpRecs(oldSk, spKey(r));
+    save(); render();
     spDone("乗車を修正しました");
   };
   const un=document.getElementById("reUndo");
   if(un) un.onclick=()=>{
     const ed=reLoad(), cur=ed[key];
-    if(cur && cur.orig){ r.m=cur.orig.m; r.f=cur.orig.f; r.dst=cur.orig.dst; }
+    const oldSk=spKey(r);
+    if(cur && cur.orig){ r.m=cur.orig.m; r.f=cur.orig.f; r.dst=cur.orig.dst; if(cur.orig.p!=null){ r.p=cur.orig.p; r.lat=cur.orig.lat; r.lng=cur.orig.lng; } }
+    moveSpRecs(oldSk, spKey(r));
     delete ed[key]; reSave(ed); save(); render();
     spDone("修正を取り消しました");
   };
