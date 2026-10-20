@@ -1088,7 +1088,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.21-1";
+const APP_VER = "2026.10.21-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8847,7 +8847,7 @@ function importText(text, silent){
       const ok=rec.d+"|"+rec.t+"|"+rec.f+"|"+rec.lat+"|"+rec.lng;
       const ed=(typeof reLoad==="function")?reLoad():{};
       if(ed[ok] && ed[ok].del){ dup++; return; }                       // アプリで削除した乗車は取り込まない
-      const ex=rides.find(r=>(r.ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng))===ok);
+      const ex=rides.find(r=>(r.ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng))===ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng)===ok);   // 乗車地を直した乗車(今の値で書き出されたもの)も同じ乗車とみなす
       if(ex){
         // rides.csv側で配車区分・降車地が直っていれば反映(アプリでの修正は後で上書き適用)
         if(!ed[ok]){ if(ex.m!==rec.m) ex.m=rec.m; if(rec.dst && ex.dst!==rec.dst) ex.dst=rec.dst; }
