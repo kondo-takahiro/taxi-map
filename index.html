@@ -1107,7 +1107,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.23-2";
+const APP_VER = "2026.10.23-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7505,6 +7505,7 @@ const TAGS={settai:{icon:"🍶", name:"接待・会食帰り", col:"#ff8a65"}};
 const TAG_KEY="ride-tags-v1";
 function tagLoad(){ try{ return JSON.parse(localStorage.getItem(TAG_KEY))||{}; }catch(e){ return {}; } }
 function tagSave(v){ try{ localStorage.setItem(TAG_KEY, JSON.stringify(v)); }catch(e){} }
+try{ localStorage.removeItem(TAG_KEY); }catch(e){}   // 10/23 目印(🍶接待帰り)は🍶接待(店)の記録に置き換えたので、残っている目印を消す
 function tagHas(r,t,tg){ const a=(tg||tagLoad())[rideOrigKey(r)]; return !!(a&&a.includes(t)); }
 function tagToggle(r,t){ const tg=tagLoad(), k=rideOrigKey(r); const a=new Set(tg[k]||[]); if(a.has(t)) a.delete(t); else a.add(t);
   if(a.size) tg[k]=[...a]; else delete tg[k]; tagSave(tg); return a.has(t); }
@@ -7988,9 +7989,6 @@ async function spLoadShared(silent){
   try{ const d=await get("backup.json");
     if(d){
       SP_KEYS.forEach(k=>{ if(d[k]&&Array.isArray(d[k].spots)){ const [a,b]=spMergeAdd(k,d[k]); add[k][0]+=a; add[k][1]+=b; } });
-      if(d.tags && typeof d.tags==="object"){ const tg=tagLoad(); let nt=0;
-        Object.entries(d.tags).forEach(([k,a])=>{ if(!Array.isArray(a)) return; const cur=new Set(tg[k]||[]); a.forEach(t=>{ if(!cur.has(t)){ cur.add(t); nt++; } }); if(cur.size) tg[k]=[...cur]; });
-        if(nt){ tagSave(tg); msg.push(`🍶目印: +${nt}`); } }
       const txt=(d.rides||"")+"\n"+(d.memo||"");
       if(txt.trim()){ const n=importText(txt, true); msg.push(`🚕乗車(backup.json): +${n}`); }
     }
@@ -8016,7 +8014,6 @@ document.getElementById("btnSpAllOut").onclick=()=>{
   const data={v:3, kind:"all", at:new Date().toISOString()};
   SP_KEYS.forEach(k=>{ const C=SP_K[k]; data[k]={spots:spLoad(C.spot), recs:spLoad(C.rec)}; });
   data.rides=ridesCsvText();
-  data.tags=tagLoad();
   let mk={lines:[],memos:0,days:0}; try{ mk=memoKpiLines(); }catch(e){}
   data.memo=mk.lines.join("\n");
   const blob=new Blob([JSON.stringify(data)],{type:"application/json"});
