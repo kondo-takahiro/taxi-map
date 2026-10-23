@@ -1107,7 +1107,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.23-4";
+const APP_VER = "2026.10.23-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1946,6 +1946,33 @@ function evOut(ev){ const m=(ev.out||"").match(/(\d{1,2}[::]\d{2})\s*[〜~-]\s*(
   const f=evHm2h(ev.f); return f!=null?[f,f+1]:null; }
 function evH2s(h){ const hh=Math.floor(h+1e-6), mm=Math.round((h-hh)*60); return String(hh%24).padStart(2,"0")+":"+String(mm).padStart(2,"0"); }
 const EV_W={A:3,B:1.5,C:0.6};
+// ===== 需要指数(10/23〜): 人数・ランク・規制・雨・終演の重なりで計算 =====
+// 1会場の点 = ランク係数(A1/B0.8/C0.6) × 人数点(1万人で2点、上限10点) × 規制(近づけない会場は0.5)
+// 指数 = (点の合計×4 + 終演の重なり 1エリア+5・最大+10) × 雨(17〜23時に雨なら1.3、雨の可能性なら1.15)。上限100
+const EV_RKF={A:1,B:0.8,C:0.6};
+function evCapN(ev){
+  const t=(ev.cap||"").replace(/,/g,"");
+  let m=t.match(/([\d.]+)\s*万/); if(m) return +m[1]*10000;
+  m=t.match(/([\d.]+)\s*千/); if(m) return +m[1]*1000;
+  m=t.match(/(\d{3,6})\s*(人|席)/); if(m) return +m[1];
+  return ev.rk==="A"?10000:ev.rk==="B"?5000:2000;
+}
+function evBlocked(ev){ return !!ev.blk || /閉鎖|大渋滞|規制で|規制の直前/.test((ev.e||"")+(ev.out||"")+(ev.cap||"")); }
+function evPts(ev){ const n=evCapN(ev); return (EV_RKF[ev.rk]||0.6) * Math.min(10, 2*Math.pow(n/10000,0.7)) * (evBlocked(ev)?0.5:1); }
+const evWxCache={};   // 日付→ {f:1.3|1.15|1, t:"説明"}
+function evWxFactor(day){
+  if(evWxCache[day]) return evWxCache[day];
+  evWxCache[day]={f:1,t:"",busy:1};
+  fetchForecastDay(day).then(fc=>{
+    let f=1, t="";
+    if(fc){ const ev=fc.rows.filter(r=>r.h>=17&&r.h<=23);
+      const wet=ev.filter(r=>r.p>=0.5||r.pp>=60).length, maybe=ev.filter(r=>r.pp>=40).length;
+      if(wet>=2){ f=1.3; t="夜は雨(×1.3)"; } else if(maybe>=2){ f=1.15; t="夜に雨の可能性(×1.15)"; } }
+    evWxCache[day]={f,t};
+    if(f!==1) try{ renderEventBoard(); }catch(e){}
+  }).catch(()=>{ evWxCache[day]={f:1,t:""}; });
+  return evWxCache[day];
+}
 function renderEventBoard(){
   const el=document.getElementById("eventBoard"); if(!el) return;
   const day=evDayOf(), isToday=day===evShiftDay();
@@ -1972,16 +1999,22 @@ function renderEventBoard(){
   const areas=[...am.values()].map(x=>{ const os=x.evs.map(evOut).filter(Boolean); return Object.assign(x,{lo:Math.min(...os.map(o=>o[0])), hi:Math.max(...os.map(o=>o[1]))}); }).sort((a,b)=>b.w-a.w);
   const top=areas[0];
   const nA=evs.filter(e=>e.rk==="A").length;
-  const idx=Math.min(100, Math.round(evs.reduce((q,e)=>q+(EV_W[e.rk]||1),0)*4));
+  const ptsSum=evs.reduce((q,e)=>q+evPts(e),0);
+  const ovN=Math.min(2, areas.filter(x=>x.evs.length>=2).length), ovB=ovN*5;
+  const wx=evWxFactor(day);
+  const idx=Math.min(100, Math.round((ptsSum*4+ovB)*wx.f));
+  const idxSub=[`Aランク ${nA}件`, ovB?`重なり+${ovB}`:"", wx.t].filter(Boolean).join("・");
+  const idxDetail=evs.slice().sort((a,b)=>evPts(b)-evPts(a)).map(e=>`${(e.e||e.n).replace(/\s.*$/,"").slice(0,10)} ${Math.round(evPts(e)*4)}${evBlocked(e)?"(規制で半分)":""}`).join("・");
   const tile=(l,v,sub,c)=>`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:7px 9px;"><div style="font-size:10px;color:var(--muted);">${l}</div><div style="font-size:${c||17}px;font-weight:900;margin-top:1px;line-height:1.2;">${v}</div><div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub||""}</div></div>`;
   let h=`<div style="font-size:16px;font-weight:800;margin:2px 0 8px;">🎪 イベント需要ボード <span style="font-size:10px;color:var(--muted);font-weight:400;">${evDayLabel(day)}・${evs.length}件</span></div>`
     + (c&&c.note?`<div style="font-size:12px;color:var(--amber);margin:-4px 0 8px;">💬 ${c.note}</div>`:"");
   h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">`
-    + tile("需要指数", `<span style="color:${idx>=70?"#ff5c8a":idx>=40?"#f5a623":"var(--text)"};">${idx}</span><span style="font-size:11px;color:var(--muted);">/100</span>`, `Aランク ${nA}件`)
+    + tile("需要指数", `<span style="color:${idx>=70?"#ff5c8a":idx>=40?"#f5a623":"var(--text)"};">${idx}</span><span style="font-size:11px;color:var(--muted);">/100</span>`, idxSub)
     + tile("最重要時間帯", pk?`${evH2s(pk[0])}〜${evH2s(pk[1])}`:"—", "流出が最も重なる時間", 16)
     + tile("最大の流出エリア", top?top.a:"—", top?`${top.evs.length}会場 ${evH2s(top.lo)}〜${evH2s(top.hi)}`:"", 16)
     + tile("終演の重なり", (areas.find(x=>x.evs.length>=2 && x!==top)||{}).a||"—", (()=>{ const x=areas.find(y=>y.evs.length>=2 && y!==top); return x?x.evs.map(e=>(e.e2||e.f||"")+"").join(" / "):"2会場以上の重なりなし"; })(), 16)
-    + `</div>`;
+    + `</div>`
+    + `<div style="font-size:10.5px;color:var(--muted);margin-top:5px;line-height:1.5;">指数の内訳：${idxDetail}${ovB?`・終演の重なり+${ovB}`:""}${wx.t?`・${wx.t}`:""}</div>`;
   // 自分の実績で注意喚起
   if(top){ const st=top.evs.map(ev=>evMyStats(evLL(ev),ev)).filter(Boolean); const n=st.reduce((q,x)=>q+x.n,0);
     if(!n) h+=`<div style="margin-top:7px;background:rgba(240,128,128,.12);border:1px solid rgba(240,128,128,.4);border-radius:10px;padding:7px 9px;font-size:12px;line-height:1.55;">⚠️ いちばん需要が出る<b>${top.a}</b>は、その時間帯のあなたの実績が<b>0件</b>(未開拓)です。</div>`; }
