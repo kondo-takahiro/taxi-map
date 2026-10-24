@@ -653,6 +653,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
 
 <div class="hint" id="hint">地図をタップして乗車地点を選択</div>
 
+<div id="incomeLegend" style="display:none;position:fixed;top:calc(100px + env(safe-area-inset-top));right:10px;z-index:900;align-items:center;gap:4px;
+  background:rgba(19,26,42,.9);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:9px;color:var(--muted);"></div>
 <div id="heatLegend" style="display:none;position:fixed;top:calc(70px + env(safe-area-inset-top));right:10px;max-width:calc(100vw - 84px);flex-wrap:wrap;justify-content:flex-end;z-index:900;align-items:center;gap:5px;
   background:rgba(19,26,42,.85);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:9px;color:var(--muted);"><span class="legend-bar" style="display:inline-flex;align-items:center;gap:5px;"><span>低</span>
   <span style="width:52px;height:6px;border-radius:3px;background:linear-gradient(90deg,#2e7d32,#66bb6a,#9ccc65,#d4e157,#ffee58,#ffc107,#fb8c00,#f4511e,#e53935,#c62828);"></span>
@@ -775,6 +777,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnBig">⭐ 万収</button>
     <button class="btn" id="btnAirMk">✈️ 空港</button>
     <button class="btn" id="btnAirHotel">🏨 空港ホテル</button>
+    <button class="btn" id="btnIncome">💴 所得(推定)</button>
     <button class="btn" id="btnHanka">🏮 繁華街</button>
     <button class="btn" id="btnWait">📍 待機スポット</button>
     <button class="btn" id="btnTsuke">🅿️ つけ待ち</button>
@@ -1471,6 +1474,7 @@ function layoutUnderHUD(){
   const zb=document.getElementById("zoomBtns");
   const ri=document.getElementById("routeInfo");
   if(lg) lg.style.top = top+"px";
+  const il=document.getElementById("incomeLegend"); if(il) il.style.top=(top+(lg&&lg.style.display!=="none"?30:0))+"px";
   if(zb) zb.style.top = top+"px";
   if(ri) ri.style.top = top+"px";
 }
@@ -2553,10 +2557,10 @@ function renderJotoPlan(info){
 // ===== 📅 その日の立ち回り計画(チャットで立てた計画。今日タブと🧭の窓に出す) =====
 // lo/hi=営業時間(0時=24)、k: key=勝負どころ / rest=休憩
 const DAYPLAN_SEED={
- "2026-10-24":{rev:2,title:"土曜・雨・東京湾大華火祭(8:00出庫・4:20帰庫)", target:[27000,22000,18000,43000],
-  pre:["8:00出庫・4:20帰庫。11万ペースは 12時¥29,000/15時¥42,000/18時¥59,000/22時¥79,000/2時¥102,000","一日中雨の予報(6時以降70〜90%)。タクシーが使われやすい日","15:30〜20:10は晴海・豊洲・有明・お台場が交通規制。首都高の晴海線・台場線も止まる"],
+ "2026-10-24":{title:"土曜・雨・東京湾大華火祭", target:[30000,22000,18000,40000],
+  pre:["一日中雨の予報(6時以降70〜90%)。タクシーが使われやすい日","15:30〜20:10は晴海・豊洲・有明・お台場が交通規制。首都高の晴海線・台場線も止まる"],
   items:[
-   {lo:8,hi:9.5,p:"千住で1本 → 上野・湯島のホテル → 東京駅へ",d:"雨の土曜の朝は、駅やホテルへ向かう客が出やすい"},
+   {lo:7,hi:9.5,p:"千住で1本 → 上野・湯島のホテル → 東京駅へ",d:"雨の土曜の朝は、駅やホテルへ向かう客が出やすい"},
    {lo:9.5,hi:12.5,k:"key",p:"⭐丸の内・八重洲・銀座のホテル",d:"土曜は10時台が一番強い朝(¥6,624)。丸の内→羽田¥9,540(10:30)、歌舞伎町→羽田¥10,440(12:25)の実績"},
    {lo:12.5,hi:15,p:"有明・豊洲 → 14:45までに湾岸を出る",d:"有明3は第2で一番強い(平均¥5,633)。15:30からの規制に巻き込まれない"},
    {lo:15,hi:15.67,k:"rest",p:"⏸ 休憩①",d:"15時台は土曜の谷(¥2,342)"},
@@ -2566,17 +2570,13 @@ const DAYPLAN_SEED={
    {lo:20.75,hi:21.25,p:"銀座へ寄せる",d:"休憩の前に銀座の近くへ"},
    {lo:21.25,hi:21.83,k:"rest",p:"⏸ 休憩②(銀座の近く)",d:"21時台は谷(¥3,631)。22時からに備える"},
    {lo:21.83,hi:23,p:"銀座5・8 → 湯島へ移動",d:"22時台は¥5,300。銀座5→川崎¥9,420の実績"},
-   {lo:23,hi:26,k:"key",p:"⭐湯島3・上野1・上野2",d:"0時台が土曜で一番強い(¥7,057)。1時台の上野1は10月に2回とも万収(¥11,430・¥11,160)。上野3・7は小口なので張らない"},
-   {lo:26,hi:27,p:"千住2でアプリ",d:"千住2の2時台は平均¥6,000。千住2→経堂¥13,730(2:00)の実績"},
-   {lo:27,hi:28,p:"足立(営業所の近く)でアプリ",d:"3時台は実績がほとんどない(1本・¥2,600)。帰り道で1〜2本拾えれば十分"},
-   {lo:28,hi:28.34,k:"rest",p:"🏁 アプリを切って帰庫(4:20)",d:"鳴ったら断れないので、4時を過ぎたら配車を受けない状態にする"}
+   {lo:23,hi:25.5,k:"key",p:"⭐湯島3・上野1",d:"0時台が土曜で一番強い(¥7,057)。湯島→和光¥10,440(23:00)、上野1→松戸¥11,430(1:54)の実績"},
+   {lo:25.5,hi:29,p:"千住2 → 帰庫",d:"千住2は平均¥8,543。千住2→経堂¥13,730(2:00)の実績"}
   ],
-  post:["勝負どころ: 9:30〜12:30のホテル(羽田行き)/18:15〜20:45の武道館と華火/23時〜2時の湯島・上野","華火は荒天中止・順延なし。昼までに公式(tokyo-hanabi-festival.com)を確認"]}
+  post:["勝負どころ: 9:30〜12:30のホテル(羽田行き)/18:15〜20:45の武道館と華火/23時〜1時半の湯島・上野","華火は荒天中止・順延なし。昼までに公式(tokyo-hanabi-festival.com)を確認"]}
 };
 const DP_KEY="dayplan-v1";
-function dayPlanFor(ds){ let c={}; try{ c=JSON.parse(localStorage.getItem(DP_KEY))||{}; }catch(e){} const sd=DAYPLAN_SEED[ds], u=c[ds];
-  // 本体側で計画を作り直したとき(revが新しい)は、端末に貼り付けた古い計画より優先する
-  if(sd&&u&&(sd.rev||0)>(u.rev||0)) return sd; return u||sd||null; }
+function dayPlanFor(ds){ let c={}; try{ c=JSON.parse(localStorage.getItem(DP_KEY))||{}; }catch(e){} return c[ds]||DAYPLAN_SEED[ds]||null; }
 function planItemAt(dp,h){ return (dp&&dp.items||[]).find(x=>h>=x.lo&&h<x.hi)||null; }
 function dpH(h){ const hh=Math.floor(h)%24, mm=Math.round((h-Math.floor(h))*60); return hh+":"+String(mm).padStart(2,"0"); }
 function renderDayPlan(){
@@ -5698,7 +5698,7 @@ async function showRoads(d){
 // ===== 表示ボタンの設定(使わない機能を隠す) =====
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
-  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnAirHotel","🏨 空港ホテル"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnSettaiRec","🍶 接待実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnAirHotel","🏨 空港ホテル"],["btnIncome","💴 所得(推定)"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnSettaiRec","🍶 接待実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnSpAllOut","📦 全部まとめて書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
@@ -7314,6 +7314,40 @@ if(document.getElementById("btnTagMk")) document.getElementById("btnTagMk").oncl
   if(tagMkOn){ const h=document.getElementById("hint"); if(h){ const all=tagRides("settai").length;
     h.textContent=all?`🍶 接待帰り ${n}本(今のフィルター条件)・全${all}本`:"🍶 まだ記録がありません。日誌の行をタップ→✏️修正→🍶で付けられます"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2600); } }
 };
+// ===== 💴 エリアの所得(区=公式値 / 町丁目=地価からの推定) income.json =====
+// 区: 総務省 市町村税課税状況等の調(令和7年度=2024年分) 総所得金額等÷所得割納税義務者数
+// 町丁目: 令和8年地価公示の住宅地価格(地点のない町丁目は近くの地点から補間)を、区ごとの公式値に合うよう換算した推定
+let incomeOn=false, incomeLayer=null, incomeData=null;
+const INC_STEPS=[[400,"#3949ab"],[500,"#1e88e5"],[600,"#26a69a"],[800,"#9ccc65"],[1000,"#ffca28"],[1300,"#fb8c00"],[Infinity,"#e53935"]];
+function incCol(v){ return INC_STEPS.find(x=>v<x[0])[1]; }
+async function drawIncome(){
+  if(incomeLayer){ map.removeLayer(incomeLayer); incomeLayer=null; }
+  const lg=document.getElementById("incomeLegend");
+  if(!incomeOn){ if(lg) lg.style.display="none"; return; }
+  if(!incomeData){ incomeData=await fetch("income.json?v="+APP_VER).then(r=>r.ok?r.json():null).catch(()=>null); }
+  if(!incomeData){ alert("income.json を読み込めませんでした"); incomeOn=false; document.getElementById("btnIncome").classList.remove("on"); return; }
+  ensureChome(); let n=0; while(!chomeIndex && n++<40) await new Promise(r=>setTimeout(r,250));
+  if(!chomeIndex||!incomeOn) return;
+  const feats=[]; chomeIndex.forEach((f,name)=>{ if(incomeData.chome[name]) feats.push(f); });
+  incomeLayer=L.geoJSON({type:"FeatureCollection",features:feats},{
+    style:f=>{ const v=incomeData.chome[f.properties.n][0]; return {color:"#0d1320",weight:0.4,fillColor:incCol(v),fillOpacity:0.68}; },
+    onEachFeature:(f,ly)=>ly.on("click",e=>{ L.DomEvent.stopPropagation(e); const nm=f.properties.n, c=incomeData.chome[nm]; const w=Object.keys(incomeData.wards).find(k=>nm.startsWith(k)), W=incomeData.wards[w];
+      L.popup({maxWidth:280}).setLatLng(e.latlng).setContent(`<b style="font-size:14px;">${nm}</b>
+        <div style="margin-top:5px;font-size:13px;">💴 推定所得 <b style="font-size:16px;color:${incCol(c[0])};">${c[0].toLocaleString()}万円</b></div>
+        <div style="font-size:11px;color:#8b98ad;">納税者1人あたり・地価からの推定(世帯年収ではありません)</div>
+        <div style="margin-top:5px;font-size:12px;">🏠 住宅地の地価 ${c[1].toLocaleString()}千円/㎡ <span style="color:#8b98ad;">(${c[2]==="点"?"この町丁目の公示地点":c[2]==="推定"?"近くの公示地点から補間":"公示地点が遠く参考程度"})</span></div>
+        ${W?`<div style="margin-top:6px;padding-top:5px;border-top:1px solid #26324a;font-size:12px;">${w}の公式値(2024年分)<br>・総所得÷納税者 <b>${W.pp.toLocaleString()}万円</b><br>・株式等の譲渡益込み <b>${W.kt.toLocaleString()}万円</b></div>`:""}
+        <div style="margin-top:5px;font-size:10px;color:#8b98ad;">出典: 総務省 市町村税課税状況等の調(令和7年度) / 令和8年地価公示</div>`).openOn(map); })
+  }).addTo(map);
+  if(lg){ lg.style.display="flex"; lg.innerHTML=`<span>💴推定所得</span>`+INC_STEPS.map((x,i)=>`<span style="display:inline-flex;align-items:center;gap:2px;"><span style="width:9px;height:9px;border-radius:2px;background:${x[1]};"></span>${i===INC_STEPS.length-1?"1300〜":x[0]<1000?"〜"+x[0]:"〜"+(x[0]/1000).toFixed(1).replace(".0","")+"千"}</span>`).join("")+`<span style="opacity:.6;">万円</span>`; }
+  setTimeout(layoutUnderHUD,0);
+}
+document.getElementById("btnIncome").onclick=e=>{
+  incomeOn=!incomeOn; e.target.classList.toggle("on",incomeOn); try{ localStorage.setItem("opt-income",incomeOn?"1":"0"); }catch(_){}
+  drawIncome();
+  if(incomeOn){ const h=document.getElementById("hint"); if(h){ h.textContent="💴 町丁目をタップすると、推定所得と区の公式値が出ます"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2600); } }
+};
+if(localStorage.getItem("opt-income")==="1"){ incomeOn=true; document.getElementById("btnIncome").classList.add("on"); setTimeout(drawIncome,800); }
 document.getElementById("btnBig").onclick=e=>{
   bigOn=!bigOn; e.target.classList.toggle("on",bigOn); render();
 };
