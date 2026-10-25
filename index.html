@@ -1132,7 +1132,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.25-1";
+const APP_VER = "2026.10.25-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8168,7 +8168,20 @@ document.getElementById("btnSpAllOut").onclick=()=>{
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);
   alert(`backup.json に書き出しました\n乗車${rides.length}・${SP_KEYS.map(k=>SP_K[k].icon+data[k].recs.length).join("・")}・メモ${mk.memos}・実車率/休憩${mk.days}日\nGitHubに上げると、次に開いたときに自動で読み込みます`);
 };
-setTimeout(()=>spLoadShared(true),1500);
+// 記録の種類の付け替え(10/25: 上野駅1は🅿️つけ待ちではなく🚉駅の乗り場)。GitHubから読み直した後にも毎回あてる
+const SP_MOVES=[{from:"tsuke", to:"station", id:"s1792471808367116"}];
+function spApplyMoves(){
+  SP_MOVES.forEach(mv=>{
+    const F=SP_K[mv.from], T=SP_K[mv.to];
+    const fs=spLoad(F.spot), sp=fs.find(x=>x.id===mv.id); const fr=spLoad(F.rec), recs=fr.filter(x=>x.sid===mv.id);
+    if(!sp && !recs.length) return;
+    if(sp){ const ts=spLoad(T.spot); if(!ts.some(x=>x.id===sp.id)) ts.push(sp); spSave(T.spot,ts); spSave(F.spot, fs.filter(x=>x.id!==mv.id)); }
+    if(recs.length){ const tr=spLoad(T.rec); recs.forEach(r=>{ if(!tr.some(x=>x.k===r.k)) tr.push(r); }); spSave(T.rec,tr); spSave(F.rec, fr.filter(x=>x.sid!==mv.id)); }
+    try{ spDraw(mv.from); spDraw(mv.to); }catch(e){}
+  });
+}
+spApplyMoves();
+setTimeout(()=>spLoadShared(true).then(()=>spApplyMoves()),1500);
 
 // ===== 🅿️つけ待ち / 🏨ホテル の専用分析ページ =====
 // 記録(端末内)と乗車データを突き合わせて、どの地点・時間帯・待ち時間で稼げているかを1ページで見る
@@ -9123,7 +9136,7 @@ function loadShared(silent){
     });
 }
 loadShared(true); // 起動時は静かに実行
-document.getElementById("btnSync").onclick=async()=>{ await loadShared(false); try{ const m=await spLoadShared(false); if(m.length) alert("GitHubのbackup.jsonなど\n"+m.join("\n")); }catch(e){} }; // 手動時は結果を表示
+document.getElementById("btnSync").onclick=async()=>{ await loadShared(false); try{ const m=await spLoadShared(false); spApplyMoves(); if(m.length) alert("GitHubのbackup.jsonなど\n"+m.join("\n")); }catch(e){} }; // 手動時は結果を表示
 
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
 document.getElementById("fileCsv").onchange=e=>{
