@@ -1132,7 +1132,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.28-2";
+const APP_VER = "2026.10.28-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7875,6 +7875,12 @@ function spAddSpot(k, n, lat, lng){
   const s={id:"s"+Date.now()+Math.floor(Math.random()*1000), n, lat:+(+lat).toFixed(5), lng:+(+lng).toFixed(5)};
   spots.push(s); spSave(C.spot, spots); return s;
 }
+// 検索用の表記ゆれ吸収(全角/半角・大文字/小文字・カタカナ/ひらがな・空白や記号を無視)
+function spNorm(t){
+  return String(t||"").normalize("NFKC").toLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, c=>String.fromCharCode(c.charCodeAt(0)-0x60))
+    .replace(/[\s・･\-‐－―'’&＆.,()（）]/g,"");
+}
 // ---- 記録シート(日報の行をタップすると開く。上のタブでつけ待ち/ホテルを切り替え) ----
 function spOpen(k, r){
   if(k==="edit"){   // 乗車そのものの修正
@@ -7911,6 +7917,10 @@ function spOpen(k, r){
     + `<span id="spUnlink" style="color:var(--danger);border:1px solid var(--danger);border-radius:8px;padding:3px 8px;cursor:pointer;">解除</span></div>`;
   h+=`<div style="font-size:11px;color:var(--muted);margin:2px 0 4px;">待ち時間(任意)</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">${SP_WAITS.map(([v,l])=>chip(v,l)).join("")}</div>`;
   h+=`<button class="btn on" id="spMapPick" style="width:100%;padding:11px;font-size:14px;margin-bottom:10px;">🗺 地図で場所を選ぶ</button>`;
+  // 名前で検索(登録済み+ホテルは地図データ全体から。距離に関係なく探せる)
+  const kname=k==="hotel"?"ホテル":k==="venue"?"施設":k==="settai"?"店":k==="station"?"乗り場":"地点";
+  h+=`<input id="spSearch" type="search" enterkeyhint="search" autocomplete="off" placeholder="🔍 ${kname}の名前で検索" style="width:100%;box-sizing:border-box;padding:10px 12px;font-size:16px;border-radius:10px;border:1.5px solid ${C.col};background:var(--panel2);color:var(--text);margin-bottom:8px;">`
+    + `<div id="spSearchRes" style="display:none;"></div><div id="spDefault">`;
   const rowHtml=(attrs, name, d, right, cur)=>`<div ${attrs} style="display:flex;align-items:center;gap:8px;padding:10px 4px;border-top:1px solid var(--line);cursor:pointer;${cur?"background:rgba(245,166,35,.12);":""}">`
     + `<span style="font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`
     + `<span style="font-size:11px;color:var(--muted);white-space:nowrap;">${d<1?Math.round(d*1000)+"m":d.toFixed(1)+"km"}</span>`
@@ -7935,6 +7945,7 @@ function spOpen(k, r){
       h+=`<div style="padding:6px 0;border-top:1px solid var(--line);"><button class="btn" id="spLoadHotels" style="width:100%;padding:9px;font-size:13px;">🏨 周辺のホテルを読み込む(初回のみ・数十秒)</button></div>`;
     }
   }
+  h+=`</div>`;   // spDefault
   h+=`<button class="btn" id="spCancel" style="width:100%;padding:10px;margin-top:10px;">閉じる</button>`;
   const body=document.getElementById("tsBody");
   body.innerHTML=h;
@@ -7958,6 +7969,33 @@ function spOpen(k, r){
   };
   document.getElementById("spMapPick").onclick=()=>spStartPick(k, r);
   document.getElementById("spCancel").onclick=()=>{ document.getElementById("tsSheet").style.display="none"; };
+  const sIn=document.getElementById("spSearch"), sRes=document.getElementById("spSearchRes"), sDef=document.getElementById("spDefault");
+  if(sIn) sIn.oninput=()=>{
+    const q=spNorm(sIn.value);
+    if(!q){ sRes.style.display="none"; sDef.style.display=""; return; }
+    sDef.style.display="none"; sRes.style.display="";
+    const ownSp=spLoad(C.spot), own=new Set(ownSp.map(s=>s.n));
+    const hit1=ownSp.filter(s=>spNorm(s.n).includes(q)).map(s=>({s, d:haversineKm(ll,[s.lat,s.lng])})).sort((a,b)=>a.d-b.d).slice(0,15);
+    let hit2=[];
+    const src=(k==="hotel") ? ((typeof hotelData!=="undefined" && hotelData) ? hotelData : (()=>{ try{ return JSON.parse(localStorage.getItem("hotels-v1"))||null; }catch(e){ return null; } })()) : null;
+    if(src) hit2=src.filter(p=>!own.has(p[2]) && spNorm(p[2]).includes(q)).map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).sort((a,b)=>a.d-b.d).slice(0,20);
+    spSheet.sosm=hit2.map(x=>x.p);
+    let o="";
+    if(hit1.length) o+=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">登録済み</div>`
+      + hit1.map(({s,d})=>{ const st=stats.get(s.id)||{n:0,big:0}; const t=spTier(k,s.n);
+          return rowHtml(`class="sp-pick" data-id="${s.id}"`, `${C.icon} ${s.n}${t?` <span style="font-size:10px;color:${t.c};">${t.n}</span>`:""}`, d,
+            `${st.n}回${st.big?` <span style="color:#ffd54f;">⭐${st.big}</span>`:""}`, sp&&sp.id===s.id); }).join("");
+    if(hit2.length) o+=`<div style="font-size:11px;color:var(--muted);margin:8px 0 2px;">地図データのホテル(乗車地から近い順)</div>`
+      + hit2.map(({p,d},i)=>{ const t=spTier("hotel",p[2]);
+          return rowHtml(`class="sp-sosm" data-i="${i}"`, `${p[2]}${t?` <span style="font-size:10px;color:${t.c};">${t.n}</span>`:""}`, d, "", false); }).join("");
+    if(!o) o=`<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);">「${sIn.value}」は見つかりません。${k==="hotel"&&!src?"下の候補から「周辺のホテルを読み込む」を押すと、地図データからも探せます。":"表記を変えるか、地図で選んでください。"}</div>`;
+    sRes.innerHTML=o;
+    sRes.querySelectorAll(".sp-pick").forEach(el=>el.onclick=()=>{ spSaveRec(k, r, el.dataset.id, spSheet.w); spDone("「"+(spSpotById(k,el.dataset.id)||{}).n+"」で記録しました"); });
+    sRes.querySelectorAll(".sp-sosm").forEach(el=>el.onclick=()=>{
+      const pp=(spSheet.sosm||[])[+el.dataset.i]; if(!pp) return;
+      const ns=spAddSpot("hotel", pp[2], pp[0], pp[1]); spSaveRec("hotel", r, ns.id, spSheet.w); spDone("「"+ns.n+"」で記録しました");
+    });
+  };
   const ul=document.getElementById("spUnlink");
   if(ul) ul.onclick=()=>{ spSave(C.rec, spLoad(C.rec).filter(x=>x.k!==spKey(r))); spDone("記録を解除しました"); };
 }
