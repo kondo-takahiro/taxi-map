@@ -1132,7 +1132,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.28-4";
+const APP_VER = "2026.10.28-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7982,10 +7982,10 @@ function spOpen(k, r){
     if(!q){ sRes.style.display="none"; sDef.style.display=""; return; }
     sDef.style.display="none"; sRes.style.display="";
     const ownSp=spLoad(C.spot), own=new Set(ownSp.map(s=>s.n));
-    const hit1=ownSp.filter(s=>spNorm(s.n).includes(q)).map(s=>({s, d:haversineKm(ll,[s.lat,s.lng])})).sort((a,b)=>a.d-b.d).slice(0,15);
+    const hit1=ownSp.filter(s=>spNorm(s.n).includes(q)).map(s=>({s, d:haversineKm(ll,[s.lat,s.lng])})).sort((a,b)=>a.d-b.d).slice(0,50);
     let hit2=[];
     const src=(k==="hotel") ? ((typeof hotelData!=="undefined" && hotelData) ? hotelData : hotelCache()) : null;
-    if(src) hit2=src.filter(p=>!own.has(p[2]) && spNorm(p[2]+"|"+(p[3]||"")).includes(q)).map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).sort((a,b)=>a.d-b.d).slice(0,20);
+    if(src) hit2=src.filter(p=>!own.has(p[2]) && spNorm(p[2]+"|"+(p[3]||"")).includes(q)).map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).sort((a,b)=>a.d-b.d).slice(0,50);
     spSheet.sosm=hit2.map(x=>x.p);
     let o="";
     if(hit1.length) o+=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">登録済み</div>`
