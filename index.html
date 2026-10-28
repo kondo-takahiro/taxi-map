@@ -1132,7 +1132,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.28-3";
+const APP_VER = "2026.10.28-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6323,8 +6323,13 @@ function hotelStatus(msg){
   const el=document.getElementById("hotelStatus");
   if(el){ el.textContent=msg||""; el.style.display=msg?"block":"none"; }
 }
-async function loadHotels(){
-  try{ const c=JSON.parse(localStorage.getItem("hotels-v1")); if(c&&c.length) return c; }catch(e){}
+// ホテルの地図データ。v2は英語名・ブランド名などの別名(4番目)も持つ(YOTELのような英字名でも検索できるように)
+function hotelCache(){
+  for(const key of ["hotels-v2","hotels-v1"]){ try{ const c=JSON.parse(localStorage.getItem(key)); if(c&&c.length) return c; }catch(e){} }
+  return null;
+}
+async function loadHotels(force){
+  if(!force){ const c=hotelCache(); if(c) return c; }
   const q='[out:json][timeout:40];(node["tourism"="hotel"]["name"](35.50,139.53,35.85,139.95);way["tourism"="hotel"]["name"](35.50,139.53,35.85,139.95););out center tags;';
   const servers=["https://overpass.osm.jp/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
   for(let i=0;i<servers.length;i++){
@@ -6336,15 +6341,17 @@ async function loadHotels(){
       const j=await res.json();
       const pts=(j.elements||[]).map(e=>{
         const la=e.lat!=null?e.lat:(e.center&&e.center.lat), lo=e.lon!=null?e.lon:(e.center&&e.center.lon);
-        const nm=(e.tags&&(e.tags["name:ja"]||e.tags.name))||"";
+        const tg=e.tags||{}, nm=tg["name:ja"]||tg.name||"";
         if(la==null||!nm) return null;
-        return [+la.toFixed(5), +lo.toFixed(5), nm];
+        const alt=[...new Set([tg.name,tg["name:en"],tg["name:ja"],tg["name:ja-Latn"],tg["name:ja_kana"],tg.brand,tg.alt_name,tg.official_name,tg.short_name].filter(x=>x&&x!==nm))].join("|");
+        return alt ? [+la.toFixed(5), +lo.toFixed(5), nm, alt] : [+la.toFixed(5), +lo.toFixed(5), nm];
       }).filter(Boolean);
       if(!pts.length) continue;
-      try{ localStorage.setItem("hotels-v1", JSON.stringify(pts)); }catch(e){}
+      try{ localStorage.setItem("hotels-v2", JSON.stringify(pts)); localStorage.removeItem("hotels-v1"); }catch(e){}
       return pts;
     }catch(e){}
   }
+  const old=hotelCache(); if(old) return old;   // 取れなければ前のデータで続ける
   throw new Error("取得できませんでした");
 }
 function drawHotels(){
@@ -7933,7 +7940,7 @@ function spOpen(k, r){
   // ホテルは、地図のホテルデータ(OpenStreetMap)から乗車地の近くの候補も出す
   if(k==="hotel"){
     const own=new Set(spLoad(C.spot).map(s=>s.n));
-    const src=(typeof hotelData!=="undefined" && hotelData) ? hotelData : (()=>{ try{ return JSON.parse(localStorage.getItem("hotels-v1"))||null; }catch(e){ return null; } })();
+    const src=(typeof hotelData!=="undefined" && hotelData) ? hotelData : hotelCache();
     h+=`<div style="font-size:11px;color:var(--muted);margin:10px 0 2px;">近くのホテル(地図データ・乗車地から600m以内)</div>`;
     if(src && src.length){
       const near=src.map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).filter(x=>x.d<=0.6 && !own.has(x.p[2])).sort((a,b)=>a.d-b.d).slice(0,12);
@@ -7977,8 +7984,8 @@ function spOpen(k, r){
     const ownSp=spLoad(C.spot), own=new Set(ownSp.map(s=>s.n));
     const hit1=ownSp.filter(s=>spNorm(s.n).includes(q)).map(s=>({s, d:haversineKm(ll,[s.lat,s.lng])})).sort((a,b)=>a.d-b.d).slice(0,15);
     let hit2=[];
-    const src=(k==="hotel") ? ((typeof hotelData!=="undefined" && hotelData) ? hotelData : (()=>{ try{ return JSON.parse(localStorage.getItem("hotels-v1"))||null; }catch(e){ return null; } })()) : null;
-    if(src) hit2=src.filter(p=>!own.has(p[2]) && spNorm(p[2]).includes(q)).map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).sort((a,b)=>a.d-b.d).slice(0,20);
+    const src=(k==="hotel") ? ((typeof hotelData!=="undefined" && hotelData) ? hotelData : hotelCache()) : null;
+    if(src) hit2=src.filter(p=>!own.has(p[2]) && spNorm(p[2]+"|"+(p[3]||"")).includes(q)).map(p=>({p, d:haversineKm(ll,[p[0],p[1]])})).sort((a,b)=>a.d-b.d).slice(0,20);
     spSheet.sosm=hit2.map(x=>x.p);
     let o="";
     if(hit1.length) o+=`<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">登録済み</div>`
@@ -7988,9 +7995,18 @@ function spOpen(k, r){
     if(hit2.length) o+=`<div style="font-size:11px;color:var(--muted);margin:8px 0 2px;">地図データのホテル(乗車地から近い順)</div>`
       + hit2.map(({p,d},i)=>{ const t=spTier("hotel",p[2]);
           return rowHtml(`class="sp-sosm" data-i="${i}"`, `${p[2]}${t?` <span style="font-size:10px;color:${t.c};">${t.n}</span>`:""}`, d, "", false); }).join("");
-    if(!o) o=`<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);">「${sIn.value}」は見つかりません。${k==="hotel"&&!src?"下の候補から「周辺のホテルを読み込む」を押すと、地図データからも探せます。":"表記を変えるか、地図で選んでください。"}</div>`;
+    const oldData = k==="hotel" && src && !src.some(x=>x.length>3);
+    if(!o) o=`<div style="font-size:12px;color:var(--muted);padding:8px 0;border-top:1px solid var(--line);">「${sIn.value}」は見つかりません。${k==="hotel"&&!src?"検索欄を消して「周辺のホテルを読み込む」を押すと、地図データからも探せます。":"地図データに無いか、別の表記で載っています。"}</div>`;
+    if(k==="hotel" && oldData) o+=`<button class="btn" id="spReloadHotels" style="width:100%;padding:9px;font-size:13px;margin-bottom:6px;">🔄 英語名も探せるようにホテルデータを読み直す(数十秒)</button>`;
+    o+=`<button class="btn on" id="spPickNamed" style="width:100%;padding:10px;font-size:13.5px;">🗺 「${sIn.value}」を地図で選んで登録</button>`;
     sRes.innerHTML=o;
     sRes.querySelectorAll(".sp-pick").forEach(el=>el.onclick=()=>{ spSaveRec(k, r, el.dataset.id, spSheet.w); spDone("「"+(spSpotById(k,el.dataset.id)||{}).n+"」で記録しました"); });
+    const pn=document.getElementById("spPickNamed"); if(pn) pn.onclick=()=>spStartPick(k, r, sIn.value.trim());
+    const rh=document.getElementById("spReloadHotels");
+    if(rh) rh.onclick=async()=>{ rh.disabled=true; rh.textContent="読み込み中…";
+      try{ const d=await loadHotels(true);
+        if(typeof hotelData!=="undefined") hotelData=d; const qv=sIn.value; spOpen("hotel", r); const ni=document.getElementById("spSearch"); if(ni){ ni.value=qv; ni.oninput(); } }
+      catch(e){ rh.disabled=false; rh.textContent="取得できませんでした。もう一度押す"; } };
     sRes.querySelectorAll(".sp-sosm").forEach(el=>el.onclick=()=>{
       const pp=(spSheet.sosm||[])[+el.dataset.i]; if(!pp) return;
       const ns=spAddSpot("hotel", pp[2], pp[0], pp[1]); spSaveRec("hotel", r, ns.id, spSheet.w); spDone("「"+ns.n+"」で記録しました");
@@ -8025,8 +8041,8 @@ function spCross(on){
   const r=map.getContainer().getBoundingClientRect();
   c.style.left=(r.left+r.width/2)+"px"; c.style.top=(r.top+r.height/2)+"px"; c.style.display="block";
 }
-function spStartPick(k, r){
-  spPick={k, r};
+function spStartPick(k, r, name){
+  spPick={k, r, name:name||null};
   spDiaryScroll=document.getElementById("diaryPanel").scrollTop;
   document.getElementById("tsSheet").style.display="none";
   showTab("map");
@@ -8052,10 +8068,11 @@ function spPickAt(ll){
   if(k==="station"){   // 駅は近くのタクシー乗り場(OpenStreetMap)の名前を初期値にする
     try{ const c=JSON.parse(localStorage.getItem("taxistands-v1")); if(c&&c.pts){ let b=null, bd=0.3; c.pts.forEach(p=>{ if(!p[2]) return; const d=haversineKm(ll,[p[0],p[1]]); if(d<bd){ bd=d; b=p; } }); if(b) def=b[2]; } }catch(e){}
   }
-  if(k==="hotel"){   // ホテルは地図データの一番近いホテル名を初期値にする
-    const src=(typeof hotelData!=="undefined" && hotelData) ? hotelData : (()=>{ try{ return JSON.parse(localStorage.getItem("hotels-v1"))||null; }catch(e){ return null; } })();
+  if(k==="hotel" && !spPick.name){   // ホテルは地図データの一番近いホテル名を初期値にする
+    const src=(typeof hotelData!=="undefined" && hotelData) ? hotelData : hotelCache();
     if(src && src.length){ let b=null, bd=0.15; src.forEach(p=>{ const d=haversineKm(ll,[p[0],p[1]]); if(d<bd){ bd=d; b=p; } }); if(b) def=b[2]; }
   }
+  if(spPick.name) def=spPick.name;   // 検索欄で入れた名前があれば、それを初期値にする
   const name=prompt(C.ask, def);
   if(name===null) return;              // キャンセル → 選び直せるよう選択モードのまま
   const s=spAddSpot(k, name.trim()||def, ll[0], ll[1]);
