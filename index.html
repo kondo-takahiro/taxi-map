@@ -760,6 +760,12 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip cool" data-c="18,22">第3</button>
     <button class="chip cool" data-c="22,29">青タン</button>
     <button class="chip cool on" data-c="near">前後1h</button>
+    <span id="nearWBox" style="display:inline-flex;gap:3px;align-items:center;">
+      <span style="font-size:10px;color:var(--muted);">幅</span>
+      <button class="chip near-w" data-w="0.5" style="padding:4px 7px;font-size:11px;">30分</button>
+      <button class="chip near-w" data-w="1" style="padding:4px 7px;font-size:11px;">1h</button>
+      <button class="chip near-w" data-w="2" style="padding:4px 7px;font-size:11px;">2h</button>
+    </span>
     <button class="chip cool" data-c="auto">クール追従</button>
   </div>
   <div class="row">
@@ -1132,7 +1138,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.10.28-5";
+const APP_VER = "2026.10.29-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3326,7 +3332,7 @@ function renderRank(list){
 
 // ===== 時間帯スライダー =====
 const elMin=document.getElementById("tMin"), elMax=document.getElementById("tMax");
-function fmtH(v){ return (v%24)+":00"; }
+function fmtH(v){ return (Math.floor(v)%24)+(v%1?":30":":00"); }
 function renderTicks(){
   const tk=document.getElementById("tlTicks"); tk.innerHTML="";
   rides.filter(r=>r.f>=minFare).forEach(r=>{
@@ -3372,7 +3378,13 @@ function setTimeRange(a,b){
 }
 // 現在時刻が属するクール
 const COOL_RANGES=[[5,13,"第1"],[13,18,"第2"],[18,22,"第3"],[22,29,"青タン"]];
-let coolAuto="near";   // "near"=前後1時間 / "auto"=クール追従 / false=手動
+let coolAuto="near";   // "near"=前後の幅(nearW) / "auto"=クール追従 / false=手動
+let nearW=(()=>{ const v=parseFloat(localStorage.getItem("opt-nearw")); return [0.5,1,2].includes(v)?v:1; })();   // 前後の幅(時間)
+function nearLabel(){ return nearW===0.5?"前後30分":"前後"+nearW+"h"; }
+function paintNearW(){
+  document.querySelectorAll(".near-w").forEach(b=>b.classList.toggle("on", +b.dataset.w===nearW));
+  const box=document.getElementById("nearWBox"); if(box) box.style.opacity=coolAuto==="near"?"1":".45";
+}
 function currentCool(){
   const d=new Date(); const h=d.getHours()+d.getMinutes()/60;
   const sh=h<5?h+24:h;
@@ -3381,14 +3393,14 @@ function currentCool(){
 function applyAutoCool(force){
   if(!coolAuto) return;
   if(coolAuto==="near"){
-    // 現在時刻の前後1時間
+    // 現在時刻の前後(幅はnearW)
     const d=new Date(); const h=d.getHours()+d.getMinutes()/60;
     const sh=h<5?h+24:h;
-    const a=Math.max(5, Math.round((sh-1)*2)/2), b=Math.min(29, Math.round((sh+1)*2)/2);
+    const a=Math.max(5, Math.round((sh-nearW)*2)/2), b=Math.min(29, Math.round((sh+nearW)*2)/2);
     if(!force && tMin===a && tMax===b) return;
     setTimeRange(a,b);
     const btn=document.querySelector('.chip.cool[data-c="near"]');
-    if(btn) btn.textContent="前後1h("+fmtH(a)+"-"+fmtH(b)+")";
+    if(btn) btn.textContent=nearLabel()+"("+fmtH(a)+"-"+fmtH(b)+")";
     return;
   }
   const c=currentCool();
@@ -3405,17 +3417,26 @@ document.querySelectorAll(".chip.cool").forEach(c=>{
     document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
     c.classList.add("on");
     const v=c.dataset.c;
-    if(v==="auto"||v==="near"){ coolAuto=v; applyAutoCool(true); return; }
-    coolAuto=false;
+    if(v==="auto"||v==="near"){ coolAuto=v; paintNearW(); applyAutoCool(true); return; }
+    coolAuto=false; paintNearW();
     if(v==="all"){ setTimeRange(5,29); return; }
     const [a,b]=v.split(",").map(Number);
     setTimeRange(a,b);
   };
 });
+// 前後の幅(30分/1h/2h)。押すと前後モードに切り替えて、その幅で絞り込む。選んだ幅は保存
+document.querySelectorAll(".near-w").forEach(b=>b.onclick=()=>{
+  nearW=+b.dataset.w; try{ localStorage.setItem("opt-nearw", String(nearW)); }catch(e){}
+  coolAuto="near";
+  document.querySelectorAll(".chip.cool").forEach(x=>x.classList.toggle("on", x.dataset.c==="near"));
+  paintNearW(); applyAutoCool(true);
+});
+paintNearW();
 // スライダーを手で動かしたらクールの選択を外す
 [elMin,elMax].forEach(el=>el.addEventListener("input",()=>{
   coolAuto=false;
   document.querySelectorAll(".chip.cool").forEach(x=>x.classList.remove("on"));
+  paintNearW();
 }));
 
 // ===== 単価チップ =====
