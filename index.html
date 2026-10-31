@@ -248,6 +248,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="btnStrat" title="🧭戦略の窓を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🧭</button>
   <button id="btnEvt" title="イベント🎪を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🎪</button>
   <button id="btnSingles" title="乗車1回だけのエリアを表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">1回</button>
+  <button id="btnWardLine" title="区の境目を太線と区名で表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:15px;font-weight:900;">区</button>
 </div>
 
 <div id="hankaPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
@@ -1138,7 +1139,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.01-1";
+const APP_VER = "2026.11.01-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8936,6 +8937,46 @@ document.getElementById("btnSingles").onclick=()=>{
   const h=document.getElementById("hint"); if(h){ h.textContent=showSingles?"1回だけのエリアも表示":"1回だけのエリアを非表示"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },1600); }
 };
 singlesBtnPaint();
+// 区の境目を太い線と区名で重ねる(ヒートマップの上・タップは素通り)
+let wardLineOn=false, wardLineLayer=null, wardLabelLayer=null, wardLineGJ=null;
+try{ wardLineOn=localStorage.getItem("opt-wardline")==="1"; }catch(e){}
+try{ map.createPane("wardLinePane"); const wp=map.getPane("wardLinePane"); wp.style.zIndex=450; wp.style.pointerEvents="none"; }catch(e){}
+function wardLabelPos(f){
+  const g=f.geometry, rings=g.type==="Polygon"?[g.coordinates[0]]:g.coordinates.map(pl=>pl[0]);
+  const ring=rings.sort((a,b)=>b.length-a.length)[0];
+  let A=0,cx=0,cy=0;   // 面積重心(形がいびつでも区の内側に寄りやすい)
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){ const [x0,y0]=ring[j],[x1,y1]=ring[i], c=x0*y1-x1*y0; A+=c; cx+=(x0+x1)*c; cy+=(y0+y1)*c; }
+  if(!A){ const n=ring.length; return [ring.reduce((s,p)=>s+p[1],0)/n, ring.reduce((s,p)=>s+p[0],0)/n]; }
+  return [cy/(3*A), cx/(3*A)];
+}
+function drawWardLines(){
+  if(wardLineLayer){ map.removeLayer(wardLineLayer); wardLineLayer=null; }
+  if(wardLabelLayer){ map.removeLayer(wardLabelLayer); wardLabelLayer=null; }
+  if(!wardLineOn) return;
+  const gj=wardLineGJ||wardsData;
+  if(!gj){
+    fetch("wards.json?v="+APP_VER).then(r=>r.ok?r.json():null).then(j=>{ if(j){ wardLineGJ=j; drawWardLines(); } }).catch(()=>{});
+    return;
+  }
+  wardLineGJ=gj;
+  const halo=L.geoJSON(gj,{pane:"wardLinePane",interactive:false,style:{color:"#ffffff",weight:7,opacity:.85,fill:false}});
+  const line=L.geoJSON(gj,{pane:"wardLinePane",interactive:false,style:{color:"#1b2a4a",weight:3,opacity:.95,fill:false}});
+  wardLineLayer=L.layerGroup([halo,line]).addTo(map);
+  if(map.getZoom()>=11){
+    const fs=map.getZoom()>=13?15:12.5;
+    wardLabelLayer=L.layerGroup(gj.features.map(f=>L.marker(wardLabelPos(f),{pane:"wardLinePane",interactive:false,keyboard:false,
+      icon:L.divIcon({className:"",iconSize:[0,0],html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:${fs}px;font-weight:900;color:#1b2a4a;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 5px #fff;pointer-events:none;">${f.properties.n}</div>`})}))).addTo(map);
+  }
+}
+function wardLineBtnPaint(){ const b=document.getElementById("btnWardLine"); if(!b) return;
+  b.style.background=wardLineOn?"#f5a623":"rgba(19,26,42,.92)"; b.style.color=wardLineOn?"#1a1206":"#8b98ad"; }
+document.getElementById("btnWardLine").onclick=()=>{
+  wardLineOn=!wardLineOn; try{ localStorage.setItem("opt-wardline", wardLineOn?"1":"0"); }catch(e){}
+  wardLineBtnPaint(); drawWardLines();
+  const h=document.getElementById("hint"); if(h){ h.textContent=wardLineOn?"区の境目を表示":"区の境目を非表示"; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },1500); }
+};
+map.on("zoomend",()=>{ if(wardLineOn) drawWardLines(); });
+wardLineBtnPaint(); if(wardLineOn) drawWardLines();
 // 地図ボタン列(◎＋−123 窓 1回)を左右どちらに置くか。凡例は反対側へ
 function setBtnSide(side){
   btnSide = side==="right" ? "right" : "left";
