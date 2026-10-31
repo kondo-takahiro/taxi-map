@@ -1139,7 +1139,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.01-2";
+const APP_VER = "2026.11.01-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8959,8 +8959,8 @@ function drawWardLines(){
     return;
   }
   wardLineGJ=gj;
-  const halo=L.geoJSON(gj,{pane:"wardLinePane",interactive:false,style:{color:"#ffffff",weight:7,opacity:.85,fill:false}});
-  const line=L.geoJSON(gj,{pane:"wardLinePane",interactive:false,style:{color:"#1b2a4a",weight:3,opacity:.95,fill:false}});
+  const halo=L.geoJSON(gj,{pane:"wardLinePane",interactive:false,style:{color:"#ffffff",weight:4,opacity:.8,fill:false}});
+  const line=L.geoJSON(gj,{pane:"wardLinePane",interactive:false,style:{color:"#1b2a4a",weight:1.8,opacity:.95,fill:false}});
   wardLineLayer=L.layerGroup([halo,line]).addTo(map);
   if(map.getZoom()>=11){
     const fs=map.getZoom()>=13?15:12.5;
