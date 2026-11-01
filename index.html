@@ -1139,7 +1139,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.01-5";
+const APP_VER = "2026.11.01-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8889,6 +8889,8 @@ btnGps.onclick=()=>{
     if(!appRing) drawAppRing();
     if(signOn && !signLast) updateSign(ll, true);
   },err=>{
+    // トンネルや地下で一時的に取れないだけ(タイムアウト・電波なし)なら止めずに待ち続ける。許可がないときだけ止める
+    if(err && err.code!==1){ gpsSilent=false; return; }
     if(!gpsSilent) alert("位置情報を取得できませんでした。iPhoneの設定→プライバシーとセキュリティ→位置情報サービスで、Safari(またはホーム画面に追加したアプリ)への許可を確認してください。");
     gpsSilent=false;
     navigator.geolocation.clearWatch(watchId); watchId=null; follow=false;
@@ -8903,8 +8905,27 @@ function syncCenterBtn(){
   b.style.color = on ? "var(--amber)" : "var(--text)";
   b.style.borderColor = on ? "var(--amber)" : "var(--line)";
 }
+// 手で動かしたあと、触らずに10秒たったら自動で追尾に戻る(常に追従)
+let refollowTimer=null;
+function scheduleRefollow(){
+  clearTimeout(refollowTimer);
+  refollowTimer=setTimeout(()=>{
+    if(watchId!==null && !follow && !spPick && !document.querySelector(".leaflet-popup")){
+      follow=true; btnGps.textContent="追尾中"; syncCenterBtn();
+      if(lastLL) map.setView(lastLL, map.getZoom(), {animate:true});
+    }else if(watchId!==null && !follow){ scheduleRefollow(); }   // ポップアップを見ている間・地点を選んでいる間は待つ
+  },10000);
+}
 map.on("dragstart",()=>{
   if(watchId!==null && follow){ follow=false; btnGps.textContent="再センター"; syncCenterBtn(); }
+  scheduleRefollow();
+});
+map.on("dragend zoomend",()=>{ if(watchId!==null && !follow) scheduleRefollow(); });
+// アプリに戻ってきたとき、追尾が止まっていたら自動で再開する
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) return;
+  if(watchId===null){ gpsSilent=true; btnGps.onclick(); }
+  else if(!follow){ follow=true; btnGps.textContent="追尾中"; syncCenterBtn(); if(lastLL) map.setView(lastLL, map.getZoom(), {animate:false}); }
 });
 document.getElementById("btnCenter").onclick=()=>{
   if(watchId===null){ btnGps.onclick(); return; }   // 停止中なら追尾を開始
