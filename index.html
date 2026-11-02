@@ -1139,7 +1139,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.02-1";
+const APP_VER = "2026.11.02-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6859,7 +6859,7 @@ function bindDiaryY(){
     body.querySelectorAll(".ts-row").forEach(tr=>tr.onclick=()=>{
       const r=(window._tsRows||[])[+tr.dataset.i]; if(!r) return;
       spDiaryScroll=document.getElementById("diaryPanel").scrollTop;
-      spOpen((spSheet.k&&spSheet.k!=="edit")?spSheet.k:"tsuke", r);
+      { const has=SP_KEYS.find(k=>spRecOf(k,r)); spOpen(has || ((spSheet.k&&spSheet.k!=="edit")?spSheet.k:"tsuke"), r); }   // 記録が付いている行は、その種類のタブで開く
     });
     const b=document.getElementById("diaryAI");
     if(b) b.onclick=analyzeLastShift;
