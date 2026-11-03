@@ -747,6 +747,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="chip dow" data-dow="0">日</button>
     <button class="chip dow" data-dow="7" title="日曜と、翌日が平日の祝日">日曜型</button>
     <button class="chip dow" data-dow="8" title="土曜と、翌日も休みの祝日">土曜型</button>
+    <button class="chip dow" data-dow="9" title="金曜と、祝日の前の平日">金曜型</button>
     <span style="flex:1"></span>
     <button class="chip mode on" data-mode="all">全て</button>
     <button class="chip mode" data-mode="app">アプリ</button>
@@ -1141,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.04-1";
+const APP_VER = "2026.11.04-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1296,19 +1297,20 @@ function normName(s){ return (s||"").replace(/[\s\u3000]+/g,""); }
 // 名前が空欄または自分の名前の記録=自分の記録(他人の名前が付いた記録だけを除外)
 function myRides(){ return rides.filter(r => !r.drv || normName(r.drv) === normName(MY_NAME)); }
 
-// 休みの日の型: 日曜型(今日が休みで翌日は平日) / 土曜型(今日も翌日も休み)。祝日・振替休日も含めて判定
+// 日の型: 日曜型(今日が休みで翌日は平日) / 土曜型(今日も翌日も休み) / 金曜型(今日は平日で翌日が休み)。祝日・振替休日も含めて判定
 function dsOffDay(ds){ const d=new Date(ds+"T12:00:00").getDay(); return d===0||d===6||(typeof isHoliday==="function"&&isHoliday(ds)); }
 const _dayTypeCache=new Map();
 function dayTypeOf(ds){
   if(_dayTypeCache.has(ds)) return _dayTypeCache.get(ds);
   let t="";
-  if(dsOffDay(ds)){ const n=new Date(ds+"T12:00:00"); n.setDate(n.getDate()+1); t=dsOffDay(dsOf(n))?"sat":"sun"; }
+  const n=new Date(ds+"T12:00:00"); n.setDate(n.getDate()+1); const nextOff=dsOffDay(dsOf(n));
+  if(dsOffDay(ds)) t=nextOff?"sat":"sun"; else if(nextOff) t="fri";
   _dayTypeCache.set(ds,t); return t;
 }
 function dowMatch(r, set){
   set=set||dowSet; if(set.size===0) return true;
   if(set.has(shiftDow(r))) return true;
-  if(set.has(7)||set.has(8)){ const t=dayTypeOf(shiftDateStr(r)); if((t==="sun"&&set.has(7))||(t==="sat"&&set.has(8))) return true; }
+  if(set.has(7)||set.has(8)||set.has(9)){ const t=dayTypeOf(shiftDateStr(r)); if((t==="sun"&&set.has(7))||(t==="sat"&&set.has(8))||(t==="fri"&&set.has(9))) return true; }
   return false;
 }
 function filtered(){
@@ -7703,7 +7705,7 @@ function hankaCondText(){
   // 時間帯フィルターは「時」単位で効くので、実際に含まれる時間で表示する
   const lo=Math.ceil(tMin), hi=Math.floor(tMax);
   const t = (lo<=5 && hi>=28) ? "全時間帯" : lo>=hi ? (lo%24)+"時台" : (lo%24)+"時〜"+(hi%24)+"時台";
-  const dw = dowSet.size ? "・"+[1,2,3,4,5,6,0,7,8].filter(d=>dowSet.has(d)).map(d=>d===7?"日曜型":d===8?"土曜型":"日月火水木金土"[d]).join("") : "";
+  const dw = dowSet.size ? "・"+[1,2,3,4,5,6,0,7,8,9].filter(d=>dowSet.has(d)).map(d=>d===7?"日曜型":d===8?"土曜型":d===9?"金曜型":"日月火水木金土"[d]).join("") : "";
   return t + dw
     + (modeFilter==="app"?"・配車のみ":modeFilter==="st"?"・流しのみ":"")
     + (weatherFilter==="rain"?"・雨":weatherFilter==="dry"?"・晴曇":"")
@@ -9669,7 +9671,7 @@ setInterval(saveViewState, 30000);
   const td=new Date(); if(td.getHours()<5) td.setDate(td.getDate()-1);
   // 休みの日は型(日曜型/土曜型)で選ぶ。祝日も含む
   const tdt=dayTypeOf(dsOf(td));
-  const initDows = tdt==="sun" ? ["7"] : tdt==="sat" ? ["8"] : ["1","2","3","4","5"];
+  const initDows = tdt==="sun" ? ["7"] : tdt==="sat" ? ["8"] : tdt==="fri" ? ["9"] : ["1","2","3","4","5"];
   dowSet = new Set(initDows.map(Number));
   document.querySelectorAll(".chip.dow").forEach(c=>
     c.classList.toggle("on", initDows.includes(c.dataset.dow)));
