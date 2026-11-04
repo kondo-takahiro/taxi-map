@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.04-3";
+const APP_VER = "2026.11.04-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6186,47 +6186,102 @@ document.getElementById("btnLast").onclick=e=>{
   }
 };
 
-let railLayer=null, railOn=false;
-function drawRail(){
-  if(railLayer){ map.removeLayer(railLayer); railLayer=null; }
-  if(!railOn) return;
-  const items=[];
-  const cv=L.canvas({padding:0.3});
-  // 路線(色つきの線)
-  LINES.forEach(L2=>{
-    const pts=L2.s.map(n=>ST_LL[n]).filter(Boolean);
-    if(pts.length<2) return;
-    items.push(L.polyline(pts,{renderer:cv, color:"#0d1220", weight:6, opacity:.35}));
-    items.push(L.polyline(pts,{renderer:cv, color:L2.c, weight:3, opacity:.95}).bindTooltip(L2.n,{sticky:true}));
+let railLayer=null, railLblLayer=null, railOn=false, RAIL=null;
+// 路線図: rail.json(全駅・路線・速達停車駅)を地図に描く。快速/急行などの停車駅は黄色の大きい丸+「快」
+const RAIL_OPT_KEY="rail-opt-v1";
+function railOpt(){ try{ return Object.assign({JR:1,"私鉄":1,"地下鉄":1,fast:0}, JSON.parse(localStorage.getItem(RAIL_OPT_KEY))||{}); }catch(e){ return {JR:1,"私鉄":1,"地下鉄":1,fast:0}; } }
+function railOptSet(o){ try{ localStorage.setItem(RAIL_OPT_KEY, JSON.stringify(o)); }catch(e){} }
+async function railData(){
+  if(RAIL) return RAIL;
+  try{ RAIL=await fetch("rail.json?v="+APP_VER).then(r=>r.ok?r.json():null); }catch(e){ RAIL=null; }
+  return RAIL;
+}
+// 駅ごとに「どの路線」「どの速達種別が止まるか」をまとめる(表示中の種別だけ)
+function railIndex(){
+  const o=railOpt(), st=RAIL.st, info=st.map(()=>({ln:[], fast:[], pass:[]}));
+  RAIL.ln.forEach(l=>{
+    if(!o[l.g]) return;
+    l.x.forEach(([lab,ix,px])=>{
+      ix.forEach(i=>info[i].fast.push(l.only? lab : l.n+" "+lab));
+      (px||[]).forEach(i=>info[i].pass.push(l.n+" "+lab));
+    });
+    if(l.only) return;   // 停車駅だけ使う系統(湘南新宿ラインなど)
+    l.s.forEach(i=>info[i].ln.push(l));
   });
-  // 駅(所属路線の色で塗り分け・複数路線は白丸)
-  const stLines={};
-  LINES.forEach(L2=>L2.s.forEach(n=>{ (stLines[n]=stLines[n]||[]).push(L2); }));
-  Object.entries(stLines).forEach(([n,ls])=>{
-    const ll=ST_LL[n]; if(!ll) return;
-    const uniq=[...new Set(ls.map(x=>x.n))];
-    const multi=uniq.length>=2;
-    const col=multi?"#ffffff":ls[0].c;
-    const near=myRides().filter(r=>haversineKm(ll,[r.lat,r.lng])<=1.0);
+  return info;
+}
+function railLabels(){
+  if(railLblLayer){ map.removeLayer(railLblLayer); railLblLayer=null; }
+  if(!railOn || !RAIL) return;
+  const z=map.getZoom(), o=railOpt(), info=railIndex(), bd=map.getBounds().pad(0.2), items=[];
+  if(z<12) return;
+  RAIL.st.forEach((s,i)=>{
+    const f=info[i]; if(!f.ln.length) return;
+    const fast=f.fast.length>0;
+    if(o.fast && !fast) return;
+    if(!fast && z<14) return;            // 13以下は快速停車駅だけ名前を出す
+    if(!bd.contains([s[1],s[2]])) return;
+    items.push(L.marker([s[1],s[2]],{interactive:false,icon:L.divIcon({className:"",iconSize:[90,14],iconAnchor:[45,-5],
+      html:`<div style="text-align:center;font-size:${fast?10.5:9.5}px;font-weight:${fast?800:600};color:${fast?"#ffe082":"#fff"};text-shadow:0 0 3px #000,0 0 3px #000,0 0 2px #000;white-space:nowrap;">${s[0]}${fast?`<span style="margin-left:2px;padding:0 3px;border-radius:4px;background:#ffd54f;color:#1a1206;font-size:9px;text-shadow:none;">快</span>`:""}</div>`})}));
+  });
+  railLblLayer=L.layerGroup(items).addTo(map);
+}
+async function drawRail(){
+  if(railLayer){ map.removeLayer(railLayer); railLayer=null; }
+  if(railLblLayer){ map.removeLayer(railLblLayer); railLblLayer=null; }
+  railBar();
+  if(!railOn) return;
+  if(!(await railData())){ alert("路線データ(rail.json)を読み込めませんでした"); return; }
+  if(!railOn) return;
+  const o=railOpt(), st=RAIL.st, info=railIndex(), items=[], cv=L.canvas({padding:0.3});
+  RAIL.ln.forEach(l=>{
+    if(!o[l.g] || l.only || !l.e.length) return;
+    const segs=l.e.map(([a,b])=>[[st[a][1],st[a][2]],[st[b][1],st[b][2]]]);
+    items.push(L.polyline(segs,{renderer:cv, color:"#0d1220", weight:5.5, opacity:.4, interactive:false}));
+    items.push(L.polyline(segs,{renderer:cv, color:l.c, weight:3, opacity:.9}).bindTooltip(l.n,{sticky:true}));
+  });
+  st.forEach((s,i)=>{
+    const f=info[i]; if(!f.ln.length) return;
+    const fast=f.fast.length>0;
+    if(o.fast && !fast) return;
+    const ll=[s[1],s[2]];
+    const near=myRides().filter(r=>haversineKm(ll,[r.lat,r.lng])<=0.5);
     const avg=near.length?Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0;
-    const sz=multi?13:10;
-    items.push(L.marker(ll,{icon:L.divIcon({className:"",iconSize:[64,30],iconAnchor:[32,sz/2+2],
-      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
-        <div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};border:2px solid #0d1220;box-shadow:0 0 0 1px rgba(255,255,255,.6);"></div>
-        <div style="margin-top:1px;font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap;">${n}</div>
-      </div>`})})
-      .bindPopup(`<b>${n}駅</b><br><span style="font-size:11px;color:#8b98ad;">${uniq.join(" / ")}</span>`
-        + (near.length?`<br>周辺実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b>`:`<br><span style="color:#8b98ad;">周辺の実績なし</span>`)
-        + `<br><button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この駅へ経路</button>`));
+    const lnNames=[...new Set(f.ln.map(l=>l.n))];
+    const notes=[...new Set(f.ln.filter(l=>l.note).map(l=>l.n+": "+l.note))];
+    items.push(L.circleMarker(ll,{renderer:cv, radius:fast?6:3.5, color:fast?"#1a1206":(f.ln.length>1?"#ffffff":f.ln[0].c),
+        weight:fast?2:1.5, fillColor:fast?"#ffd54f":"#0d1220", fillOpacity:1})
+      .bindPopup(`<b>${s[0]}駅</b><div style="font-size:11px;color:#8b98ad;margin-top:2px;">${lnNames.join(" / ")}</div>`
+        + (fast?`<div style="margin-top:5px;font-size:12px;"><span style="background:#ffd54f;color:#1a1206;border-radius:4px;padding:0 4px;font-weight:800;">快</span> 停車: <b>${[...new Set(f.fast)].join("、")}</b></div>`:"")
+        + (f.pass.length?`<div style="margin-top:3px;font-size:11.5px;color:#ff8a80;">通過: ${[...new Set(f.pass)].join("、")}</div>`:"")
+        + (notes.length?`<div style="margin-top:3px;font-size:10.5px;color:#8b98ad;">※${notes.join("<br>※")}</div>`:"")
+        + (near.length?`<div style="margin-top:4px;">半径500m実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b></div>`:`<div style="margin-top:4px;color:#8b98ad;">半径500mの実績なし</div>`)
+        + `<button onclick="_evRoute(${ll[0]},${ll[1]})" style="margin-top:6px;padding:7px 12px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍この駅へ経路</button>`));
   });
   railLayer=L.layerGroup(items).addTo(map);
+  railLabels();
+}
+map.on("zoomend moveend",()=>{ if(railOn) railLabels(); });
+function railBar(){
+  let bar=document.getElementById("railBar");
+  if(!railOn){ if(bar) bar.style.display="none"; return; }
+  if(!bar){
+    bar=document.createElement("div"); bar.id="railBar";
+    bar.style.cssText="position:fixed;top:calc(150px + env(safe-area-inset-top));right:10px;z-index:1050;display:flex;flex-direction:column;gap:5px;";
+    document.body.appendChild(bar);
+  }
+  const o=railOpt();
+  const chip=(k,lab)=>`<button data-k="${k}" style="padding:6px 9px;border-radius:9px;font-size:12px;font-weight:800;border:1px solid ${o[k]?"#ffd54f":"#3a465c"};background:${o[k]?"#ffd54f":"rgba(13,18,32,.92)"};color:${o[k]?"#1a1206":"#8b98ad"};">${lab}</button>`;
+  bar.innerHTML=chip("JR","JR")+chip("私鉄","私鉄")+chip("地下鉄","地下鉄")+chip("fast","快のみ");
+  bar.style.display="flex";
+  bar.querySelectorAll("button").forEach(b=>b.onclick=()=>{ const o2=railOpt(); o2[b.dataset.k]=o2[b.dataset.k]?0:1; railOptSet(o2); drawRail(); });
 }
 document.getElementById("btnGone").onclick=e=>{
   railOn=!railOn; e.target.classList.toggle("on",railOn); drawRail();
   if(railOn){
     const h=document.getElementById("hint");
-    h.textContent="駅をタップすると路線と実績が出ます"; h.classList.add("show");
-    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2800);
+    h.textContent="黄色の大きい丸「快」＝快速・急行などが止まる駅。拡大すると全駅名"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },3500);
   }
 };
 
@@ -8907,6 +8962,48 @@ document.getElementById("btnWards").onclick=e=>{
   if(areaMode===2 && !townsData) ensureTowns();
   render();
 };
+// 町・区の営業実績まとめ(今のフィルター条件の乗車で集計)
+function areaSummaryHtml(name, rs, rank, total){
+  const n=rs.length, sum=rs.reduce((a,r)=>a+r.f,0), avg=Math.round(sum/n);
+  const big=rs.filter(r=>r.f>=10000).length, app=rs.filter(r=>r.m==="app").length;
+  const mx=rs.reduce((a,r)=>r.f>a.f?r:a,rs[0]);
+  const days=new Set(rs.map(r=>r.d)).size;
+  const last=rs.map(r=>r.d).sort().pop();
+  // 時間帯(3時間ごと。5時始まり)
+  const bands=[["5-8",5],["8-11",8],["11-14",11],["14-17",14],["17-20",17],["20-23",20],["23-2",23],["2-5",2]].map(([l,h])=>{
+    const sel=rs.filter(r=>{ const hh=+(r.t||"0").slice(0,2); return ((hh-h+24)%24)<3; });
+    return {l, n:sel.length, avg:sel.length?Math.round(sel.reduce((a,r)=>a+r.f,0)/sel.length):0};
+  });
+  const bmax=Math.max(...bands.map(b=>b.n),1);
+  const bandHtml=bands.filter(b=>b.n).map(b=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;line-height:1.5;">
+    <span style="width:44px;white-space:nowrap;color:#8b98ad;">${b.l}時</span>
+    <span style="flex:1;height:7px;background:#1f2a3d;border-radius:4px;overflow:hidden;"><span style="display:block;height:100%;width:${b.n/bmax*100}%;background:#f5a623;"></span></span>
+    <span style="width:78px;white-space:nowrap;text-align:right;">${b.n}件 ${yen(b.avg)}</span></div>`).join("");
+  // 曜日
+  const dn=["日","月","火","水","木","金","土"], dc=[0,0,0,0,0,0,0];
+  rs.forEach(r=>{ const w=new Date(r.d+"T00:00").getDay(); if(!isNaN(w)) dc[w]++; });
+  const dowTxt=dc.map((c,i)=>[dn[i],c]).filter(x=>x[1]).sort((a,b)=>b[1]-a[1]).map(x=>x[0]+x[1]).join(" ");
+  // 行き先
+  const dst={}; rs.forEach(r=>{ const k=(r.dst||"").replace(/[0-9０-９]+$/,""); if(k){ (dst[k]=dst[k]||{n:0,s:0}); dst[k].n++; dst[k].s+=r.f; } });
+  const dstTxt=Object.entries(dst).sort((a,b)=>b[1].n-a[1].n||b[1].s-a[1].s).slice(0,3).map(([k,v])=>`${k} ${v.n}件`).join("、");
+  // 最近の乗車
+  const recent=[...rs].sort((a,b)=>(b.d+b.t).localeCompare(a.d+a.t)).slice(0,4)
+    .map(r=>`<div style="font-size:11px;color:#c5cfdd;">${r.d.slice(5).replace("-","/")} ${r.t} ${r.m==="app"?"📱":"🚕"} ${yen(r.f)}${r.dst?" → "+r.dst:""}</div>`).join("");
+  return `<div style="min-width:230px;">
+    <b style="font-size:14px;">${name}</b> <span style="font-size:11px;color:#8b98ad;">${rank?rank+"位/"+total:""}</span>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin-top:5px;font-size:12px;">
+      <div>件数 <b>${n}件</b></div><div>平均 <b>${yen(avg)}</b></div>
+      <div>合計 <b>${yen(sum)}</b></div><div>万収 <b>${big}件</b> (${Math.round(big/n*100)}%)</div>
+      <div>📱アプリ ${app} / 🚕流し ${n-app}</div><div>乗務日 ${days}日</div>
+    </div>
+    <div style="font-size:11.5px;margin-top:3px;">最高 <b>${yen(mx.f)}</b> <span style="color:#8b98ad;">${mx.d.slice(5).replace("-","/")} ${mx.t}${mx.dst?" → "+mx.dst:""}</span></div>
+    <div style="margin-top:6px;font-size:11px;color:#8b98ad;">時間帯</div>${bandHtml}
+    ${dowTxt?`<div style="font-size:11.5px;margin-top:4px;">曜日 ${dowTxt}</div>`:""}
+    ${dstTxt?`<div style="font-size:11.5px;margin-top:2px;">行き先 ${dstTxt}</div>`:""}
+    <div style="margin-top:5px;font-size:11px;color:#8b98ad;">最近の乗車(最終 ${last.slice(5).replace("-","/")})</div>${recent}
+    <div style="margin-top:4px;font-size:10px;color:#8b98ad;">※今のフィルター条件(曜日・時間帯など)で集計</div>
+  </div>`;
+}
 function drawWardRank(){
   if(wardLayer){ map.removeLayer(wardLayer); wardLayer=null; }
   if(!wardsOn) return;
@@ -8915,17 +9012,17 @@ function drawWardRank(){
   const list=filtered();
   updateQuadTh(list);
   const agg=new Map();
-  data.features.forEach(f=>agg.set(f.properties.n,{sum:0,n:0,big:0}));
+  data.features.forEach(f=>agg.set(f.properties.n,{sum:0,n:0,big:0,rs:[]}));
   if(areaMode===2){
     // 町別: 乗車地名から丁目番号を除いた名前で対応付け
     list.forEach(r=>{
       const base=r.p.replace(/[0-9]+$/,"");
       const a=agg.get(base);
-      if(a){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; }
+      if(a){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; a.rs.push(r); }
     });
   }else{
     list.forEach(r=>{
-      for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; break; } }
+      for(const [w,a] of agg){ if(r.p.startsWith(w)){ a.sum+=r.f; a.n++; if(r.f>=10000) a.big++; a.rs.push(r); break; } }
     });
   }
   if(metric==="cnt") setCntMax([...agg.values()].filter(a=>a.n>0).map(a=>a.n));
@@ -8942,7 +9039,7 @@ function drawWardRank(){
     const has=st.n>0, avg=has?st.sum/st.n:0;
     const isBest=best && name===best.w;
     if(areaMode===2 && !has) return; // 町別は実績のある町だけ描く
-    const lay=L.geoJSON(f,{renderer:heatRenderer,
+    const lay=L.geoJSON(f,{renderer:heatRenderer, bubblingMouseEvents:false,
       style:{color:isBest?"#f5a623":"#5a6a75", weight:isBest?3:1, opacity:isBest?1:.5,
         dashArray:isBest?null:"4 4", fillColor:has?metricColor(st):"#888", fillOpacity:has?metricOpacity(st,.6):.06}});
     const lbl = metric==="hit"
@@ -8950,8 +9047,9 @@ function drawWardRank(){
       : metric==="cnt" ? `${name} ${st.n}件・平均${yen(Math.round(avg))}`
 
       : `${name} 平均${yen(Math.round(avg))}・${st.n}件`;
-    if(isBest) lay.bindTooltip("👑 "+lbl,{permanent:true,direction:"center",className:"wardBest"});
-    else lay.bindTooltip(has?lbl:`${name} 実績なし`,{sticky:true});
+    // 冠ラベルは出さない(1位は枠線だけ)。タップでその町・区の営業実績まとめ
+    if(has) lay.bindPopup(()=>areaSummaryHtml(name, st.rs, ranked.findIndex(x=>x.w===name)+1, ranked.length),{maxWidth:300, autoPanPaddingTopLeft:[10,150], autoPanPaddingBottomRight:[10,90]});
+    else lay.bindPopup(`<b>${name}</b><br><span style="color:#8b98ad;">実績なし</span>`);
     layers.push(lay);
   });
   wardLayer=L.layerGroup(layers).addTo(map);
