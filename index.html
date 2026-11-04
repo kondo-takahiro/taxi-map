@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.04-2";
+const APP_VER = "2026.11.04-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5529,6 +5529,29 @@ function loadReviews(){
   }).catch(()=>{});
 }
 setTimeout(loadReviews,2000);
+// ===== 📝 自分の振り返り(自由記述)。myreview-v1 に {日付: {t:本文, at:更新時刻}} で保存 =====
+const MYREV_KEY="myreview-v1";
+function myRevLoad(){ try{ return JSON.parse(localStorage.getItem(MYREV_KEY))||{}; }catch(e){ return {}; } }
+function myRevSave(v){ try{ localStorage.setItem(MYREV_KEY, JSON.stringify(v)); }catch(e){} }
+function myReviewHtml(ds){
+  const o=myRevLoad()[ds]; const t=o?o.t:"";
+  const esc=x=>(x||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  return `<div style="background:var(--panel);border:1px solid var(--amber);border-radius:12px;padding:10px 11px;margin:6px 0 12px;">
+    <div style="display:flex;align-items:center;gap:6px;"><b style="font-size:13px;color:var(--amber);">📝 自分の振り返り</b><span style="flex:1"></span>
+      <span id="myRevState" style="font-size:10.5px;color:var(--muted);">${o?"保存済み "+new Date(o.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"未記入"}</span></div>
+    <textarea id="myRevText" data-ds="${ds}" placeholder="良かったこと・反省・気づいたこと・次に試すこと など自由に" style="width:100%;min-height:96px;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13.5px;line-height:1.6;box-sizing:border-box;resize:vertical;">${esc(t)}</textarea>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;">書くと自動で保存します。「📦 全部まとめて書き出し」にも入るので、チャットに送ればAIの振り返りにも反映できます</div>
+  </div>`;
+}
+function bindMyReview(){
+  const ta=document.getElementById("myRevText"); if(!ta) return;
+  let tm=null;
+  const saveNow=()=>{ const all=myRevLoad(), ds=ta.dataset.ds, t=ta.value.trim();
+    if(t) all[ds]={t, at:Date.now()}; else delete all[ds];
+    myRevSave(all); const st=document.getElementById("myRevState"); if(st) st.textContent=t?"保存しました":"未記入"; };
+  ta.oninput=()=>{ clearTimeout(tm); const st=document.getElementById("myRevState"); if(st) st.textContent="入力中…"; tm=setTimeout(saveNow,800); };
+  ta.onblur=()=>{ clearTimeout(tm); saveNow(); };
+}
 function aiReviewHtml(ds){
   const o=AI_REVIEWS[ds]; if(!o) return "";
   const li=(arr,col)=>(arr||[]).map(x=>`<div style="font-size:12.5px;line-height:1.55;margin:3px 0;padding-left:12px;text-indent:-12px;"><span style="color:${col};">・</span>${x}</div>`).join("");
@@ -5563,6 +5586,7 @@ function renderDiaryY(pick){
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%・実車率<span id="kpiEdit" style="text-decoration:underline;cursor:pointer;color:${jr?"var(--text)":"var(--amber)"};">${jr? jr+"%" : "を記録"}</span>${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)`:""}</div>`;
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">休憩: <span id="brkEdit" style="text-decoration:underline;cursor:pointer;color:${br?"var(--text)":"var(--amber)"};">${br||"を記録"}</span></div>`;
   h+=aiReviewHtml(target);
+  h+=myReviewHtml(target);
   h+=sectionTitle("時間帯別(同曜日平均との差)");
   D_BANDS.forEach(b=>{
     const cur=dBand(rs,b);
@@ -6922,6 +6946,7 @@ map.on("contextmenu", e=>{ openMemo([e.latlng.lat, e.latlng.lng]); });
 
 function bindDiaryY(){
   const body=document.getElementById("diaryBody");
+  try{ bindMyReview(); }catch(e){}
     body.querySelectorAll(".ts-row").forEach(tr=>tr.onclick=()=>{
       const r=(window._tsRows||[])[+tr.dataset.i]; if(!r) return;
       spDiaryScroll=document.getElementById("diaryPanel").scrollTop;
@@ -8400,6 +8425,8 @@ async function spLoadShared(silent){
   try{ const d=await get("backup.json");
     if(d){
       SP_KEYS.forEach(k=>{ if(d[k]&&Array.isArray(d[k].spots)){ const [a,b]=spMergeAdd(k,d[k]); add[k][0]+=a; add[k][1]+=b; } });
+      if(d.myreview && typeof d.myreview==="object"){   // 自分の振り返り: 端末にない日だけ足す(端末で書いた方を優先)
+        const mr=myRevLoad(); let nm=0; Object.entries(d.myreview).forEach(([ds,o])=>{ if(o&&o.t&&!mr[ds]){ mr[ds]=o; nm++; } }); if(nm){ myRevSave(mr); msg.push(`📝振り返り: +${nm}`); } }
       const txt=(d.rides||"")+"\n"+(d.memo||"");
       if(txt.trim()){ const n=importText(txt, true); msg.push(`🚕乗車(backup.json): +${n}`); }
     }
@@ -8427,6 +8454,7 @@ document.getElementById("btnSpAllOut").onclick=()=>{
   data.rides=ridesCsvText();
   let mk={lines:[],memos:0,days:0}; try{ mk=memoKpiLines(); }catch(e){}
   data.memo=mk.lines.join("\n");
+  data.myreview=myRevLoad();
   const blob=new Blob([JSON.stringify(data)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="backup.json"; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),4000);
