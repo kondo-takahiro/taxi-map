@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.11-1";
+const APP_VER = "2026.11.11-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9657,6 +9657,25 @@ function loadSharedEvents(){
   }).catch(()=>{});
 }
 loadSharedEvents();
+// チャット側で用意した立ち回り計画(plan.json)を起動時に取り込む。revが新しいものだけ上書き
+function loadSharedPlan(){
+  fetch("plan.json?v="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(obj=>{
+    if(!obj) return;
+    let c={}; try{ c=JSON.parse(localStorage.getItem(DP_KEY))||{}; }catch(e){}
+    let ch=false;
+    Object.keys(obj).forEach(d=>{
+      const v=obj[d];
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||!v||!Array.isArray(v.items)) return;
+      if(c[d] && (c[d].rev||0)>=(v.rev||0)) return;
+      c[d]=v; ch=true;
+    });
+    if(!ch) return;
+    try{ localStorage.setItem(DP_KEY, JSON.stringify(c)); }catch(e){}
+    try{ updateStratHud(); }catch(e){}
+    try{ renderDayPlan(); }catch(e){}
+  }).catch(()=>{});
+}
+loadSharedPlan();
 document.getElementById("btnSync").onclick=async()=>{ await loadShared(false); loadReviews(); try{ const m=await spLoadShared(false); spApplyMoves(); if(m.length) alert("GitHubのbackup.jsonなど\n"+m.join("\n")); }catch(e){} }; // 手動時は結果を表示
 
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
