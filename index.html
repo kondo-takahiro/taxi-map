@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.07-5";
+const APP_VER = "2026.11.11-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9638,6 +9638,25 @@ function loadShared(silent){
     });
 }
 loadShared(true); // 起動時は静かに実行
+// チャット側で用意したイベント(events.json)を起動時に取り込む。新しいものだけ上書き
+function loadSharedEvents(){
+  fetch("events.json?v="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.json():null).then(obj=>{
+    if(!obj) return;
+    const cc=evCacheLoad(); let ch=false;
+    Object.keys(obj).forEach(day=>{
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+      const v=obj[day]||{}, at=+v.at||0, cur=cc[day];
+      if(cur && (cur.at||0)>=at) return;
+      cc[day]={events:(v.events||[]).filter(x=>x&&(x.n||x.e)), note:v.note||"", at:at||Date.now(), model:"chat"};
+      ch=true;
+    });
+    if(!ch) return;
+    evCacheSave(cc);
+    const t=cc[evShiftDay()]; if(t) showEventMarkers(evMerge(lastEvents, t.events));
+    try{ if(document.getElementById("eventPanel").style.display==="block") renderEventBoard(); }catch(e){}
+  }).catch(()=>{});
+}
+loadSharedEvents();
 document.getElementById("btnSync").onclick=async()=>{ await loadShared(false); loadReviews(); try{ const m=await spLoadShared(false); spApplyMoves(); if(m.length) alert("GitHubのbackup.jsonなど\n"+m.join("\n")); }catch(e){} }; // 手動時は結果を表示
 
 document.getElementById("btnCsvIn").onclick=()=>document.getElementById("fileCsv").click();
