@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.14-4";
+const APP_VER = "2026.11.14-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8763,7 +8763,8 @@ function openSpAna(k){
   document.querySelectorAll(".spa-k").forEach(b=>{ const on=b.dataset.k===spAnaK, C=SP_K[b.dataset.k];
     b.style.background=on?C.col:"transparent"; b.style.color=on?C.txt:C.col; });
   const body=document.getElementById("spAnaBody");
-  body.innerHTML=renderSpAna(spAnaK);
+  try{ body.innerHTML=renderSpAna(spAnaK); }
+  catch(e){ body.innerHTML=`<div style="font-size:13px;color:#f08080;line-height:1.7;padding:10px 0;">${SP_K[spAnaK]?SP_K[spAnaK].name:spAnaK}の分析を表示できませんでした。<br>エラー: ${String(e&&e.message||e)}<br><span style="color:var(--muted);font-size:11px;">${String(e&&e.stack||"").split("\n").slice(0,3).join("<br>")}</span></div>`; }
   p.style.display="block"; p.scrollTop=0;
   body.querySelectorAll(".spa-sort").forEach(b=>b.onclick=()=>{ SP_ANA_SORT[spAnaK]=b.dataset.v; const y=p.scrollTop; openSpAna(spAnaK); p.scrollTop=y; });
   body.querySelectorAll(".spa-row").forEach(tr=>tr.onclick=()=>{
