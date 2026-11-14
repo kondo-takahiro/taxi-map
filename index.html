@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.11-2";
+const APP_VER = "2026.11.14-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6043,10 +6043,17 @@ function renderSettings(){
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:5px;">待機スポットは地図の「📍 待機スポット」ボタンでも切り替えられます。<br>ヒートマップ上に表示される「2件以上の場所の回数」の丸印です。</div>
 
+      <div style="font-size:12px;color:var(--amber);margin:18px 0 6px;">業務リマインド</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn" id="setRemStart" style="flex:1;padding:10px;">🚕 出庫チェック</button>
+        <button class="btn" id="setRemEnd" style="flex:1;padding:10px;">💴 納金チェック</button></div>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px;">出番の日の5〜10時にアプリを開くと出庫チェック、帰庫後(2〜7時)に開くと納金チェックが自動で出ます。1乗務につき各1回。</div>
       <div style="font-size:12px;color:var(--amber);margin:18px 0 6px;">表示状態</div>
       <button class="btn" id="setResetView" style="width:100%;padding:11px;">🔄 初期状態に戻す</button>
       <div style="font-size:10px;color:var(--muted);margin-top:5px;">フィルター・重ねた情報・地図の位置を、起動直後の状態(単価=全て/ヒートON/今の時間帯/今日の曜日)に戻します。乗車データやメモは消えません。</div>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;">「最小構成」は走行中によく使うものだけを残します(ヒート・指標・現在地・立ち回り・アプリ営業・日誌・分析)。</div>`;
+  { const a=document.getElementById("setRemStart"), c=document.getElementById("setRemEnd");
+    if(a) a.onclick=()=>showDutyRem("start",true); if(c) c.onclick=()=>showDutyRem("end",true); }
   body.querySelectorAll(".set-btn").forEach(b=>b.onclick=()=>{
     const h=loadHidden();
     if(h.has(b.dataset.id)) h.delete(b.dataset.id); else h.add(b.dataset.id);
@@ -9899,6 +9906,59 @@ setInterval(saveViewState, 30000);
   gpsSilent=true; btnGps.onclick(); // 現在地追尾を自動開始
 })();
 render();
+
+// ===== 業務リマインド(出庫時: 未収ボタン / 納金時: ETC代) =====
+const DUTY_REM={
+  start:{title:"🚕 出庫チェック", items:["チケットのお客様は、乗車スタート時に「未収」ボタンを押す"]},
+  end:{title:"💴 納金チェック", items:["ETC代を入れた?"]}
+};
+const DUTY_REM_KEY="duty-rem-v1";
+function dutyRemLoad(){ try{ return JSON.parse(localStorage.getItem(DUTY_REM_KEY))||{}; }catch(e){ return {}; } }
+function dutyRemDue(){
+  if(typeof shiftTypeOf!=="function") return null;
+  const now=new Date(), h=now.getHours()+now.getMinutes()/60;
+  const today=dsOf(now), yest=dsOf(new Date(now.getTime()-86400000));
+  const done=dutyRemLoad();
+  // 出庫: 出番の日の5:00〜10:00
+  if(h>=5 && h<10 && shiftTypeOf(today)==="出番" && done.start!==today) return {kind:"start", ds:today};
+  // 納金: 前日が出番で、帰庫後の2:00〜7:00
+  if(h>=2 && h<7 && shiftTypeOf(yest)==="出番" && done.end!==yest) return {kind:"end", ds:yest};
+  return null;
+}
+function showDutyRem(kind, manual, ds){
+  if(document.getElementById("dutyRem")) return;
+  const r=DUTY_REM[kind];
+  const el=document.createElement("div");
+  el.id="dutyRem";
+  el.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px;";
+  el.innerHTML=`<div style="background:#131a2a;border:2px solid var(--amber);border-radius:16px;padding:18px 16px;width:100%;max-width:380px;color:var(--text);">
+    <div style="font-size:19px;font-weight:800;color:var(--amber);margin-bottom:12px;">${r.title}</div>
+    ${r.items.map((t,i)=>`<label style="display:flex;gap:10px;align-items:flex-start;font-size:17px;line-height:1.5;padding:10px 4px;border-top:1px solid var(--line);">
+      <input type="checkbox" class="drChk" style="width:24px;height:24px;flex:none;margin-top:2px;"><span>${t}</span></label>`).join("")}
+    <button id="drOk" class="btn" style="width:100%;padding:14px;font-size:16px;margin-top:12px;" disabled>チェックしたら閉じる</button>
+    <div id="drLater" style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px;text-decoration:underline;cursor:pointer;">あとで(次に開いたときにもう一度出す)</div>
+  </div>`;
+  document.body.appendChild(el);
+  const ok=el.querySelector("#drOk"), chks=[...el.querySelectorAll(".drChk")];
+  chks.forEach(c=>c.onchange=()=>{ ok.disabled=!chks.every(x=>x.checked); ok.style.opacity=ok.disabled?".5":"1"; });
+  ok.style.opacity=".5";
+  ok.onclick=()=>{
+    if(!manual && ds){ const d=dutyRemLoad(); d[kind]=ds; try{ localStorage.setItem(DUTY_REM_KEY, JSON.stringify(d)); }catch(e){} }
+    el.remove();
+  };
+  el.querySelector("#drLater").onclick=()=>{ el.remove(); dutyRemSnooze=Date.now(); };
+  try{ if(navigator.vibrate) navigator.vibrate([200,100,200]); }catch(e){}
+}
+let dutyRemSnooze=0;
+function dutyRemCheck(){
+  if(document.hidden) return;
+  if(Date.now()-dutyRemSnooze<10*60*1000) return; // 「あとで」から10分は出さない
+  const due=dutyRemDue();
+  if(due) showDutyRem(due.kind, false, due.ds);
+}
+document.addEventListener("visibilitychange", ()=>{ if(!document.hidden){ dutyRemSnooze=0; setTimeout(dutyRemCheck, 800); } });
+setTimeout(dutyRemCheck, 2500);
+setInterval(dutyRemCheck, 60*1000);
 </script>
 </body>
 </html>
