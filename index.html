@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.14-2";
+const APP_VER = "2026.11.14-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5010,10 +5010,11 @@ function renderReview(){
   });
   const months=[...byMonth.entries()].sort();
   const mMax=Math.max(...months.map(([,a])=>a.sum));
-  html+=sectionTitle(`月度別の営収 <span id="editCutoff" style="font-weight:400;font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer;">締め日を変更</span>`);
+  html+=sectionTitle(`月度別の営収(税抜) <span id="editCutoff" style="font-weight:400;font-size:11px;color:var(--muted);text-decoration:underline;cursor:pointer;">締め日を変更</span>`);
   months.forEach(([m,a])=>{
+    const ex=Math.round(a.sum/1.1); // 税抜
     html+=barRow(parseInt(m.slice(5),10)+"月度", a.sum, mMax,
-      yen(a.sum)+`<br><span style="color:var(--muted)">${periodRange(m,mcfg)}・${a.days.size}日・日平均`+yen(Math.round(a.sum/a.days.size))+`</span>`);
+      yen(ex)+`<br><span style="color:var(--muted)">${periodRange(m,mcfg)}・${a.days.size}日・日平均`+yen(Math.round(ex/a.days.size))+`</span>`);
   });
   html+=`<div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6;">現在の設定: 各月${mcfg.d}日開始${Object.keys(mcfg.ov).length?`(変更あり: ${Object.entries(mcfg.ov).map(([k,v])=>parseInt(k.slice(5),10)+"月度="+v+"日開始").join("、")})`:""}<br>特定の月だけ変える場合は「締め日を変更」の2つ目の入力欄に <b>2026-05=17, 2026-07=15</b> のように「年-月=開始日」をカンマ区切りで入力</div>`;
 
