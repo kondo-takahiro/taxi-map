@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.14-5";
+const APP_VER = "2026.11.14-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -3695,10 +3695,10 @@ function barRow(label, value, max, fmt){
 }
 const TABMARK="@@TAB@@";
 let reviewTab="基本";
-const REVIEW_TABS=["基本","時間","エリア","効率","曜日別","青タン","大物","天気","グラフ"];
+const REVIEW_TABS=["基本","狙い目","時間","エリア","効率","曜日別","青タン","大物","天気","グラフ"];
 // マーカーで区切られたHTMLをタブごとに束ね、タブバー付きで返す
 function renderReviewTabs(raw){
-  const parts={基本:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:"",天気:"",グラフ:""};
+  const parts={基本:"",狙い目:"",時間:"",エリア:"",効率:"",曜日別:"",青タン:"",大物:"",天気:"",グラフ:""};
   let cur="基本";
   raw.split(TABMARK).forEach((chunk,i)=>{
     if(i===0){ parts[cur]+=chunk; return; }
@@ -3706,9 +3706,10 @@ function renderReviewTabs(raw){
     if(name){ cur=name; parts[cur]+=chunk.slice(name.length); }
     else parts[cur]+=chunk;
   });
-  const bar=`<div style="display:flex;gap:5px;margin-bottom:10px;position:sticky;top:0;background:rgba(19,26,42,.97);padding-bottom:6px;z-index:2;">`
-    + REVIEW_TABS.map(t=>`<button class="chip rv-tab${t===reviewTab?" on":""}" data-rv="${t}" style="flex:1;padding:7px 2px;font-size:11px;">${t}</button>`).join("")
+  const bar=`<div style="display:flex;gap:4px;margin-bottom:10px;position:sticky;top:0;background:rgba(19,26,42,.97);padding-bottom:6px;z-index:2;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;">`
+    + REVIEW_TABS.map(t=>`<button class="chip rv-tab${t===reviewTab?" on":""}" data-rv="${t}" style="flex:1 0 auto;padding:7px 5px;font-size:11px;white-space:nowrap;">${t}</button>`).join("")
     + `</div>`;
+  if(reviewTab==="狙い目") return bar + `<div>${(typeof renderSpotTab==="function"?renderSpotTab():"")}</div>`;
   if(reviewTab==="曜日別") return bar + `<div>${(typeof renderDiaryW==="function"?renderDiaryW():"")}</div>`;
   if(reviewTab==="青タン") return bar + `<div>${(typeof renderNightTab==="function"?renderNightTab():"")}</div>`;
   if(reviewTab==="大物") return bar + `<div>${(typeof renderBigTab==="function"?renderBigTab():"")}</div>`;
@@ -3990,6 +3991,52 @@ function renderWxTab(){
   return h;
 }
 
+
+// ===== 🎯 狙い目: 時間帯ごとにどのエリアに入るか(1回あたりの平均単価で比較) =====
+let spotMode="st";
+const SPOT_SLOTS=[[7,10,"7〜9時"],[10,13,"10〜12時"],[13,17,"13〜16時"],[17,20,"17〜19時"],[20,22,"20〜21時"],[22,24,"22〜23時"],[24,26,"0〜1時"],[26,29,"2〜4時"]];
+function renderSpotTab(){
+  const MIN_N=5;
+  const mine=myRides().filter(r=>(r.m||"app")===spotMode);
+  const nowH=shiftHour(new Date().toTimeString().slice(0,5));
+  const btn=(k,label)=>`<button class="chip spt-md${spotMode===k?" on":""}" data-m="${k}" style="flex:1;padding:8px 2px;font-size:12px;">${label}</button>`;
+  let h=`<div style="display:flex;gap:6px;margin-bottom:8px;">${btn("st","🚕 流し")}${btn("app","📱 アプリ配車")}</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;margin-bottom:6px;">時間帯ごとに、乗車地のエリア(町名)別の<b style="color:var(--text)">1回あたり平均単価</b>を比べています。${MIN_N}回以上乗ったエリアだけ。⭐=万収の本数。${spotMode==="app"?"配車は選べないので「待機する場所」の目安です。":""}<br>※空車時間のデータがないため「すぐ乗れるか」は反映していません</div>`;
+  if(!mine.length) return h+`<div style="color:var(--muted);font-size:13px;padding:10px 0;">データがまだありません。</div>`;
+  SPOT_SLOTS.forEach(([lo,hi,label])=>{
+    const v=mine.filter(r=>{ const x=shiftHour(r.t); return x>=lo&&x<hi; });
+    const isNow=nowH>=lo&&nowH<hi;
+    const slotAvg=v.length?v.reduce((s,r)=>s+r.f,0)/v.length:0;
+    const g=new Map();
+    v.forEach(r=>{ const a=(r.p||"").replace(/[0-9]+$/,""); const x=g.get(a)||{n:0,s:0,m:0,ch:new Map()}; x.n++; x.s+=r.f; if(r.f>=10000)x.m++;
+      const c=x.ch.get(r.p)||{n:0,s:0}; c.n++; c.s+=r.f; x.ch.set(r.p,c); g.set(a,x); });
+    const list=[...g.entries()].filter(([,x])=>x.n>=MIN_N).map(([a,x])=>({a,n:x.n,avg:x.s/x.n,m:x.m,ch:x.ch})).sort((p,q)=>q.avg-p.avg);
+    const top=list.slice(0,4);
+    const weak=list.filter(x=>x.avg<slotAvg*0.7&&!top.includes(x)).slice(-2);
+    const short=a=>a.replace(/^.+?[区市]/,"");
+    h+=`<div style="border:1px solid ${isNow?"var(--amber)":"var(--line)"};border-radius:10px;padding:8px 10px;margin-bottom:8px;${isNow?"background:rgba(255,193,7,.07);":""}">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+        <b style="font-size:14px;${isNow?"color:var(--amber);":""}">${label}${isNow?" ◀ 今":""}</b>
+        <span style="flex:1"></span>
+        <span style="font-size:11px;color:var(--muted);">${v.length}回・平均${v.length?yen(Math.round(slotAvg)):"—"}</span></div>`;
+    if(!top.length){ h+=`<div style="font-size:12px;color:var(--muted);">${MIN_N}回以上乗ったエリアがまだなく、判断できません</div></div>`; return; }
+    const mx=top[0].avg;
+    top.forEach((x,i)=>{
+      const best=[...x.ch.entries()].filter(([,c])=>c.n>=3).sort((p,q)=>q[1].s/q[1].n-p[1].s/p[1].n)[0];
+      const bestTxt=best&&x.ch.size>1&&best[1].s/best[1].n>x.avg*1.1?`<span style="color:var(--muted);font-size:10.5px;"> 強いのは${short(best[0])}(${yen(Math.round(best[1].s/best[1].n))}・${best[1].n}回)</span>`:"";
+      h+=`<div style="padding:4px 0;${i?"border-top:1px solid var(--line);":""}font-size:12.5px;">
+        <div style="display:flex;align-items:baseline;gap:6px;">
+          <span style="flex:1;${i===0?"font-weight:800;":""}">${i===0?"🎯 ":""}${short(x.a)}</span>
+          <span style="font-weight:700;font-variant-numeric:tabular-nums;">${yen(Math.round(x.avg))}</span>
+          <span style="width:62px;text-align:right;font-size:10.5px;color:var(--muted);">${x.n}回${x.m?` <span style="color:#ffd54f;">⭐${x.m}</span>`:""}</span></div>
+        <div style="height:4px;background:var(--panel2);border-radius:3px;margin-top:3px;"><div style="width:${Math.round(x.avg/mx*100)}%;height:100%;background:var(--amber);border-radius:3px;"></div></div>
+        ${bestTxt}</div>`;
+    });
+    if(weak.length) h+=`<div style="font-size:11px;color:#f08080;margin-top:4px;">避けたい: ${weak.map(x=>`${short(x.a)} ${yen(Math.round(x.avg))}(${x.n}回)`).join("、")}</div>`;
+    h+=`</div>`;
+  });
+  return h;
+}
 // ===== 大物(空港・万収)分析 =====
 const AREA_KEYS=[["千葉",["市川","船橋","千葉","浦安","流山","松戸","柏"]],["埼玉",["川口","草加","三郷","越谷","狭山","蕨","八潮","さいたま"]],
   ["多摩",["府中","東村山","三鷹","武蔵野","町田","羽村","調布","西東京","小平","立川","国分寺"]],["神奈川",["横浜","川崎","相模"]]];
@@ -5409,6 +5456,7 @@ function renderReview(){
     document.getElementById("reviewPanel").scrollTop=0;
   });
   body.querySelectorAll(".wd-pick").forEach(b=>b.onclick=()=>{ wdSel=+b.dataset.d; renderReview(); });
+  body.querySelectorAll(".spt-md").forEach(b=>b.onclick=()=>{ spotMode=b.dataset.m; renderReview(); });
 }
 document.getElementById("btnReview").onclick=()=>{
   if(!rainMap) loadWeather().then(()=>{ if(document.getElementById("reviewPanel").style.display==="block") renderReview(); });
