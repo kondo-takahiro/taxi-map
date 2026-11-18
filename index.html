@@ -581,6 +581,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <div id="hotelCount" style="font-size:11px;color:var(--muted);margin-bottom:6px;"></div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">料金帯で絞り込めます(タップで表示/非表示)</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;" id="hotelTiers"></div>
+    <div id="hotelPorte" style="margin-top:10px;"></div>
     <div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">
       料金帯はホテル名(ブランド)からの推定です。ズーム13以上で表示されます。<br>
       タップすると、その周辺1km内での自分の実績も見られます。</div>
@@ -1142,7 +1143,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.18-1";
+const APP_VER = "2026.11.18-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6665,6 +6666,31 @@ const HOTEL_TIERS=[
 ];
 let hotelData=null, hotelLayer=null, hotelOn=false, hotelBusy=false;
 let hotelShow={air:true, lux:true, city:true, biz:true, other:false};
+// ===== 車寄せの有無 =====
+// porte.json(調べた結果)＞ブランドからの推定。ホテルをタップして自分で直した内容(porte-user-v1)がいちばん優先
+let porteData=[], porteOnly=false;
+const PORTE_KEY="porte-user-v1";
+function porteUser(){ try{ return JSON.parse(localStorage.getItem(PORTE_KEY))||{}; }catch(e){ return {}; } }
+function porteSaveUser(v){ try{ localStorage.setItem(PORTE_KEY, JSON.stringify(v)); }catch(e){} }
+async function loadPorte(){ try{ const r=await fetch("porte.json?v="+Date.now(),{cache:"no-store"}); if(r.ok){ const j=await r.json(); porteData=j.hotels||[]; } }catch(e){} }
+const PORTE_NONE_RE=/アパホテル|APA|東横イン|Toyoko|ドーミーイン|Dormy|スーパーホテル|Super Hotel|ルートイン|Route Inn|コンフォート|Comfort|相鉄フレッサ|Fresa|ヴィラフォンテーヌ|Villa Fontaine|三井ガーデン|リッチモンド|Richmond|ダイワロイネット|Daiwa Roynet|マイステイズ|MyStays|カンデオ|Candeo|ユニゾ|UNIZO|ヴィアイン|ソラリア|グレイスリー|Gracery|リブマックス|LiVEMAX|ベッセル|Vessel|ウィングインターナショナル|サンルート|Sunroute|モントレ|ネストホテル|ファーストキャビン|ナインアワーズ|nine hours|YOTEL|イビス|ibis|ホステル|Hostel|カプセル|Capsule|ゲストハウス|野乃|ランプライト|ザ・ビー|the b |レム|remm|ホテルビスタ|Vista|JR東日本ホテルメッツ|Mets|ホテルリソル|Resol|ホテルグランバッハ|GRANBELL|グランベル|MUJI HOTEL/i;
+const PORTE_LABEL={none:"🚫 車寄せなし", yes:"🚗 車寄せあり", "?":"❔ 車寄せは不明"};
+function porteOf(name, lat, lng){
+  const u=porteUser()[name]; if(u) return {v:u, how:"自分で確認"};
+  const nz=x=>String(x).replace(/[\s　・〈〉()（）]/g,"").toLowerCase(), nn=nz(name);
+  const k=porteData.find(h=>{ const hn=nz(h.n); return hn===nn || (hn.length>=5 && nn.includes(hn)) || (nn.length>=5 && hn.includes(nn)); })
+       || porteData.find(h=>haversineKm([lat,lng],[h.lat,h.lng])<0.012);
+  if(k) return {v:k.v, how:k.how||"調査", note:k.note||""};
+  if(PORTE_NONE_RE.test(name)) return {v:"none", how:"ブランドから推定"};
+  const t=hotelTierOf(name).k;
+  if(t==="lux"||t==="air"||t==="city") return {v:"yes", how:"ブランドから推定"};
+  return {v:"?", how:"不明"};
+}
+window._porteSet=(en, v)=>{
+  const n=decodeURIComponent(en), u=porteUser();
+  if(v) u[n]=v; else delete u[n];
+  porteSaveUser(u); map.closePopup(); drawHotels(); buildHotelTiers();
+};
 function hotelTierOf(name){
   for(const t of HOTEL_TIERS){ if(t.re && t.re.test(name)) return t; }
   return HOTEL_TIERS[HOTEL_TIERS.length-1];
@@ -6716,17 +6742,25 @@ function drawHotels(){
     .concat(inView.filter(p=>hotelTierOf(p[2]).k!=="air"));
   ordered.forEach(p=>{
     const t=hotelTierOf(p[2]);
-    if(!hotelShow[t.k]) return;
+    const pc=porteOf(p[2], p[0], p[1]);
+    if(porteOnly){ if(pc.v!=="none") return; }   // 車寄せなしだけ: 料金帯の絞り込みは無視して全部から出す
+    else if(!hotelShow[t.k]) return;
     if(items.length>=400) return;
     const near=myRides().filter(r=>haversineKm([p[0],p[1]],[r.lat,r.lng])<=1.0);
     const avg=near.length?Math.round(near.reduce((a,r)=>a+r.f,0)/near.length):0;
     const big=t.k==="air";
+    const noP=pc.v==="none", en=encodeURIComponent(p[2]).replace(/'/g,"%27");
+    const pb=(v,lab)=>`<button onclick="_porteSet('${en}','${v}')" style="padding:4px 8px;border-radius:7px;border:1px solid #555;background:${(porteUser()[p[2]]||"")===v&&v?"#f5a623":"#2a3140"};color:${(porteUser()[p[2]]||"")===v&&v?"#000":"#e8ecf2"};font-size:11px;">${lab}</button>`;
     items.push(L.marker([p[0],p[1]],{zIndexOffset:big?500:0, icon:L.divIcon({className:"",iconSize:[big?20:16,big?20:16],iconAnchor:[big?10:8,big?10:8],
       html:`<div style="width:${big?18:14}px;height:${big?18:14}px;border-radius:${big?"50%":"3px"};background:${t.c};border:${big?2:1.5}px solid #fff;
-        box-shadow:0 1px 3px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:${big?10:8}px;">${big?"✈":"🏨"}</div>`})})
+        box-shadow:0 1px 3px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:${big?10:8}px;${noP?"outline:2.5px solid #ff5252;outline-offset:1px;":""}">${big?"✈":(porteOnly?"🚫":"🏨")}</div>`})})
       .bindPopup(`<b>${p[2]}</b><br><span style="color:${t.c};font-size:11px;">${
           t.k==="air" ? (t.sub.ana.test(p[2])?"✈️ ANA系(IHG・ANA)":"✈️ JAL系(日航)") : t.n}</span>`
         + (t.k==="air"?`<br><span style="font-size:10px;color:#8b98ad;">空港利用の客が多い。朝のチェックアウト前後が狙い目</span>`:"")
+        + `<br><span style="font-size:12px;font-weight:700;color:${noP?"#ff8a80":(pc.v==="yes"?"#a5d6a7":"#cfd8dc")};">${PORTE_LABEL[pc.v]}</span> <span style="font-size:10px;color:#8b98ad;">(${pc.how})</span>`
+        + (pc.note?`<br><span style="font-size:10px;color:#8b98ad;">${pc.note}</span>`:"")
+        + (noP?`<br><span style="font-size:10px;color:#ffcc80;">前の道路に停めて待つ。配車メモで入口・待合せ場所を確認</span>`:"")
+        + `<div style="margin-top:5px;font-size:10px;color:#8b98ad;">車寄せを直す ${pb("none","なし")} ${pb("yes","あり")} ${pb("","戻す")}</div>`
         + (near.length?`<br>周辺実績 <b>${near.length}件</b>・平均 <b>${yen(avg)}</b>`:`<br><span style="color:#8b98ad;font-size:11px;">周辺の実績なし</span>`)
         + `<br><button onclick="_evRoute(${p[0]},${p[1]})" style="margin-top:6px;padding:6px 10px;border-radius:8px;border:none;background:#f5a623;font-weight:700;">📍経路</button>`));
   });
@@ -6759,6 +6793,13 @@ function buildHotelTiers(){
   box.innerHTML=HOTEL_TIERS.map(t=>
     `<button class="chip htier${hotelShow[t.k]?" on":""}" data-k="${t.k}" style="font-size:12px;padding:7px 11px;">
       <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${t.c};margin-right:4px;"></span>${t.n}</button>`).join("");
+  const pbox=document.getElementById("hotelPorte");
+  if(pbox){
+    let nNone=0; if(hotelData) hotelData.forEach(p=>{ if(porteOf(p[2],p[0],p[1]).v==="none") nNone++; });
+    pbox.innerHTML=`<button id="btnPorteOnly" class="chip${porteOnly?" on":""}" style="font-size:12px;padding:8px 12px;border:1.5px solid #ff5252;">🚫 車寄せなしのホテルだけ表示${hotelData?`(${nNone}件)`:""}</button>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px;line-height:1.6;">赤い枠が車寄せなし。呼ばれたことのあるホテルは調べた結果、ほかはブランドからの推定です。違っていたらホテルをタップして「なし／あり」で直せます。</div>`;
+    document.getElementById("btnPorteOnly").onclick=()=>{ porteOnly=!porteOnly; buildHotelTiers(); drawHotels(); };
+  }
   box.querySelectorAll(".htier").forEach(b=>b.onclick=()=>{
     hotelShow[b.dataset.k]=!hotelShow[b.dataset.k];
     b.classList.toggle("on", hotelShow[b.dataset.k]);
@@ -6770,6 +6811,7 @@ document.getElementById("btnHotel").onclick=async ()=>{
     hotelOn=false; document.getElementById("btnHotel").classList.remove("on");
     document.getElementById("hotelSheet").style.display="none"; drawHotels(); return;
   }
+  if(!porteData.length) await loadPorte();
   buildHotelTiers();
   document.getElementById("hotelSheet").style.display="block";
   if(!hotelData){
@@ -6778,6 +6820,7 @@ document.getElementById("btnHotel").onclick=async ()=>{
     try{ hotelData=await loadHotels(); hotelStatus(""); }
     catch(e){ hotelStatus("取得できませんでした("+e.message+")"); hotelBusy=false; return; }
     hotelBusy=false;
+    buildHotelTiers();
   }
   hotelOn=true; document.getElementById("btnHotel").classList.add("on");
   if(map.getZoom()<13) map.setZoom(14);
