@@ -1142,7 +1142,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.14-6";
+const APP_VER = "2026.11.18-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -8059,8 +8059,11 @@ function tagStatsHtml(t){ const L=tagRides(t).filter(r=>!r.drv||normName(r.drv)=
   const avg=Math.round(L.reduce((q,r)=>q+r.f,0)/L.length), big=L.filter(r=>r.f>=10000).length;
   return `これまで${L.length}件・平均${yen(avg)}・万収${big}件`; }
 // 既存データに元キーを付け、修正内容を反映する(削除指定は取り除く)
+// 重複を消す乗車(rides.csv側を直したもの)。一度だけ削除扱いにする
+const RIDE_FIX_DEL=["2026-08-05|15:08|6700|35.64748|139.74755"]; // 8/5 羽田行き: 乗車地は芝5ではなくプルマン東京田町(芝浦3)
 function applyRideEdits(){
   const ed=reLoad(); let changed=false;
+  { let fx=false; RIDE_FIX_DEL.forEach(k=>{ if(!(ed[k]&&ed[k].del)){ ed[k]=Object.assign({},ed[k]||{},{del:true,fix:1,at:Date.now()}); fx=true; } }); if(fx) reSave(ed); }
   rides.forEach(r=>{ if(!r.ok){ r.ok=rideOrigKey(r); changed=true; } });
   const before=rides.length;
   rides=rides.filter(r=>!(ed[r.ok] && ed[r.ok].del));
