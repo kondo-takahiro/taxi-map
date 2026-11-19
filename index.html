@@ -1143,7 +1143,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.18-2";
+const APP_VER = "2026.11.19-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5847,9 +5847,11 @@ let nextShiftOverride=null;
 const SHIFT_PAT=["出番","明け","出番","明け","公休"];
 function dsOf(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 function shiftAnchorInfo(){ // サイクル基準(手動設定 > 直近の乗務日)と、その日がサイクル何番目の出番か
-  const s=localStorage.getItem("shift-anchor");
-  if(s) return {ds:s, off:0}; // 手動基準は「公休明けの出番」として扱う
+  let s=localStorage.getItem("shift-anchor");
   const days=[...diaryByDay().keys()].sort();
+  // 手動基準より新しい乗務記録があれば、古い基準は捨てて実際の乗務日から数え直す
+  if(s && days.length && days[days.length-1]>s){ try{ localStorage.removeItem("shift-anchor"); }catch(e){} s=null; }
+  if(s) return {ds:s, off:0}; // 手動基準は「公休明けの出番」として扱う
   if(!days.length) return {ds:dsOf(new Date()), off:0};
   const last=days[days.length-1];
   let off=0;
