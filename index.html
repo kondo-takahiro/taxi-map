@@ -807,6 +807,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <button class="btn" id="btnWards">区別</button>
     <button class="btn" id="btnBig">⭐ 万収</button>
     <button class="btn" id="btnAirMk">✈️ 空港</button>
+    <button class="btn" id="btnExplore">🧭 開拓</button>
     <button class="btn" id="btnAirHotel">🏨 空港ホテル</button>
     <button class="btn" id="btnIncome">💴 所得(推定)</button>
     <button class="btn" id="btnHanka">🏮 繁華街</button>
@@ -1143,7 +1144,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.19-1";
+const APP_VER = "2026.11.21-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1341,6 +1342,7 @@ function render(){
   if(typeof drawWardRank==="function") drawWardRank();
   if(typeof drawBig==="function") drawBig();
   if(typeof drawAirMk==="function" && airMkOn) drawAirMk();
+  if(typeof drawExplore==="function" && exploreOn) drawExplore();
   if(typeof drawTagMk==="function" && tagMkOn) drawTagMk();
   if(typeof drawAppRing==="function") drawAppRing();
   if(typeof drawWaitSpots==="function") drawWaitSpots();
@@ -6062,7 +6064,7 @@ async function showRoads(d){
 // ===== 表示ボタンの設定(使わない機能を隠す) =====
 const BTN_GROUPS=[
   {g:"画面", items:[["btnBrief","📋 今日の情報"],["btnAdvice","💡 立ち回り"],["btnReview","📊 分析"],["btnDiary","📓 日誌"],["btnRank","🏆 ランキング"]]},
-  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnAirHotel","🏨 空港ホテル"],["btnIncome","💴 所得(推定)"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnSettaiRec","🍶 接待実績"],["btnStationRec","🚉 駅乗り場実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
+  {g:"地図の表示", items:[["btnHeat","ヒート"],["btnWards","区別"],["btnMetric","指標切替"],["btnPredict","🔮 推定"],["btnBig","⭐ 万収"],["btnAirMk","✈️ 空港"],["btnExplore","🧭 開拓"],["btnAirHotel","🏨 空港ホテル"],["btnIncome","💴 所得(推定)"],["btnHanka","🏮 繁華街"],["btnWait","📍 待機スポット"],["btnTsuke","🅿️ つけ待ち"],["btnHotelRec","🛎 ホテル実績"],["btnVenueRec","🎪 施設実績"],["btnSettaiRec","🍶 接待実績"],["btnStationRec","🚉 駅乗り場実績"],["btnStyle","🌙 夜間配色"],["btnHead","⬆️ 北固定"]]},
   {g:"重ねる情報", items:[["btnStands","🚕 乗り場"],["btnToilet","🚻 トイレ"],["btnHotel","🏨 ホテル"],["btnLand","🏙 住宅/繁華街"],["btnMemo","📝 メモ"],["btnRoads","🛣 道路"],["btnGone","🚇 路線図"],["btnLast","🚃 終電"]]},
   {g:"営業モード", items:[["btnAppMode","📲 アプリ営業"],["btnGps","現在地"]]},
   {g:"データ", items:[["btnAdd","＋ 乗車を記録"],["btnScan","📷 日報を読み取り"],["btnCsvOut","CSV書き出し"],["btnSpAllOut","📦 全部まとめて書き出し"],["btnMemoOut","📝 メモ書き出し"],["btnPaste","貼り付け読み込み"],["btnCsvIn","ファイル読み込み"],["btnSync","共有データ再読み込み"],["btnKB","📚 ノウハウ"],["btnReset","初期化"]]}
@@ -7649,6 +7651,48 @@ function airMkHint(n){
 }
 document.getElementById("btnAirMk").onclick=e=>{
   airMkOn=!airMkOn; e.target.classList.toggle("on",airMkOn); const n=drawAirMk(); if(airMkOn) airMkHint(n);
+};
+// ===== 🧭 開拓エリア(自分が1〜2回しか拾っていないのに単価が高い乗車地) =====
+// 本人の乗車だけで集計し、空転(乗車地=降車地・¥1,000)は除く。フィルターには連動させず、全期間で判定する
+const EXPLORE_MAX_N=2, EXPLORE_MIN_AVG=7000;
+let exploreLayer=null, exploreOn=false;
+function exploreSpots(){
+  const g=new Map();
+  myRides().forEach(r=>{ if(!r.p||!(r.f>0)||(r.f===1000&&r.dst===r.p)) return;
+    const a=g.get(r.p)||{p:r.p,items:[]}; a.items.push(r); g.set(r.p,a); });
+  const out=[];
+  g.forEach(a=>{
+    const n=a.items.length; if(n>EXPLORE_MAX_N) return;
+    const avg=Math.round(a.items.reduce((q,r)=>q+r.f,0)/n); if(avg<EXPLORE_MIN_AVG) return;
+    let ll=locateAddress(a.p);
+    if(!ll){ const v=a.items.filter(r=>r.lat&&r.lng); if(!v.length) return;
+      ll=[v.reduce((q,r)=>q+r.lat,0)/v.length, v.reduce((q,r)=>q+r.lng,0)/v.length]; }
+    a.items.sort((x,y)=>(y.d+y.t).localeCompare(x.d+x.t));
+    out.push({...a,n,avg,ll});
+  });
+  return out.sort((x,y)=>y.avg-x.avg);
+}
+function drawExplore(){
+  if(exploreLayer){ map.removeLayer(exploreLayer); exploreLayer=null; }
+  if(!exploreOn) return 0;
+  const sp=exploreSpots();
+  const items=sp.map(a=>{
+    const col=a.avg>=10000?"#ff7043":"#ffb74d";
+    return L.marker(a.ll,{zIndexOffset:500,icon:L.divIcon({className:"",iconSize:[56,36],iconAnchor:[28,32],
+      html:`<div style="display:flex;flex-direction:column;align-items:center;line-height:1;">
+        <div style="font-size:19px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));">🧭</div>
+        <div style="background:rgba(19,26,42,.92);color:${col};border:1px solid ${col};border-radius:7px;padding:1px 4px;font-size:9px;font-weight:800;margin-top:-1px;white-space:nowrap;">${yen(a.avg)}×${a.n}</div>
+      </div>`})})
+      .bindPopup(`<b>${a.p}</b><br><span style="color:#8b98ad;font-size:11px;">🧭 開拓候補: ${a.n}回しか拾っていないが平均 ${yen(a.avg)}</span><br>`
+        + a.items.map(r=>`<div style="margin-top:4px;font-size:12px;">${shiftDateStr(r).slice(5).replace("-","/")}(${"日月火水木金土"[new Date(shiftDateStr(r)+"T12:00:00").getDay()]}) ${r.t.slice(0,5)} → ${r.dst||"?"} <b>${yen(r.f)}</b> <span style="color:#8b98ad;">${(r.m||"app")==="app"?"配車":"流し"}</span></div>`).join("")
+        + `<div style="margin-top:6px;font-size:11px;color:#8b98ad;">件数が少ないので参考値。同じ曜日・時間帯にもう一度入って確かめる</div>`, {maxWidth:290});
+  });
+  exploreLayer=L.layerGroup(items).addTo(map);
+  return sp.length;
+}
+document.getElementById("btnExplore").onclick=e=>{
+  exploreOn=!exploreOn; e.target.classList.toggle("on",exploreOn); const n=drawExplore();
+  if(exploreOn){ const h=document.getElementById("hint"); if(h){ h.textContent=`🧭 開拓候補 ${n}か所(自分の乗車が${EXPLORE_MAX_N}回以下で平均¥${EXPLORE_MIN_AVG.toLocaleString()}以上・赤=平均¥10,000以上)`; h.classList.add("show"); setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; },2600); } }
 };
 // ===== 🏨✈️ 空港客が出やすいホテル(2026/10 リサーチ・城東重点) =====
 // r: ◎/○/△(リサーチの推定評価) w: 狙い目の時間帯[開始,終了](営業時間、0時=24) lane: 専用乗り場(他社は原則入れない) bus: リムジン停留所
@@ -9865,7 +9909,7 @@ function saveViewState(){
     const st={
       minFare, modeFilter, weatherFilter, metric, appMode, coolAuto,
       dows:[...dowSet], tMin, tMax,
-      heatOn, areaMode, bigOn, airMkOn, predictOn, hankaOn, tsukeOn:SP_ON.tsuke, hotelRecOn:SP_ON.hotel, venueRecOn:SP_ON.venue, settaiRecOn:SP_ON.settai, stationRecOn:SP_ON.station,
+      heatOn, areaMode, bigOn, airMkOn, exploreOn, predictOn, hankaOn, tsukeOn:SP_ON.tsuke, hotelRecOn:SP_ON.hotel, venueRecOn:SP_ON.venue, settaiRecOn:SP_ON.settai, stationRecOn:SP_ON.station,
       standsOn, toiletOn, memoOn, railOn, lastOn,
       roads:Object.keys(roadOn).filter(k=>roadOn[k]),
       pois:(typeof poiOn==="object")?Object.keys(poiOn).filter(k=>poiOn[k]):[],
@@ -9919,6 +9963,7 @@ function restoreViewState(){
   }
   if(st.bigOn){ bigOn=true; const b=document.getElementById("btnBig"); if(b) b.classList.add("on"); }
   if(st.airMkOn){ airMkOn=true; const b=document.getElementById("btnAirMk"); if(b) b.classList.add("on"); setTimeout(drawAirMk,300); }
+  if(st.exploreOn){ exploreOn=true; const b=document.getElementById("btnExplore"); if(b) b.classList.add("on"); setTimeout(drawExplore,300); }
   if(st.tsukeOn){ SP_ON.tsuke=true; const b=document.getElementById("btnTsuke"); if(b) b.classList.add("on"); }
   if(st.hotelRecOn){ SP_ON.hotel=true; const b=document.getElementById("btnHotelRec"); if(b) b.classList.add("on"); }
   if(st.venueRecOn){ SP_ON.venue=true; const b=document.getElementById("btnVenueRec"); if(b) b.classList.add("on"); }
