@@ -1154,7 +1154,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.23-2";
+const APP_VER = "2026.11.23-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9619,7 +9619,8 @@ function atSunType(ds){
   if(isHoliday(ds)) return "holi";
   return null;
 }
-let atView="all", atWho="all", atRows=[];
+let atView="all", atWho="all", atRows=[], atCool="all";
+const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
 const AT_COL={best:"#ffd54f",kaiten:"#7dd87d",tanka:"#7db3f0",mid:"#9aa4b5",weak:"#f08080"};
 const AT_SHADES={best:["#ffd54f","#e0a400","#fff3a8"],kaiten:["#7dd87d","#2f9e50","#c4f5b0"],tanka:["#7db3f0","#3b6fd4","#c2dcff"],mid:["#9aa4b5","#5d697e","#d2d8e2"],weak:["#f08080","#c83c3c","#ffbcbc"]};
 const AT_KN={best:"⭐ 単価も回転も強い",kaiten:"🔄 回転型",tanka:"💴 単価型",mid:"平均並み",weak:"▽ 弱い"};
@@ -9634,13 +9635,17 @@ function renderAtype(){
   byShift.forEach(rs=>{ shifts++;
     rs=rs.map(r=>({r,ts:new Date(r.d+"T"+(r.t||"12:00")+":00").getTime()})).filter(x=>!isNaN(x.ts)).sort((a,b)=>a.ts-b.ts);
     rs.forEach((x,i)=>{ let c=i+1<rs.length?(rs[i+1].ts-x.ts)/60000:null; if(c!=null&&(c>AT_GAP||c<=0)) c=null;
-      recs.push({g:atGroup(x.r.p),f:+x.r.f||0,c}); }); });
+      const hh=new Date(x.ts).getHours()+new Date(x.ts).getMinutes()/60;
+      recs.push({g:atGroup(x.r.p),f:+x.r.f||0,c,h:hh<5?hh+24:hh}); }); });
+  // クールで絞る(乗車した時刻で判定。1本あたりの時間は次の乗車までなので、クールをまたぐこともある)
+  const cr=AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0];
+  if(atCool!=="all"){ const keep=recs.filter(x=>x.h>=cr[2]&&x.h<cr[3]); recs.length=0; recs.push(...keep); }
   const cv=recs.filter(x=>x.c);
   const U=recs.length?recs.reduce((s,x)=>s+x.f,0)/recs.length:0;
   const H=cv.length?cv.reduce((s,x)=>s+x.f,0)/cv.reduce((s,x)=>s+x.c,0)*60:0;
   const C=cv.length?cv.reduce((s,x)=>s+x.c,0)/cv.length:0;
   const agg=new Map(); recs.forEach(x=>{ if(!agg.has(x.g)) agg.set(x.g,[]); agg.get(x.g).push(x); });
-  const minN=atView==="holi"?3:5;
+  const minN=atView==="holi"?3:(atCool==="all"?5:4);
   const rowsA=[...agg].filter(([g,v])=>v.length>=minN).map(([g,v])=>{
     const u=v.reduce((s,x)=>s+x.f,0)/v.length, vc=v.filter(x=>x.c);
     const cyc=vc.length?vc.reduce((s,x)=>s+x.c,0)/vc.length:0, hr=vc.length?vc.reduce((s,x)=>s+x.f,0)/vc.reduce((s,x)=>s+x.c,0)*60:0;
@@ -9656,9 +9661,10 @@ function renderAtype(){
     mid:["・平均並み","var(--text)",""],weak:["▽ 弱い","#f08080","単価も回転も平均以下。長居しない"]};
   const chip=(on,lab,attr)=>`<button class="btn at-sel" ${attr} style="flex:1;padding:7px 0;font-size:13px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}">${lab}</button>`;
   let h=`<div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atView==="all","日曜型すべて",'data-v="all"')}${chip(atView==="sun","日曜",'data-v="sun"')}${chip(atView==="holi","祝日",'data-v="holi"')}</div>
-   <div style="display:flex;gap:4px;margin-bottom:10px;">${chip(atWho==="all","全乗務員",'data-w="all"')}${chip(atWho==="me","自分だけ",'data-w="me"')}</div>
+   <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atWho==="all","全乗務員",'data-w="all"')}${chip(atWho==="me","自分だけ",'data-w="me"')}</div>
+   <div style="display:flex;gap:4px;margin-bottom:10px;">${AT_COOLS.map(([k,lab,a,b])=>chip(atCool===k,lab+(k==="all"?"":`<br><span style="font-size:9.5px;font-weight:400;">${b===29?a+"時〜":a%24+"-"+b%24+"時"}</span>`),`data-c="${k}"`)).join("")}</div>
    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin-bottom:10px;font-size:12.5px;line-height:1.6;">
-    ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b></div>`;
+    <b>${cr[1]}</b> ・ ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b></div>`;
   if(rowsA.length) h+=`<button class="btn at-map" data-all="1" style="width:100%;padding:10px;margin-bottom:4px;font-weight:800;">🗺 全エリアを分類ごとに地図に塗る</button>
    <div style="font-size:10.5px;color:var(--muted);margin-bottom:4px;">分類の見出しやエリア名をタップすると、そこだけ地図に塗ります</div>`;
   if(!rowsA.length) h+=`<div style="font-size:13px;color:var(--muted);padding:12px 2px;">データが足りません(${minN}本以上のエリアがありません)</div>`;
@@ -9674,10 +9680,11 @@ function renderAtype(){
   });
   h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">日曜型 = 日曜または祝日で、翌日が土日祝でない日(連休中の日は除く)。1本あたり = その乗車から次の乗車までの時間(乗車中+空車)。${AT_GAP}分を超える空白は休憩・回送とみなして外しています。時給換算 = 売上 ÷ 1本あたりの時間。分類は平均との比較(⭐単価も時給も平均の1.1倍以上/💴単価だけ1.1倍以上/🔄時給が平均以上/▽時給が平均の8割未満)。金額は税込。</div>`;
   body.innerHTML=h;
-  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; renderAtype(); });
+  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.c) atCool=b.dataset.c; renderAtype(); });
   body.querySelectorAll(".at-map").forEach(b=>b.onclick=()=>{
     const sel=b.dataset.all?atRows:b.dataset.k?atRows.filter(x=>x.k===b.dataset.k):atRows.filter(x=>x.g===b.dataset.g);
-    const lab=b.dataset.all?"全エリア":b.dataset.k?AT_KN[b.dataset.k]:b.dataset.g;
+    const cn=(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1];
+    const lab=(atCool==="all"?"":cn+" ")+(b.dataset.all?"全エリア":b.dataset.k?AT_KN[b.dataset.k]:b.dataset.g);
     atPaint(sel,lab);
   });
 }
