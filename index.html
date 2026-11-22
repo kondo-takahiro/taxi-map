@@ -1154,7 +1154,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.23-1";
+const APP_VER = "2026.11.23-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9621,6 +9621,7 @@ function atSunType(ds){
 }
 let atView="all", atWho="all", atRows=[];
 const AT_COL={best:"#ffd54f",kaiten:"#7dd87d",tanka:"#7db3f0",mid:"#9aa4b5",weak:"#f08080"};
+const AT_SHADES={best:["#ffd54f","#e0a400","#fff3a8"],kaiten:["#7dd87d","#2f9e50","#c4f5b0"],tanka:["#7db3f0","#3b6fd4","#c2dcff"],mid:["#9aa4b5","#5d697e","#d2d8e2"],weak:["#f08080","#c83c3c","#ffbcbc"]};
 const AT_KN={best:"⭐ 単価も回転も強い",kaiten:"🔄 回転型",tanka:"💴 単価型",mid:"平均並み",weak:"▽ 弱い"};
 function renderAtype(){
   const body=document.getElementById("atypeBody"); if(!body) return;
@@ -9699,11 +9700,34 @@ async function atPaint(sel,label){
   atClear();
   const feats=gj.features.filter(f=>byG.has(atGroup(f.properties&&f.properties.n)));
   if(!feats.length){ alert("地図に塗れる町が見つかりませんでした"); return; }
-  atLayer=L.geoJSON({type:"FeatureCollection",features:feats},{
-    style:f=>{ const x=byG.get(atGroup(f.properties.n)); return {color:AT_COL[x.k],weight:1,fillColor:AT_COL[x.k],fillOpacity:.38,opacity:.8}; },
-    onEachFeature:(f,ly)=>{ const x=byG.get(atGroup(f.properties.n));
+  // 同じ分類のエリアが隣り合っても境目が分かるよう、隣接するエリアには同じ色の濃淡を変えて塗る
+  const gOf=f=>atGroup(f.properties.n);
+  const CELL=0.0006, cells=new Map();   // 約60mの格子で頂点の近さから隣接を判定
+  const ringsOf=g=>g.type==="Polygon"?g.coordinates:g.type==="MultiPolygon"?g.coordinates.flat():[];
+  feats.forEach(f=>{ const gg=gOf(f); ringsOf(f.geometry).forEach(r=>r.forEach(([x,y])=>{
+    const k=Math.floor(x/CELL)+","+Math.floor(y/CELL); if(!cells.has(k)) cells.set(k,new Set()); cells.get(k).add(gg); })); });
+  const adj=new Map(); const link=(a,b)=>{ if(a===b) return; if(!adj.has(a)) adj.set(a,new Set()); adj.get(a).add(b); };
+  cells.forEach((set,k)=>{ const [cx,cy]=k.split(",").map(Number);
+    for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){ const o=cells.get((cx+dx)+","+(cy+dy)); if(!o) continue;
+      set.forEach(a=>o.forEach(b=>link(a,b))); } });
+  const shade=new Map();
+  [...byG.values()].sort((a,b)=>b.n-a.n).forEach(x=>{
+    const used=new Set([...(adj.get(x.g)||[])].filter(o=>byG.has(o)&&byG.get(o).k===x.k&&shade.has(o)).map(o=>shade.get(o)));
+    let i=0; while(used.has(i)&&i<2) i++; shade.set(x.g,i); });
+  const colOf=x=>(AT_SHADES[x.k]||[AT_COL[x.k]])[shade.get(x.g)||0];
+  const geo=L.geoJSON({type:"FeatureCollection",features:feats},{
+    style:f=>{ const x=byG.get(gOf(f)), c=colOf(x); return {color:"#1b2436",weight:.6,opacity:.35,fillColor:c,fillOpacity:.45}; },
+    onEachFeature:(f,ly)=>{ const x=byG.get(gOf(f));
       ly.bindTooltip(`${f.properties.n}<br><b>${x.g}</b>(${AT_KN[x.k]})<br>時給¥${Math.round(x.hr).toLocaleString()}・単価¥${Math.round(x.u).toLocaleString()}・1本${Math.round(x.cyc)}分・${x.n}本`,{sticky:true}); }
-  }).addTo(map);
+  });
+  // エリア名のラベル(各エリアで一番大きい町の中心に置く)
+  const big=new Map();
+  geo.eachLayer(ly=>{ const g=gOf(ly.feature), b=ly.getBounds(), a=(b.getEast()-b.getWest())*(b.getNorth()-b.getSouth());
+    if(!big.has(g)||big.get(g).a<a) big.set(g,{a,c:b.getCenter()}); });
+  const labels=[...big].map(([g,v])=>{ const x=byG.get(g), nm=g.replace(/\(.*?\)/g,"").replace("の住宅地","");
+    return L.marker(v.c,{interactive:false,icon:L.divIcon({className:"",iconSize:null,
+      html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:10.5px;font-weight:800;color:#1a1206;background:${colOf(x)};border:1px solid #1b2436;border-radius:8px;padding:1px 5px;opacity:.92;">${nm}</div>`})}); });
+  atLayer=L.featureGroup([geo,...labels]).addTo(map);
   let c=document.getElementById("atClearBtn");
   if(!c){ c=document.createElement("button"); c.id="atClearBtn"; c.className="btn";
     c.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:1500;padding:8px 14px;font-size:12.5px;font-weight:800;background:rgba(13,19,32,.95);border:1px solid #b39ddb;color:#b39ddb;border-radius:20px;white-space:nowrap;";
