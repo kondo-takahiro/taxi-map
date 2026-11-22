@@ -6103,6 +6103,10 @@ function renderSettings(){
   body.innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
       使わないボタンを消してパネルをすっきりできます。タップで表示/非表示が切り替わります。<br>
       <span style="color:var(--amber)">オレンジ=表示中</span>　グレー=非表示</div>`
+    + `<div style="font-size:12px;color:var(--amber);margin:12px 0 5px;">下のタブ</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">`
+        + TAB_LIST.map(([t,label])=>`<button class="chip tab-vis${loadHiddenTabs().has(t)?"":" on"}" data-t="${t}" style="font-size:12px;padding:7px 10px;">${label}</button>`).join("")
+        + `</div><div style="font-size:10px;color:var(--muted);margin-top:4px;">🗺 地図と⚙️ 設定はいつも表示します。「すべて表示」「最小構成」はタブには影響しません。</div>`
     + BTN_GROUPS.map(g=>`<div style="font-size:12px;color:var(--amber);margin:12px 0 5px;">${g.g}</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;">`
         + g.items.map(([id,label])=>`<button class="chip set-btn${hid.has(id)?"":" on"}" data-id="${id}" style="font-size:12px;padding:7px 10px;">${label}</button>`).join("")
@@ -6127,6 +6131,12 @@ function renderSettings(){
       <button class="btn" id="setResetView" style="width:100%;padding:11px;">🔄 初期状態に戻す</button>
       <div style="font-size:10px;color:var(--muted);margin-top:5px;">フィルター・重ねた情報・地図の位置を、起動直後の状態(単価=全て/ヒートON/今の時間帯/今日の曜日)に戻します。乗車データやメモは消えません。</div>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;">「最小構成」は走行中によく使うものだけを残します(ヒート・指標・現在地・立ち回り・アプリ営業・日誌・分析)。</div>`;
+  body.querySelectorAll(".tab-vis").forEach(b=>b.onclick=()=>{
+    const h=loadHiddenTabs();
+    if(h.has(b.dataset.t)) h.delete(b.dataset.t); else h.add(b.dataset.t);
+    try{ localStorage.setItem("hidden-tabs", JSON.stringify([...h])); }catch(e){}
+    applyHiddenTabs(); renderSettings();
+  });
   body.querySelectorAll(".set-btn").forEach(b=>b.onclick=()=>{
     const h=loadHidden();
     if(h.has(b.dataset.id)) h.delete(b.dataset.id); else h.add(b.dataset.id);
@@ -7584,6 +7594,14 @@ function showTab(name){
   }
 }
 document.querySelectorAll(".tab-btn").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+// 下のタブの表示/非表示(設定で切り替え)。地図と設定は常に表示
+const TAB_LIST=[["diary","📓 日誌"],["review","📊 分析"],["flow","🌊 流れ"],["brief","📋 今日"],["event","🎪 イベント"],["live","📹 ライブ"],["strat","🧭 戦略"],["atype","🏷 エリア型"]];
+function loadHiddenTabs(){ try{ return new Set(JSON.parse(localStorage.getItem("hidden-tabs"))||[]); }catch(e){ return new Set(); } }
+function applyHiddenTabs(){
+  const hid=loadHiddenTabs();
+  document.querySelectorAll(".tab-btn").forEach(b=>{ b.style.display = hid.has(b.dataset.tab) ? "none" : "flex"; });
+}
+applyHiddenTabs();
 ["diaryClose","reviewClose","briefClose","settingsClose","flowClose"].forEach(id=>{
   const el=document.getElementById(id);
   if(el) el.onclick=()=>showTab("map");
