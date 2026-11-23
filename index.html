@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.23-11";
+const APP_VER = "2026.11.23-12";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9623,7 +9623,7 @@ function atSunType(ds){
   if(isHoliday(ds)) return "holi";
   return null;
 }
-let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false, atRecsByG=new Map();
+let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false, atRecsByG=new Map(), atPainted=null;
 const AT_FEW=5;
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
 const AT_COL={best:"#ffd54f",kaiten:"#7dd87d",tanka:"#7db3f0",mid:"#9aa4b5",weak:"#f08080"};
@@ -9699,19 +9699,21 @@ function renderAtype(){
 function atFillOp(n){ return n>=20?.68:n>=10?.52:n>=AT_FEW?.34:.1; }
 // エリアの乗車実績一覧(どこからどこまで・いくら)。地図のエリアやタブの行を押すと出る
 function atShowRides(g){
-  const v=(atRecsByG.get(g)||[]).slice().sort((a,b)=>b.f-a.f);
+  const P=atPainted||{recs:atRecsByG,cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1],who:atWho,view:atView};
+  const v=(P.recs.get(g)||[]).slice().sort((a,b)=>b.f-a.f);
   let pn=document.getElementById("atRidePanel");
   if(!pn){ pn=document.createElement("div"); pn.id="atRidePanel";
-    pn.style.cssText="position:fixed;left:8px;right:8px;bottom:calc(118px + env(safe-area-inset-bottom));max-height:46vh;z-index:1550;background:rgba(13,19,32,.97);border:1px solid #b39ddb;border-radius:14px;padding:9px 11px;display:flex;flex-direction:column;";
+    pn.style.cssText="position:fixed;left:8px;right:8px;max-width:calc(100vw - 16px);box-sizing:border-box;bottom:calc(118px + env(safe-area-inset-bottom));max-height:46vh;z-index:1550;background:rgba(13,19,32,.97);border:1px solid #b39ddb;border-radius:14px;padding:9px 11px;display:flex;flex-direction:column;";
     document.body.appendChild(pn); }
-  const cn=(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1];
+  const cn=P.cool+(P.who==="me"?"・自分だけ":"")+(P.view==="sun"?"・日曜":P.view==="holi"?"・祝日":"");
   const tot=v.reduce((s,x)=>s+x.f,0);
   const row=x=>{ const r=x.r, d=r.d||"", dw=d?D_DN[new Date(d+"T12:00:00").getDay()]:"", me=!r.drv||normName(r.drv)===normName(MY_NAME);
     return `<div style="padding:5px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.45;">
-      <div style="display:flex;gap:6px;align-items:baseline;"><span style="color:var(--muted);">${d.slice(5).replace("-","/")}(${dw}) ${r.t||""}</span>
+      <div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;">
+       <b style="font-size:13.5px;min-width:58px;color:${x.f>=10000?"#ffd54f":x.f>=5000?"#7dd87d":"var(--text)"};">¥${x.f.toLocaleString()}</b>
+       <span style="color:var(--muted);">${d.slice(5).replace("-","/")}(${dw}) ${r.t||""}</span>
        <span style="font-size:10.5px;color:${(r.m||"app")==="app"?"#7db3f0":"#ffcc80"};">${(r.m||"app")==="app"?"配車":"流し"}</span>
-       <span style="font-size:10.5px;color:var(--muted);">${me?"自分":(r.drv||"")}</span><span style="flex:1"></span>
-       <b style="font-size:13.5px;color:${x.f>=10000?"#ffd54f":x.f>=5000?"#7dd87d":"var(--text)"};">¥${x.f.toLocaleString()}</b></div>
+       <span style="font-size:10.5px;color:var(--muted);">${me?"自分":(r.drv||"")}</span></div>
       <div>${r.p||"?"} → ${r.dst||"?"}</div></div>`; };
   pn.innerHTML=`<div style="display:flex;align-items:center;gap:6px;">
      <b style="font-size:13.5px;">${g}</b><span style="font-size:11px;color:var(--muted);">${cn}・${v.length}本・平均¥${v.length?Math.round(tot/v.length).toLocaleString():0}</span>
@@ -9745,6 +9747,8 @@ function atBtnPaint(){ const b=document.getElementById("btnAtype"); if(!b) retur
   b.style.background=on?"#b39ddb":"rgba(19,26,42,.92)"; b.style.borderColor=on?"#b39ddb":"var(--line)"; }
 async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗り直す(自動切替用)
   if(!sel.length) return;
+  // 塗った時点の集計を保存(あとでタブの条件を変えても、地図のエリアを押した時の一覧は塗った時の条件で出す)
+  atPainted={recs:atRecsByG, cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1], who:atWho, view:atView};
   const byG=new Map(sel.map(x=>[x.g,x]));
   let gj=null; try{ gj=await atLoadTowns(); }catch(e){}
   if(!gj){ alert("町の境界データを読み込めませんでした。電波状況を確認してください"); return; }
