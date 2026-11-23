@@ -249,6 +249,7 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   <button id="btnEvt" title="イベント🎪を表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🎪</button>
   <button id="btnSingles" title="乗車1回だけのエリアを表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:14px;font-weight:800;">1回</button>
   <button id="btnWardLine" title="区の境目を太線と区名で表示/非表示" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:15px;font-weight:900;">区</button>
+  <button id="btnAtype" title="🏷エリア型(今のクールの単価と回転)を地図に塗る/消す" style="width:44px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(19,26,42,.92);color:var(--text);font-size:18px;">🏷</button>
 </div>
 
 <div id="hankaPanel" style="display:none;position:fixed;top:calc(64px + env(safe-area-inset-top));left:10px;right:10px;z-index:1100;
@@ -1154,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.23-5";
+const APP_VER = "2026.11.23-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9698,7 +9699,11 @@ function atLoadTowns(){
 function atClear(){
   if(atLayer){ map.removeLayer(atLayer); atLayer=null; }
   const c=document.getElementById("atClearBtn"); if(c) c.style.display="none";
+  atBtnPaint();
 }
+// 地図の左の🏷ボタン: 塗っている間は紫に光らせる
+function atBtnPaint(){ const b=document.getElementById("btnAtype"); if(!b) return; const on=!!atLayer;
+  b.style.background=on?"#b39ddb":"rgba(19,26,42,.92)"; b.style.borderColor=on?"#b39ddb":"var(--line)"; }
 async function atPaint(sel,label){
   if(!sel.length) return;
   const byG=new Map(sel.map(x=>[x.g,x]));
@@ -9740,10 +9745,21 @@ async function atPaint(sel,label){
     c.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:1500;padding:8px 14px;font-size:12.5px;font-weight:800;background:rgba(13,19,32,.95);border:1px solid #b39ddb;color:#b39ddb;border-radius:20px;white-space:nowrap;";
     c.onclick=atClear; document.body.appendChild(c); }
   c.textContent=`🏷 ${label} を表示中 ✕`; c.style.display="";
+  atBtnPaint();
   showTab("map");
   setTimeout(()=>{ try{ if(sel.length<atRows.length) map.fitBounds(atLayer.getBounds(),{padding:[30,30],maxZoom:14}); }catch(e){} },120);
 }
 document.getElementById("atypeClose").onclick=()=>showTab("map");
+// 地図の🏷ボタン: 塗っていなければ「今のクール」の全エリアを塗る。塗っていれば消す(地図の位置はそのまま)
+document.getElementById("btnAtype").onclick=()=>{
+  if(atLayer){ atClear(); return; }
+  const d=new Date(); let h=d.getHours()+d.getMinutes()/60; if(h<5) h+=24;
+  const cr=AT_COOLS.find(c=>c[0]!=="all"&&h>=c[2]&&h<c[3]);
+  atCool=cr?cr[0]:"all";
+  renderAtype();   // 選んだクールで集計し直す(atRowsが更新される)
+  if(!atRows.length){ alert("このクールは日曜型のデータが足りず、塗れるエリアがありません"); return; }
+  atPaint(atRows,(cr?cr[1]+" ":"")+"全エリア");
+};
 function renderStrat(){
   const body=document.getElementById("stratBody"); if(!body) return;
   const today=stratTodayDow(), dow=stratDow==null?today:stratDow, st=STRAT[dow];
