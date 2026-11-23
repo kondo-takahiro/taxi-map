@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.23-9";
+const APP_VER = "2026.11.23-10";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9699,6 +9699,12 @@ function atLoadTowns(){
   if(atTowns) return Promise.resolve(atTowns);
   return fetch("towns.json?v="+APP_VER).then(r=>r.ok?r.json():null).then(gj=>{ atTowns=gj; return gj; });
 }
+// エリアごとの外周線(町をエリア単位でまとめた輪郭)。AT_GROUPSの分け方を変えたら atgroups.json を作り直すこと
+let atOutlines=null;
+function atLoadOutlines(){
+  if(atOutlines) return Promise.resolve(atOutlines);
+  return fetch("atgroups.json?v="+APP_VER).then(r=>r.ok?r.json():null).then(gj=>{ atOutlines=gj; return gj; }).catch(()=>null);
+}
 function atClear(){
   atMapAuto=false;
   if(atLayer){ map.removeLayer(atLayer); atLayer=null; }
@@ -9734,7 +9740,7 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
   const geo=L.geoJSON({type:"FeatureCollection",features:feats},{
     style:f=>{ const x=byG.get(gOf(f)), c=colOf(x);
       if(x.n<AT_FEW) return {color:c,weight:1.2,opacity:.9,dashArray:"4 3",fillColor:c,fillOpacity:.18};   // データ少: 薄く・点線
-      return {color:"#1b2436",weight:.6,opacity:.35,fillColor:c,fillOpacity:.45}; },
+      return {color:"#1b2436",weight:.4,opacity:.2,fillColor:c,fillOpacity:.45}; },
     onEachFeature:(f,ly)=>{ const x=byG.get(gOf(f));
       ly.bindTooltip(`${f.properties.n}<br><b>${x.g}</b>(${AT_KN[x.k]})<br>時給¥${Math.round(x.hr).toLocaleString()}・単価¥${Math.round(x.u).toLocaleString()}・1本${Math.round(x.cyc)}分・${x.n}本${x.n<AT_FEW?"<br>⚠データ少(参考)":""}`,{sticky:true}); }
   });
@@ -9745,7 +9751,12 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
   const labels=[...big].map(([g,v])=>{ const x=byG.get(g), nm=g.replace(/\(.*?\)/g,"").replace("の住宅地","");
     return L.marker(v.c,{interactive:false,icon:L.divIcon({className:"",iconSize:null,
       html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:10.5px;font-weight:800;color:#1a1206;background:${colOf(x)};border:1px solid #1b2436;border-radius:8px;padding:1px 5px;opacity:${x.n<AT_FEW?.7:.92};${x.n<AT_FEW?"border-style:dashed;":""}">${nm}${x.n<AT_FEW?` ⚠${x.n}本`:""}</div>`})}); });
-  atLayer=L.featureGroup([geo,...labels]).addTo(map);
+  // エリアの境目: 白いふち + 濃い線の2重線で、隣が同じ色でも境目が分かるようにする
+  const outs=[]; const ol=await atLoadOutlines();
+  if(ol){ const fs=ol.features.filter(f=>byG.has(f.properties.g));
+    outs.push(L.geoJSON({type:"FeatureCollection",features:fs},{interactive:false,style:{color:"#ffffff",weight:4.5,opacity:.85}}));
+    outs.push(L.geoJSON({type:"FeatureCollection",features:fs},{interactive:false,style:f=>({color:"#1b2436",weight:2,opacity:.95,dashArray:(byG.get(f.properties.g)||{}).n<AT_FEW?"5 4":null})})); }
+  atLayer=L.featureGroup([geo,...outs,...labels]).addTo(map);
   let c=document.getElementById("atClearBtn");
   if(!c){ c=document.createElement("button"); c.id="atClearBtn"; c.className="btn";
     c.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:1500;padding:8px 14px;font-size:12.5px;font-weight:800;background:rgba(13,19,32,.95);border:1px solid #b39ddb;color:#b39ddb;border-radius:20px;white-space:nowrap;";
