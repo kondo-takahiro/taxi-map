@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.23-10";
+const APP_VER = "2026.11.23-11";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7575,7 +7575,8 @@ function showTab(name){
     b.classList.toggle("on",on);
     b.style.color = on ? "var(--amber)" : "var(--muted)";
   });
-  { const ac=document.getElementById("atClearBtn"); if(ac) ac.style.display=(name==="map"&&typeof atLayer!=="undefined"&&atLayer)?"":"none"; }   // 塗り分けの解除ボタンは地図でだけ出す
+  { const ac=document.getElementById("atClearBtn"); if(ac) ac.style.display=(name==="map"&&typeof atLayer!=="undefined"&&atLayer)?"":"none";
+    const pn=document.getElementById("atRidePanel"); if(pn&&name!=="map") pn.style.display="none"; }   // 塗り分けの解除ボタンは地図でだけ出す
   if(name==="map"){ setTimeout(()=>map.invalidateSize(),50); return; }
   const el=document.getElementById(panels[name]);
   if(el) el.style.display="block";
@@ -9622,7 +9623,7 @@ function atSunType(ds){
   if(isHoliday(ds)) return "holi";
   return null;
 }
-let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false;
+let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false, atRecsByG=new Map();
 const AT_FEW=5;
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
 const AT_COL={best:"#ffd54f",kaiten:"#7dd87d",tanka:"#7db3f0",mid:"#9aa4b5",weak:"#f08080"};
@@ -9640,7 +9641,7 @@ function renderAtype(){
     rs=rs.map(r=>({r,ts:new Date(r.d+"T"+(r.t||"12:00")+":00").getTime()})).filter(x=>!isNaN(x.ts)).sort((a,b)=>a.ts-b.ts);
     rs.forEach((x,i)=>{ let c=i+1<rs.length?(rs[i+1].ts-x.ts)/60000:null; if(c!=null&&(c>AT_GAP||c<=0)) c=null;
       const hh=new Date(x.ts).getHours()+new Date(x.ts).getMinutes()/60;
-      recs.push({g:atGroup(x.r.p),f:+x.r.f||0,c,h:hh<5?hh+24:hh}); }); });
+      recs.push({g:atGroup(x.r.p),f:+x.r.f||0,c,h:hh<5?hh+24:hh,r:x.r}); }); });
   // クールで絞る(乗車した時刻で判定。1本あたりの時間は次の乗車までなので、クールをまたぐこともある)
   const cr=AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0];
   if(atCool!=="all"){ const keep=recs.filter(x=>x.h>=cr[2]&&x.h<cr[3]); recs.length=0; recs.push(...keep); }
@@ -9649,6 +9650,7 @@ function renderAtype(){
   const H=cv.length?cv.reduce((s,x)=>s+x.f,0)/cv.reduce((s,x)=>s+x.c,0)*60:0;
   const C=cv.length?cv.reduce((s,x)=>s+x.c,0)/cv.length:0;
   const agg=new Map(); recs.forEach(x=>{ if(!agg.has(x.g)) agg.set(x.g,[]); agg.get(x.g).push(x); });
+  atRecsByG=agg;   // エリアを押した時の実績一覧に使う
   const minN=1;   // 1本でも表示する。AT_FEW本未満は「データ少(参考)」と明記し、地図では薄い点線で塗る
   const rowsA=[...agg].filter(([g,v])=>v.length>=minN).map(([g,v])=>{
     const u=v.reduce((s,x)=>s+x.f,0)/v.length, vc=v.filter(x=>x.c);
@@ -9689,10 +9691,36 @@ function renderAtype(){
     const sel=b.dataset.all?atRows:b.dataset.k?atRows.filter(x=>x.k===b.dataset.k):atRows.filter(x=>x.g===b.dataset.g);
     const cn=(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1];
     const lab=(atCool==="all"?"":cn+" ")+(b.dataset.all?"全エリア":b.dataset.k?AT_KN[b.dataset.k]:b.dataset.g);
-    atPaint(sel,lab);
+    atPaint(sel,lab).then(()=>{ if(b.dataset.g) atShowRides(b.dataset.g); });
   });
 }
 // ===== エリア型を地図に塗る(町境界 towns.json を使う) =====
+// 本数が多いほど濃く塗る(5本未満は別扱いで点線・ごく薄く)
+function atFillOp(n){ return n>=20?.68:n>=10?.52:n>=AT_FEW?.34:.1; }
+// エリアの乗車実績一覧(どこからどこまで・いくら)。地図のエリアやタブの行を押すと出る
+function atShowRides(g){
+  const v=(atRecsByG.get(g)||[]).slice().sort((a,b)=>b.f-a.f);
+  let pn=document.getElementById("atRidePanel");
+  if(!pn){ pn=document.createElement("div"); pn.id="atRidePanel";
+    pn.style.cssText="position:fixed;left:8px;right:8px;bottom:calc(118px + env(safe-area-inset-bottom));max-height:46vh;z-index:1550;background:rgba(13,19,32,.97);border:1px solid #b39ddb;border-radius:14px;padding:9px 11px;display:flex;flex-direction:column;";
+    document.body.appendChild(pn); }
+  const cn=(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1];
+  const tot=v.reduce((s,x)=>s+x.f,0);
+  const row=x=>{ const r=x.r, d=r.d||"", dw=d?D_DN[new Date(d+"T12:00:00").getDay()]:"", me=!r.drv||normName(r.drv)===normName(MY_NAME);
+    return `<div style="padding:5px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.45;">
+      <div style="display:flex;gap:6px;align-items:baseline;"><span style="color:var(--muted);">${d.slice(5).replace("-","/")}(${dw}) ${r.t||""}</span>
+       <span style="font-size:10.5px;color:${(r.m||"app")==="app"?"#7db3f0":"#ffcc80"};">${(r.m||"app")==="app"?"配車":"流し"}</span>
+       <span style="font-size:10.5px;color:var(--muted);">${me?"自分":(r.drv||"")}</span><span style="flex:1"></span>
+       <b style="font-size:13.5px;color:${x.f>=10000?"#ffd54f":x.f>=5000?"#7dd87d":"var(--text)"};">¥${x.f.toLocaleString()}</b></div>
+      <div>${r.p||"?"} → ${r.dst||"?"}</div></div>`; };
+  pn.innerHTML=`<div style="display:flex;align-items:center;gap:6px;">
+     <b style="font-size:13.5px;">${g}</b><span style="font-size:11px;color:var(--muted);">${cn}・${v.length}本・平均¥${v.length?Math.round(tot/v.length).toLocaleString():0}</span>
+     <span style="flex:1"></span><span id="atRideClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;padding:0 4px;">✕</span></div>
+   ${v.length<AT_FEW?`<div style="font-size:11px;color:#ffb74d;margin-top:2px;">⚠データ少(参考)</div>`:""}
+   <div style="overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:5px;">${v.length?v.map(row).join(""):`<div style="font-size:12px;color:var(--muted);padding:8px 0;">実績がありません</div>`}</div>`;
+  pn.style.display="flex";
+  document.getElementById("atRideClose").onclick=()=>{ pn.style.display="none"; };
+}
 let atLayer=null, atTowns=null;
 function atLoadTowns(){
   if(typeof townsData!=="undefined"&&townsData) return Promise.resolve(townsData);
@@ -9707,6 +9735,7 @@ function atLoadOutlines(){
 }
 function atClear(){
   atMapAuto=false;
+  { const pn=document.getElementById("atRidePanel"); if(pn) pn.style.display="none"; }
   if(atLayer){ map.removeLayer(atLayer); atLayer=null; }
   const c=document.getElementById("atClearBtn"); if(c) c.style.display="none";
   atBtnPaint();
@@ -9739,9 +9768,10 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
   const colOf=x=>(AT_SHADES[x.k]||[AT_COL[x.k]])[shade.get(x.g)||0];
   const geo=L.geoJSON({type:"FeatureCollection",features:feats},{
     style:f=>{ const x=byG.get(gOf(f)), c=colOf(x);
-      if(x.n<AT_FEW) return {color:c,weight:1.2,opacity:.9,dashArray:"4 3",fillColor:c,fillOpacity:.18};   // データ少: 薄く・点線
-      return {color:"#1b2436",weight:.4,opacity:.2,fillColor:c,fillOpacity:.45}; },
+      if(x.n<AT_FEW) return {color:c,weight:1.2,opacity:.8,dashArray:"4 3",fillColor:c,fillOpacity:.1};   // データ少: ごく薄く・点線
+      return {color:"#1b2436",weight:.4,opacity:.2,fillColor:c,fillOpacity:atFillOp(x.n)}; },
     onEachFeature:(f,ly)=>{ const x=byG.get(gOf(f));
+      ly.on("click",e=>{ if(e.originalEvent) L.DomEvent.stopPropagation(e); atShowRides(x.g); });
       ly.bindTooltip(`${f.properties.n}<br><b>${x.g}</b>(${AT_KN[x.k]})<br>時給¥${Math.round(x.hr).toLocaleString()}・単価¥${Math.round(x.u).toLocaleString()}・1本${Math.round(x.cyc)}分・${x.n}本${x.n<AT_FEW?"<br>⚠データ少(参考)":""}`,{sticky:true}); }
   });
   // エリア名のラベル(各エリアで一番大きい町の中心に置く)
@@ -9750,7 +9780,7 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
     if(!big.has(g)||big.get(g).a<a) big.set(g,{a,c:b.getCenter()}); });
   const labels=[...big].map(([g,v])=>{ const x=byG.get(g), nm=g.replace(/\(.*?\)/g,"").replace("の住宅地","");
     return L.marker(v.c,{interactive:false,icon:L.divIcon({className:"",iconSize:null,
-      html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:10.5px;font-weight:800;color:#1a1206;background:${colOf(x)};border:1px solid #1b2436;border-radius:8px;padding:1px 5px;opacity:${x.n<AT_FEW?.7:.92};${x.n<AT_FEW?"border-style:dashed;":""}">${nm}${x.n<AT_FEW?` ⚠${x.n}本`:""}</div>`})}); });
+      html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:10.5px;font-weight:800;color:#1a1206;background:${colOf(x)};border:1px solid #1b2436;border-radius:8px;padding:1px 5px;opacity:${x.n<AT_FEW?.6:x.n>=10?.95:.82};${x.n<AT_FEW?"border-style:dashed;":""}">${nm}${x.n<AT_FEW?` ⚠${x.n}本`:""}</div>`})}); });
   // エリアの境目: 白いふち + 濃い線の2重線で、隣が同じ色でも境目が分かるようにする
   const outs=[]; const ol=await atLoadOutlines();
   if(ol){ const fs=ol.features.filter(f=>byG.has(f.properties.g));
