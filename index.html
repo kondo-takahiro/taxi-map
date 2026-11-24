@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.24-5";
+const APP_VER = "2026.11.24-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5686,7 +5686,7 @@ function bindMyReview(){
   ta.onblur=()=>{ clearTimeout(tm); saveNow(); };
 }
 function aiReviewHtml(ds){
-  const o=AI_REVIEWS[ds]; if(!o) return "";
+  const o=AI_REVIEWS[ds]; if(!o || !(o.title||o.good||o.bad||o.next)) return "";   // 休憩・実車率だけの日は振り返り欄を出さない
   const li=(arr,col)=>(arr||[]).map(x=>`<div style="font-size:12.5px;line-height:1.55;margin:3px 0;padding-left:12px;text-indent:-12px;"><span style="color:${col};">・</span>${x}</div>`).join("");
   const BN=["第1","第2","第3","青タン"];
   const bands=o.bands&&o.tg?`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0 4px;">`+o.bands.map((v,i)=>{ const d=v-o.tg[i]; return `<div style="background:var(--panel2);border-radius:8px;padding:5px 4px;text-align:center;"><div style="font-size:10px;color:var(--muted);">${BN[i]}</div><div style="font-size:12.5px;font-weight:800;">¥${v.toLocaleString()}</div><div style="font-size:10px;color:${d>=0?"#7dd87d":"#f08080"};">${d>=0?"+":""}${d.toLocaleString()}</div></div>`; }).join("")+`</div><div style="font-size:9.5px;color:var(--muted);">税込・空転は除く。±は曜日の目安との差</div>`:"";
