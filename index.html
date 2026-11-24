@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.24-2";
+const APP_VER = "2026.11.24-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5713,7 +5713,8 @@ function renderDiaryY(pick){
   const jr=kpi[target];
   const top=rs.reduce((a,b)=>a.f>=b.f?a:b);
   let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">${target.slice(5,7)}/${target.slice(8)}(${D_DN[dw]})の乗務</div>`;
-  h+=`<div style="font-size:22px;font-weight:800;">${yen(total)} ${pctTag(total,peerAvg)}</div>`;
+  h+=`<div style="font-size:22px;font-weight:800;"><span style="font-size:12px;font-weight:700;color:var(--muted);">税込</span> ${yen(total)} ${pctTag(total,peerAvg)}</div>`;
+  h+=`<div style="font-size:15px;font-weight:800;margin:1px 0 3px;"><span style="font-size:12px;font-weight:700;color:var(--muted);">税抜</span> ${yen(Math.round(total/1.1))}</div>`;
   let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
   const br=brk[target];
   h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%・実車率<span id="kpiEdit" style="text-decoration:underline;cursor:pointer;color:${jr?"var(--text)":"var(--amber)"};">${jr? jr+"%" : "を記録"}</span>${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)`:""}</div>`;
