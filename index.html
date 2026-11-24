@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.24-1";
+const APP_VER = "2026.11.24-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9635,12 +9635,18 @@ function atDayOk(ds){
   if(w>=1&&w<=6&&isHoliday(ds)) return null;   // 祝日の月〜土は外す
   return "day";
 }
+let atBase="pick";   // "pick"=乗った場所で見る / "drop"=降ろした場所で見る(降ろしてから次に乗るまでの空車時間)
+const AT_QUICK=10;   // 降ろしてから何分以内に次が乗れたら「すぐ乗れた」とするか
+// 降車時刻(HH:MM)のミリ秒。乗車より前の時刻なら日付をまたいだとみなす
+function atDropTs(r,ts){ if(!r.et) return null; let d=new Date(r.d+"T"+r.et.padStart(5,"0")+":00").getTime(); if(isNaN(d)) return null; if(d<ts-60000) d+=86400000; return d; }
 let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false, atRecsByG=new Map(), atPainted=null;
 const AT_FEW=5;
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
 const AT_COL={best:"#ffd54f",kaiten:"#7dd87d",tanka:"#7db3f0",mid:"#9aa4b5",weak:"#f08080"};
 const AT_SHADES={best:["#ffd54f","#e0a400","#fff3a8"],kaiten:["#7dd87d","#2f9e50","#c4f5b0"],tanka:["#7db3f0","#3b6fd4","#c2dcff"],mid:["#9aa4b5","#5d697e","#d2d8e2"],weak:["#f08080","#c83c3c","#ffbcbc"]};
-const AT_KN={best:"⭐ 単価も回転も強い",kaiten:"🔄 回転型",tanka:"💴 単価型",mid:"平均並み",weak:"▽ 弱い"};
+const AT_KN0={best:"⭐ 単価も回転も強い",kaiten:"🔄 回転型",tanka:"💴 単価型",mid:"平均並み",weak:"▽ 弱い"};
+const AT_KN_D={best:"⭐ すぐ乗れて次も高い",kaiten:"🔄 すぐ乗れる",tanka:"💴 待つが次が高い",mid:"平均並み",weak:"▽ つかまりにくい"};
+const AT_KN=new Proxy({},{get:(o,k)=>(atBase==="drop"?AT_KN_D:AT_KN0)[k]});
 function renderAtype(){
   const body=document.getElementById("atypeBody"); if(!body) return;
   const src=atWho==="me"?myRides():rides;
@@ -9651,9 +9657,19 @@ function renderAtype(){
   const recs=[]; let shifts=0;
   byShift.forEach(rs=>{ shifts++;
     rs=rs.map(r=>({r,ts:new Date(r.d+"T"+(r.t||"12:00")+":00").getTime()})).filter(x=>!isNaN(x.ts)).sort((a,b)=>a.ts-b.ts);
+    if(atBase==="drop"){
+      // 降ろした場所ごと: 降ろしてから次に乗るまでの空車時間(w)と、次の1本の料金(f)
+      rs.forEach((x,i)=>{ const dt=atDropTs(x.r,x.ts), nx=rs[i+1]; if(dt==null||!nx||!x.r.dst) return;
+        const w=(nx.ts-dt)/60000; if(w<0||w>AT_GAP) return;
+        const hh=new Date(dt).getHours()+new Date(dt).getMinutes()/60;
+        const ndt=atDropTs(nx.r,nx.ts), nrun=ndt!=null?(ndt-nx.ts)/60000:null;
+        recs.push({g:atGroup(x.r.dst),f:+nx.r.f||0,c:w,w,nrun,h:hh<5?hh+24:hh,r:x.r,nr:nx.r}); });
+      return;
+    }
     rs.forEach((x,i)=>{ let c=i+1<rs.length?(rs[i+1].ts-x.ts)/60000:null; if(c!=null&&(c>AT_GAP||c<=0)) c=null;
       const hh=new Date(x.ts).getHours()+new Date(x.ts).getMinutes()/60;
       recs.push({g:atGroup(x.r.p),f:+x.r.f||0,c,h:hh<5?hh+24:hh,r:x.r}); }); });
+  const DROP=atBase==="drop";
   // クールで絞る(乗車した時刻で判定。1本あたりの時間は次の乗車までなので、クールをまたぐこともある)
   const cr=AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0];
   if(atCool!=="all"){ const keep=recs.filter(x=>x.h>=cr[2]&&x.h<cr[3]); recs.length=0; recs.push(...keep); }
@@ -9661,10 +9677,21 @@ function renderAtype(){
   const U=recs.length?recs.reduce((s,x)=>s+x.f,0)/recs.length:0;
   const H=cv.length?cv.reduce((s,x)=>s+x.f,0)/cv.reduce((s,x)=>s+x.c,0)*60:0;
   const C=cv.length?cv.reduce((s,x)=>s+x.c,0)/cv.length:0;
+  // 降ろした場所で見るときの全体平均: 空車時間W・すぐ乗れた率Q・降車後時給E(次の料金÷(空車+次の乗車時間))
+  const W=DROP&&recs.length?recs.reduce((s,x)=>s+x.w,0)/recs.length:0;
+  const Q=DROP&&recs.length?recs.filter(x=>x.w<=AT_QUICK).length/recs.length:0;
+  const eff=v=>{ const e=v.filter(x=>x.nrun!=null&&x.w+x.nrun>0); return e.length?e.reduce((s,x)=>s+x.f,0)/e.reduce((s,x)=>s+x.w+x.nrun,0)*60:0; };
+  const E=DROP?eff(recs):0;
   const agg=new Map(); recs.forEach(x=>{ if(!agg.has(x.g)) agg.set(x.g,[]); agg.get(x.g).push(x); });
   atRecsByG=agg;   // エリアを押した時の実績一覧に使う
   const minN=1;   // 1本でも表示する。AT_FEW本未満は「データ少(参考)」と明記し、地図では薄い点線で塗る
-  const rowsA=[...agg].filter(([g,v])=>v.length>=minN).map(([g,v])=>{
+  const rowsA=DROP?[...agg].map(([g,v])=>{
+    const u=v.reduce((s,x)=>s+x.f,0)/v.length, w=v.reduce((s,x)=>s+x.w,0)/v.length, q=v.filter(x=>x.w<=AT_QUICK).length/v.length, hr=eff(v);
+    const fast=w<=W*0.8, slow=w>=W*1.25; let k;
+    if(fast&&u>=U*1.1) k="best"; else if(fast) k="kaiten"; else if(u>=U*1.2) k="tanka"; else if(slow) k="weak"; else k="mid";
+    return {g,n:v.length,u,cyc:w,hr,q,k,mode:"drop"};
+  }).sort((a,b)=>((b.n>=AT_FEW)-(a.n>=AT_FEW))||(a.cyc-b.cyc))
+  :[...agg].filter(([g,v])=>v.length>=minN).map(([g,v])=>{
     const u=v.reduce((s,x)=>s+x.f,0)/v.length, vc=v.filter(x=>x.c);
     const cyc=vc.length?vc.reduce((s,x)=>s+x.c,0)/vc.length:0, hr=vc.length?vc.reduce((s,x)=>s+x.f,0)/vc.reduce((s,x)=>s+x.c,0)*60:0;
     const r5=v.filter(x=>x.f>=5000).length/v.length, big=v.filter(x=>x.f>=10000).length;
@@ -9677,15 +9704,21 @@ function renderAtype(){
     kaiten:["🔄 回転型","#7dd87d","単価は安いが次がすぐ乗る。配車が途切れた時の穴埋めに"],
     tanka:["💴 単価型","#7db3f0","大物は出るが戻りに時間がかかる。時給は伸びにくい"],
     mid:["・平均並み","var(--text)",""],weak:["▽ 弱い","#f08080","単価も回転も平均以下。長居しない"]};
+  if(DROP){ KIND.best=["⭐ すぐ乗れて次も高い","#ffd54f","ここで降ろせたら当たり。降ろした後もすぐ次が高く乗る"];
+    KIND.kaiten=["🔄 すぐ乗れる","#7dd87d","降ろしてからの空車が短い。ここ行きの客は歓迎"];
+    KIND.tanka=["💴 待つが次が高い","#7db3f0","空車は長めだが、次の1本の単価が高い"];
+    KIND.weak=["▽ つかまりにくい","#f08080","降ろしてから次まで時間がかかる。降ろしたらすぐ移動を"]; }
   const chip=(on,lab,attr)=>`<button class="btn at-sel" ${attr} style="flex:1;padding:7px 0;font-size:13px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}">${lab}</button>`;
-  { const tt=document.getElementById("atypeTitle"); if(tt) tt.textContent=`🏷 ${atDayLabel()} エリアの単価と回転`; }
+  { const tt=document.getElementById("atypeTitle"); if(tt) tt.textContent=atBase==="drop"?`🏷 ${atDayLabel()} 降ろした場所の空車時間`:`🏷 ${atDayLabel()} エリアの単価と回転`; }
   let h=`<div style="display:flex;gap:3px;margin-bottom:6px;">${AT_DAYS.map(([k,lab])=>{ const on=atDay===k; return `<button class="btn at-sel" data-d="${k}" style="flex:${k==="sunType"?1.9:1};min-width:0;padding:7px 0;font-size:12.5px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}">${lab}</button>`; }).join("")}</div>`
    +(atDay==="sunType"?`<div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atView==="all","日曜型すべて",'data-v="all"')}${chip(atView==="sun","日曜",'data-v="sun"')}${chip(atView==="holi","祝日",'data-v="holi"')}</div>`:"")
    +`
+   <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atBase==="pick","乗せた場所で見る",'data-b="pick"')}${chip(atBase==="drop","降ろした場所で見る",'data-b="drop"')}</div>
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atWho==="all","全乗務員",'data-w="all"')}${chip(atWho==="me","自分だけ",'data-w="me"')}</div>
    <div style="display:flex;gap:4px;margin-bottom:10px;">${AT_COOLS.map(([k,lab,a,b])=>chip(atCool===k,lab+(k==="all"?"":`<br><span style="font-size:9.5px;font-weight:400;">${b===29?a+"時〜":a%24+"-"+b%24+"時"}</span>`),`data-c="${k}"`)).join("")}</div>
    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin-bottom:10px;font-size:12.5px;line-height:1.6;">
-    <b>${cr[1]}</b> ・ ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b></div>`;
+    ${DROP?`<b>${cr[1]}</b> ・ ${shifts}乗務・降車${recs.length}回 ・ 降ろしてから次まで平均<b>${Math.round(W)}分</b> ・ ${AT_QUICK}分以内に乗れた<b>${Math.round(Q*100)}%</b> ・ 次の1本 平均<b>¥${Math.round(U).toLocaleString()}</b> ・ 降車後時給<b>¥${Math.round(E).toLocaleString()}</b>`
+     :`<b>${cr[1]}</b> ・ ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b>`}</div>`;
   if(rowsA.length) h+=`<button class="btn at-map" data-all="1" style="width:100%;padding:10px;margin-bottom:4px;font-weight:800;">🗺 全エリアを分類ごとに地図に塗る</button>
    <div style="font-size:10.5px;color:var(--muted);margin-bottom:4px;">分類の見出しやエリア名をタップすると、そこだけ地図に塗ります</div>`;
   if(!rowsA.length) h+=`<div style="font-size:13px;color:var(--muted);padding:12px 2px;">データが足りません(${minN}本以上のエリアがありません)</div>`;
@@ -9695,13 +9728,14 @@ function renderAtype(){
     h+=`<div class="at-map" data-k="${k}" style="font-size:13px;font-weight:800;color:${col};margin:12px 0 2px;cursor:pointer;">${lab} <span style="font-size:11px;font-weight:400;color:var(--muted);">🗺 地図に塗る</span></div>`+(desc?`<div style="font-size:11px;color:var(--muted);margin-bottom:5px;">${desc}</div>`:"");
     h+=`<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:2px 10px;">`+L.map(x=>`
      <div class="at-map" data-g="${x.g}" style="padding:7px 0;border-bottom:1px solid var(--line);cursor:pointer;">
-      <div style="display:flex;align-items:baseline;gap:6px;"><b style="font-size:13px;flex:1;">${x.g} <span style="font-size:11px;">🗺</span></b><b style="font-size:14px;color:${col};">¥${Math.round(x.hr).toLocaleString()}/h</b></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">単価 ¥${Math.round(x.u).toLocaleString()} ・ 1本 ${Math.round(x.cyc)}分 ・ 5千円以上 ${Math.round(x.r5*100)}%${x.big?` ・ 万収${x.big}`:""} ・ ${x.n}本${x.n<AT_FEW?` <b style="color:#ffb74d;">⚠データ少(参考)</b>`:x.n<8?" (少なめ)":""}</div>
+      <div style="display:flex;align-items:baseline;gap:6px;"><b style="font-size:13px;flex:1;">${x.g} <span style="font-size:11px;">🗺</span></b><b style="font-size:14px;color:${col};">${DROP?`空車 ${Math.round(x.cyc)}分`:`¥${Math.round(x.hr).toLocaleString()}/h`}</b></div>
+      ${DROP?`<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${AT_QUICK}分以内 ${Math.round(x.q*100)}% ・ 次の1本 ¥${Math.round(x.u).toLocaleString()} ・ 降車後時給 ¥${Math.round(x.hr).toLocaleString()} ・ ${x.n}回${x.n<AT_FEW?` <b style="color:#ffb74d;">⚠データ少(参考)</b>`:x.n<8?" (少なめ)":""}</div>`:`<div style="font-size:11.5px;color:var(--muted);margin-top:2px;">単価 ¥${Math.round(x.u).toLocaleString()} ・ 1本 ${Math.round(x.cyc)}分 ・ 5千円以上 ${Math.round(x.r5*100)}%${x.big?` ・ 万収${x.big}`:""} ・ ${x.n}本${x.n<AT_FEW?` <b style="color:#ffb74d;">⚠データ少(参考)</b>`:x.n<8?" (少なめ)":""}</div>`}
      </div>`).join("")+`</div>`;
   });
+  if(DROP) h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">降ろした場所で見る = 客を降ろした町ごとに、降車時刻から次の客を乗せるまでの空車時間を集計(降車時刻が入っている乗車だけ。${AT_GAP}分を超える空白は休憩・回送とみなして除外)。クールは降ろした時刻で判定。次の1本 = その後に乗せた客の料金。降車後時給 = 次の料金 ÷ (空車時間+次の乗車時間)。分類は平均との比較(🔄空車が平均の8割以下/⭐さらに次の単価が平均の1.1倍以上/💴次の単価が1.2倍以上/▽空車が平均の1.25倍以上)。</div>`;
   h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">日曜型 = 日曜または祝日で、翌日が土日祝でない日(連休中の日は除く)。月〜土は祝日を除いた日、日は日曜すべて(連休中の日曜も含む)。乗務日は朝5時で区切っています。1本あたり = その乗車から次の乗車までの時間(乗車中+空車)。${AT_GAP}分を超える空白は休憩・回送とみなして外しています。時給換算 = 売上 ÷ 1本あたりの時間。分類は平均との比較(⭐単価も時給も平均の1.1倍以上/💴単価だけ1.1倍以上/🔄時給が平均以上/▽時給が平均の8割未満)。金額は税込。</div>`;
   body.innerHTML=h;
-  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.d) atDay=b.dataset.d; if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.c) atCool=b.dataset.c; renderAtype(); });
+  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.d) atDay=b.dataset.d; if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.b) atBase=b.dataset.b; if(b.dataset.c) atCool=b.dataset.c; renderAtype(); });
   body.querySelectorAll(".at-map").forEach(b=>b.onclick=()=>{
     const sel=b.dataset.all?atRows:b.dataset.k?atRows.filter(x=>x.k===b.dataset.k):atRows.filter(x=>x.g===b.dataset.g);
     const cn=(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1];
@@ -9714,8 +9748,9 @@ function renderAtype(){
 function atFillOp(n){ return n>=20?.68:n>=10?.52:n>=AT_FEW?.34:.1; }
 // エリアの乗車実績一覧(どこからどこまで・いくら)。地図のエリアやタブの行を押すと出る
 function atShowRides(g){
-  const P=atPainted||{recs:atRecsByG,cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1],who:atWho,view:atView,day:atDayLabel()};
-  const v=(P.recs.get(g)||[]).slice().sort((a,b)=>b.f-a.f);
+  const P=atPainted||{base:atBase,recs:atRecsByG,cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1],who:atWho,view:atView,day:atDayLabel()};
+  const DR=P.base==="drop";
+  const v=(P.recs.get(g)||[]).slice().sort(DR?(a,b)=>a.w-b.w:(a,b)=>b.f-a.f);
   let pn=document.getElementById("atRidePanel");
   if(!pn){ pn=document.createElement("div"); pn.id="atRidePanel";
     pn.style.cssText="position:fixed;left:8px;right:8px;max-width:calc(100vw - 16px);box-sizing:border-box;bottom:calc(118px + env(safe-area-inset-bottom));max-height:46vh;z-index:1550;background:rgba(13,19,32,.97);border:1px solid #b39ddb;border-radius:14px;padding:9px 11px;display:flex;flex-direction:column;";
@@ -9730,11 +9765,18 @@ function atShowRides(g){
        <span style="font-size:10.5px;color:${(r.m||"app")==="app"?"#7db3f0":"#ffcc80"};">${(r.m||"app")==="app"?"配車":"流し"}</span>
        <span style="font-size:10.5px;color:var(--muted);">${me?"自分":(r.drv||"")}</span></div>
       <div>${r.p||"?"} → ${r.dst||"?"}</div></div>`; };
+  const rowD=x=>{ const r=x.r, n=x.nr, d=r.d||"", dw=d?D_DN[new Date(d+"T12:00:00").getDay()]:"", me=!r.drv||normName(r.drv)===normName(MY_NAME);
+    return `<div style="padding:5px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.45;">
+      <div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;">
+       <b style="font-size:13.5px;min-width:58px;color:${x.w<=AT_QUICK?"#7dd87d":x.w>=30?"#f08080":"var(--text)"};">空車${Math.round(x.w)}分</b>
+       <span style="color:var(--muted);">${d.slice(5).replace("-","/")}(${dw}) 降車${r.et}</span>
+       <span style="font-size:10.5px;color:var(--muted);">${me?"自分":(r.drv||"")}</span></div>
+      <div>${r.dst||"?"}で降ろす → 次 ${n.t} ${n.p||"?"} <b style="color:${x.f>=10000?"#ffd54f":x.f>=5000?"#7dd87d":"var(--text)"};">¥${x.f.toLocaleString()}</b> <span style="font-size:10.5px;color:${(n.m||"app")==="app"?"#7db3f0":"#ffcc80"};">${(n.m||"app")==="app"?"配車":"流し"}</span></div></div>`; };
   pn.innerHTML=`<div style="display:flex;align-items:center;gap:6px;">
-     <b style="font-size:13.5px;">${g}</b><span style="font-size:11px;color:var(--muted);">${cn}・${v.length}本・平均¥${v.length?Math.round(tot/v.length).toLocaleString():0}</span>
+     <b style="font-size:13.5px;">${g}</b><span style="font-size:11px;color:var(--muted);">${cn}${DR?`・降車${v.length}回・空車平均${v.length?Math.round(v.reduce((s,x)=>s+x.w,0)/v.length):0}分`:`・${v.length}本・平均¥${v.length?Math.round(tot/v.length).toLocaleString():0}`}</span>
      <span style="flex:1"></span><span id="atRideClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:18px;padding:0 4px;">✕</span></div>
    ${v.length<AT_FEW?`<div style="font-size:11px;color:#ffb74d;margin-top:2px;">⚠データ少(参考)</div>`:""}
-   <div style="overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:5px;">${v.length?v.map(row).join(""):`<div style="font-size:12px;color:var(--muted);padding:8px 0;">実績がありません</div>`}</div>`;
+   <div style="overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:5px;">${v.length?v.map(DR?rowD:row).join(""):`<div style="font-size:12px;color:var(--muted);padding:8px 0;">実績がありません</div>`}</div>`;
   pn.style.display="flex";
   document.getElementById("atRideClose").onclick=()=>{ pn.style.display="none"; };
 }
@@ -9763,7 +9805,7 @@ function atBtnPaint(){ const b=document.getElementById("btnAtype"); if(!b) retur
 async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗り直す(自動切替用)
   if(!sel.length) return;
   // 塗った時点の集計を保存(あとでタブの条件を変えても、地図のエリアを押した時の一覧は塗った時の条件で出す)
-  atPainted={recs:atRecsByG, cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1], who:atWho, view:atView, day:atDayLabel()};
+  atPainted={base:atBase, recs:atRecsByG, cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1], who:atWho, view:atView, day:atDayLabel()};
   const byG=new Map(sel.map(x=>[x.g,x]));
   let gj=null; try{ gj=await atLoadTowns(); }catch(e){}
   if(!gj){ alert("町の境界データを読み込めませんでした。電波状況を確認してください"); return; }
@@ -9791,7 +9833,7 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
       return {color:"#1b2436",weight:.4,opacity:.2,fillColor:c,fillOpacity:atFillOp(x.n)}; },
     onEachFeature:(f,ly)=>{ const x=byG.get(gOf(f));
       ly.on("click",e=>{ if(e.originalEvent) L.DomEvent.stopPropagation(e); atShowRides(x.g); });
-      ly.bindTooltip(`${f.properties.n}<br><b>${x.g}</b>(${AT_KN[x.k]})<br>時給¥${Math.round(x.hr).toLocaleString()}・単価¥${Math.round(x.u).toLocaleString()}・1本${Math.round(x.cyc)}分・${x.n}本${x.n<AT_FEW?"<br>⚠データ少(参考)":""}`,{sticky:true}); }
+      ly.bindTooltip(`${f.properties.n}<br><b>${x.g}</b>(${(x.mode==="drop"?AT_KN_D:AT_KN0)[x.k]})<br>`+(x.mode==="drop"?`降ろしてから次まで${Math.round(x.cyc)}分・${AT_QUICK}分以内${Math.round(x.q*100)}%・次¥${Math.round(x.u).toLocaleString()}・${x.n}回`:`時給¥${Math.round(x.hr).toLocaleString()}・単価¥${Math.round(x.u).toLocaleString()}・1本${Math.round(x.cyc)}分・${x.n}本`)+`${x.n<AT_FEW?"<br>⚠データ少(参考)":""}`,{sticky:true}); }
   });
   // エリア名のラベル(各エリアで一番大きい町の中心に置く)
   const big=new Map();
@@ -10018,6 +10060,8 @@ function importText(text, silent){
   const lines = norm.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
     .filter(l=>/^"?\d{4}-\d{2}-\d{2}"?[,\t]/.test(l)); // 記録行(日付始まり、引用符付きも可)のみ対象
   let added=0, dup=0, bad=0;
+  const csvOks=new Set(), csvShifts=new Set();   // 共有データ(rides.csv)にある乗車と乗務
+  const shKey=r=>shiftDateStr(r)+"|"+(normName(r.drv)||normName(MY_NAME));
   lines.forEach(line=>{
     let c;
     if(line.includes("\t")){
@@ -10031,6 +10075,7 @@ function importText(text, silent){
         et:/^\d{1,2}:\d{2}$/.test((c[9]||"").trim())?(c[9]||"").trim():"" };   // et=降車時刻(HH:MM、ない乗車は空)
       if(!rec.et) delete rec.et;
       const ok=rec.d+"|"+rec.t+"|"+rec.f+"|"+rec.lat+"|"+rec.lng;
+      csvOks.add(ok); csvShifts.add(shKey(rec));
       const ed=(typeof reLoad==="function")?reLoad():{};
       if(ed[ok] && ed[ok].del){ dup++; return; }                       // アプリで削除した乗車は取り込まない
       const ex=rides.find(r=>(r.ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng))===ok || (r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng)===ok);   // 乗車地を直した乗車(今の値で書き出されたもの)も同じ乗車とみなす
@@ -10044,8 +10089,19 @@ function importText(text, silent){
       added++;
     }else{ bad++; }
   });
+  // 共有データの読み込み時: rides.csvにある乗務(終わった乗務)は rides.csv を正とし、
+  // rides.csvから消えた乗車(空転・日報で作り直す前の古い行)を端末からも消す。今の乗務は触らない
+  let removed=0;
+  if(silent && csvShifts.size){
+    const today=evShiftDay(), before=rides.length;
+    rides=rides.filter(r=>{ if(shiftDateStr(r)>=today || !csvShifts.has(shKey(r))) return true;
+      return csvOks.has(rideOrigKey(r)) || csvOks.has(r.d+"|"+r.t+"|"+r.f+"|"+r.lat+"|"+r.lng); });
+    removed=before-rides.length;
+  }
   if(typeof applyRideEdits==="function") applyRideEdits();
   save(); render();
+  if(silent && removed){ const h=document.getElementById("hint"); if(h){ h.textContent="共有データに合わせて古い乗車"+removed+"件を整理しました"; h.classList.add("show");
+    setTimeout(()=>{ h.classList.remove("show"); h.textContent="地図をタップして乗車地点を選択"; }, 3500); } }
   if(silent){
     if(added>0){ // 共有データ取り込み時は控えめに通知
       const h=document.getElementById("hint");
