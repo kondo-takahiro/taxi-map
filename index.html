@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.24-3";
+const APP_VER = "2026.11.24-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5712,26 +5712,81 @@ function renderDiaryY(pick){
   let kpi={}; try{ kpi=JSON.parse(localStorage.getItem("kpi-v1"))||{}; }catch(e){}
   const jr=kpi[target];
   const top=rs.reduce((a,b)=>a.f>=b.f?a:b);
-  let h=`<div style="font-size:13px;color:var(--muted);margin-bottom:6px;">${target.slice(5,7)}/${target.slice(8)}(${D_DN[dw]})の乗務</div>`;
-  h+=`<div style="font-size:22px;font-weight:800;"><span style="font-size:12px;font-weight:700;color:var(--muted);">税込</span> ${yen(total)} ${pctTag(total,peerAvg)}</div>`;
-  h+=`<div style="font-size:15px;font-weight:800;margin:1px 0 3px;"><span style="font-size:12px;font-weight:700;color:var(--muted);">税抜</span> ${yen(Math.round(total/1.1))}</div>`;
   let brk={}; try{ brk=JSON.parse(localStorage.getItem("break-v1"))||{}; }catch(e){}
   const br=brk[target];
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">${rs.length}回・アプリ${Math.round(nApp/rs.length*100)}%・実車率<span id="kpiEdit" style="text-decoration:underline;cursor:pointer;color:${jr?"var(--text)":"var(--amber)"};">${jr? jr+"%" : "を記録"}</span>${peers.length?`・${D_DN[dw]}曜平均${yen(Math.round(peerAvg))}(${peers.length}日)`:""}</div>`;
-  h+=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">休憩: <span id="brkEdit" style="text-decoration:underline;cursor:pointer;color:${br?"var(--text)":"var(--amber)"};">${br||"を記録"}</span></div>`;
+  // ===== 営業日報カード =====
+  const mOf=r=>shiftHour(r.t)*60+parseInt(r.t.slice(3,5),10);
+  const eOf=r=>{ if(!r.et) return null; let h=parseInt(r.et,10), m=parseInt(r.et.slice(-2),10); if(h<5) h+=24; let v=h*60+m; if(v<mOf(r)) v+=1440; return v; };
+  const sq=[...rs].sort((a,b)=>mOf(a)-mOf(b));
+  const t0=mOf(sq[0]), lastR=sq[sq.length-1], t1=eOf(lastR)!=null?eOf(lastR):mOf(lastR);
+  const span=Math.max(0,t1-t0);
+  // 休憩: 「13:17〜14:00」のような書き方なら合計分を出す
+  let brMin=null; if(br){ let tot=0,hit=false; String(br).replace(/(\d{1,2}):(\d{2})\s*[-〜~～ー]\s*(\d{1,2}):(\d{2})/g,(_,a,b,c,d)=>{ let x=+a*60+ +b, y=+c*60+ +d; if(y<x) y+=1440; tot+=y-x; hit=true; return ""; }); if(hit) brMin=tot; }
+  const work=Math.max(1,span-(brMin||0));
+  const withEt=rs.filter(r=>eOf(r)!=null), occ=withEt.reduce((a,r)=>a+(eOf(r)-mOf(r)),0);
+  const occPct=withEt.length===rs.length&&work>0?Math.round(occ/work*100):null;
+  const hm=m=>m==null?"—":Math.floor(m/60)+":"+String(Math.round(m%60)).padStart(2,"0");
+  const clk=m=>{ const h=Math.floor(m/60)%24; return String(h).padStart(2,"0")+":"+String(m%60).padStart(2,"0"); };
+  const nBig=rs.filter(r=>r.f>=10000).length;
+  const ex=Math.round(total/1.1);
+  const cell=(lab,val,col,extra)=>`<div style="background:var(--panel2);border-radius:10px;padding:6px 3px 7px;text-align:center;min-width:0;">
+     <div style="display:inline-block;font-size:10.5px;font-weight:700;color:#1a1206;background:${col};border-radius:6px;padding:1px 7px;white-space:nowrap;">${lab}</div>
+     <div${extra||` style="font-size:16px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;"`}>${val}</div></div>`;
+  const C1="#a9c7ec", C2="#f2b8c6", C3="#b6e0c4", C4="#cfc0ee";
+  let h=`<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:11px 10px 10px;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:6px;"><b style="font-size:14px;">${target.slice(0,4)}.${target.slice(5,7)}.${target.slice(8)}(${D_DN[dw]}) 営業日報</b><span style="flex:1"></span>${pctTag(total,peerAvg)}</div>
+    <div style="display:flex;margin:8px 0 10px;">
+      <div style="flex:1;padding-right:8px;"><div style="font-size:11.5px;color:var(--muted);font-weight:700;">営収(税込)</div><div style="font-size:27px;font-weight:900;color:#7dd8b0;font-variant-numeric:tabular-nums;line-height:1.15;">${total.toLocaleString()}<span style="font-size:15px;">円</span></div></div>
+      <div style="flex:1;padding-left:10px;border-left:1px solid var(--line);"><div style="font-size:11.5px;color:var(--muted);font-weight:700;">営収(税抜)</div><div style="font-size:27px;font-weight:900;color:#7dd8b0;font-variant-numeric:tabular-nums;line-height:1.15;">${ex.toLocaleString()}<span style="font-size:15px;">円</span></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;">
+      ${cell("営業時間",hm(span),C1)}
+      ${cell("休憩時間",brMin!=null?hm(brMin):br?"記録あり":"を記録",C2,` id="brkEdit" style="font-size:${brMin!=null?16:13}px;font-weight:800;margin-top:4px;cursor:pointer;text-decoration:underline;color:${br?"var(--text)":"var(--amber)"};"`)}
+      ${cell("時間単価",Math.round(total/(work/60)).toLocaleString()+"円",C3)}
+      ${cell("平均単価",Math.round(total/rs.length).toLocaleString()+"円",C4)}
+      ${cell("実車時間",withEt.length?hm(occ):"—",C1)}
+      ${cell("実車率",jr?jr+"%":occPct!=null?occPct+"%":"を記録",C2,` id="kpiEdit" style="font-size:16px;font-weight:800;margin-top:4px;cursor:pointer;text-decoration:underline;color:${jr||occPct!=null?"var(--text)":"var(--amber)"};"`)}
+      ${cell("万収",nBig+"回",C3)}
+      ${cell("最高単価",top.f.toLocaleString()+"円",C4)}
+      ${cell("営業回数",rs.length+"回",C1)}
+      ${cell("配車",nApp+"回",C2)}
+      ${cell("流し",(rs.length-nApp)+"回",C3)}
+      ${cell(D_DN[dw]+"曜平均",peers.length?Math.round(peerAvg/1000)/10+"万":"—",C4)}
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5;">時間は「時間:分」。営業時間 = 最初の乗車〜最後の降車。時間単価 = 税込営収 ÷ (営業時間−休憩)。実車率は記録した値${jr?"":"(未記録なら降車時刻から計算)"}。税抜は税込÷1.1。空転は除く</div>
+    <div style="display:flex;background:var(--panel2);border-radius:9px;padding:6px 10px;margin-top:7px;font-size:12px;font-weight:700;">
+      <span>最初の乗車 ${sq[0].t}</span><span style="flex:1"></span><span>最後の${eOf(lastR)!=null?"降車":"乗車"} ${clk(t1)}</span></div>`;
+  // 時間帯で見る売上・回数(同曜日平均との差)
+  const bandV=D_BANDS.map(b=>{ const L=rs.filter(r=>shiftHour(r.t)>=b[0]&&shiftHour(r.t)<b[1]);
+    const pAvg=peers.length? peers.reduce((q,d)=>q+dBand(byDay.get(d),b),0)/peers.length : 0;
+    return {b, v:L.reduce((q,r)=>q+r.f,0), n:L.length, pAvg}; });
+  const bMax=Math.max(1,...bandV.map(x=>x.v));
+  const BC=[["#ffd27a","☀"],["#f7b267","🌤"],["#9fa8f0","🌆"],["#7c86d8","🌙"]];
+  h+=`<div style="font-size:12.5px;font-weight:800;margin:12px 0 5px;">時間帯で見る売上・回数</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;">`+bandV.map((x,i)=>`
+      <div style="background:var(--panel2);border:1px solid ${BC[i][0]}55;border-radius:10px;padding:6px 4px;text-align:center;min-width:0;">
+        <div style="font-size:11.5px;font-weight:800;color:${BC[i][0]};">${BC[i][1]} ${x.b[2].split(" ")[0]}</div>
+        <div style="font-size:9.5px;color:var(--muted);">${x.b[2].split(" ")[1]}</div>
+        <div style="font-size:14.5px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums;">${x.v.toLocaleString()}<span style="font-size:10px;">円</span></div>
+        <div style="height:4px;background:#2a3547;border-radius:3px;margin:4px 2px;"><div style="height:4px;width:${Math.round(x.v/bMax*100)}%;background:${BC[i][0]};border-radius:3px;"></div></div>
+        <div style="font-size:13px;font-weight:800;">${x.n}回</div>
+        <div style="font-size:10.5px;">${pctTag(x.v,x.pAvg)||'<span style="color:var(--muted)">—</span>'}</div>
+      </div>`).join("")+`</div>
+    <div style="font-size:9.5px;color:var(--muted);margin-top:3px;">±は同じ曜日の平均との差(乗った時刻で分類)</div>`;
+  // 営業方法の内訳 + 乗車地ランキング
+  const ward=p=>{ const m=(p||"").match(/^(.+?[区市町村])/); return m?m[1]:(p||"?"); };
+  const wc=new Map(); rs.forEach(r=>{ const w=ward(r.p); wc.set(w,(wc.get(w)||0)+1); });
+  const rank=[...wc].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja")).slice(0,3);
+  const RC=["#ffd27a","#a9c7ec","#e8c4a8"];
+  h+=`<div style="display:flex;align-items:baseline;margin:12px 0 5px;"><b style="font-size:12.5px;">営業エリアランキング</b><span style="flex:1"></span><span style="font-size:10.5px;color:var(--muted);">乗車地 TOP3</span></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">`+rank.map(([w,c],i)=>`
+      <div style="background:var(--panel2);border-radius:10px;padding:6px 8px;min-width:0;">
+        <div style="font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="color:${RC[i]};">${i+1}位</span> ${w}</div>
+        <div style="font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;">${(c/rs.length*100).toFixed(1)}%</div>
+        <div style="font-size:10px;color:var(--muted);">${c}回</div></div>`).join("")+`</div>
+  </div>`;
   h+=aiReviewHtml(target);
   h+=myReviewHtml(target);
-  h+=sectionTitle("時間帯別(同曜日平均との差)");
-  D_BANDS.forEach(b=>{
-    const cur=dBand(rs,b);
-    const pAvg=peers.length? peers.reduce((s,d)=>s+dBand(byDay.get(d),b),0)/peers.length : 0;
-    h+=`<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px;">
-      <span style="width:86px;color:var(--muted);">${b[2]}</span>
-      <span style="flex:1;font-variant-numeric:tabular-nums;">${yen(cur)}</span>
-      <span style="font-size:12px;color:var(--muted);">平均${yen(Math.round(pAvg))}</span>
-      ${pctTag(cur,pAvg)||'<span style="color:var(--muted)">—</span>'}
-    </div>`;
-  });
   const big=[...rs].filter(r=>r.f>=10000).sort((a,b)=>b.f-a.f);
   if(big.length){
     h+=sectionTitle(`この日の万収(${big.length}本)`);
