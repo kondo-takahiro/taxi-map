@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.26-1";
+const APP_VER = "2026.11.26-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7689,7 +7689,7 @@ function showTab(name){
   if(name==="brief"){ renderDemandBoard(); buildBrief(false); }
   if(name==="event") renderEventBoard();
   if(name==="strat") renderStrat();
-  if(name==="atype") renderAtype();
+  if(name==="atype"){ atSetNow(); renderAtype(); }
   if(name==="long") renderLong();
   if(name==="settings") renderSettings();
   if(name==="live") openLive();
@@ -9890,6 +9890,15 @@ const AT_QUICK=10;   // 降ろしてから何分以内に次が乗れたら「�
 function atDropTs(r,ts){ if(!r.et) return null; let d=new Date(r.d+"T"+r.et.padStart(5,"0")+":00").getTime(); if(isNaN(d)) return null; if(d<ts-60000) d+=86400000; return d; }
 let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false, atRecsByG=new Map(), atPainted=null;
 const AT_FEW=5;
+// エリア型を開いたときの初期値: 今日の曜日の型と、今のクール(5時前は前日の営業として扱う)
+function atSetNow(){
+  const t=new Date(); let h=t.getHours()+t.getMinutes()/60;
+  if(h<5){ h+=24; t.setDate(t.getDate()-1); }
+  try{ atDay=atDayType(atDs(t)); }catch(e){}
+  atView="all";
+  const cr=AT_COOLS.find(c=>c[0]!=="all"&&h>=c[2]&&h<c[3]);
+  atCool=cr?cr[0]:"all";
+}
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
 // 色: 単価も回転も=赤 / 回転型=黄 / 単価型=青 / 平均並み=緑 / 弱い=グレー
 const AT_COL={best:"#f06262",kaiten:"#ffd54f",tanka:"#7db3f0",mid:"#7dd87d",weak:"#8a93a3"};
