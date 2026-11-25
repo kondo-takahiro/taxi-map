@@ -1146,6 +1146,7 @@ function chomeCentroid(name, f){
   }catch(e){ _cenCache.set(name,null); return null; }
 }
 let showCountBadge = localStorage.getItem("opt-countbadge")!=="0";
+let showRidePins = localStorage.getItem("opt-ridepins")==="1";   // ヒートOFF時に乗車1件ずつの丸を出すか(既定は出さない)
 let showSingles = localStorage.getItem("opt-singles")!=="0";
 let showEvents = localStorage.getItem("opt-events")!=="0";   // 🎪 イベントの表示
 let showHud = localStorage.getItem("opt-hud")!=="0";   // 上の窓(HUD)の表示
@@ -1165,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.25-5";
+const APP_VER = "2026.11.25-6";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -1368,7 +1369,7 @@ function render(){
   if(typeof drawAppRing==="function") drawAppRing();
   if(typeof drawWaitSpots==="function") drawWaitSpots();
   const list = filtered();
-  if(!heatOn && !wardsOn && !hankaOn && !(typeof spPick!=="undefined" && spPick)) list.forEach(r=>{   // 繁華街表示中は個別ピンを出さない(色塗りが隠れるため)
+  if(showRidePins && !heatOn && !wardsOn && !hankaOn && !(typeof spPick!=="undefined" && spPick)) list.forEach(r=>{   // 繁華街表示中は個別ピンを出さない(色塗りが隠れるため)
     const m = L.marker([r.lat,r.lng],{icon:lampIcon(r.f)}).addTo(markerLayer);
     const nav = `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=driving`;
     const mode = (r.m||"app")==="app" ? "アプリ配車" : "流し";
@@ -6206,6 +6207,7 @@ function renderSettings(){
       <div style="font-size:12px;color:var(--amber);margin:18px 0 6px;">地図の表示</div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;">
         <button class="chip opt-btn${showCountBadge?" on":""}" data-opt="countbadge" style="font-size:12px;padding:7px 10px;">🔢 回数バッジ</button>
+        <button class="chip opt-btn${showRidePins?" on":""}" data-opt="ridepins" style="font-size:12px;padding:7px 10px;">🟡 ヒートOFF時の乗車の丸</button>
         <button class="chip opt-btn${waitOn?" on":""}" data-opt="waitspots" style="font-size:12px;padding:7px 10px;">📍 アプリ待機スポット</button>
         <button class="chip opt-btn${showEvents?" on":""}" data-opt="events" style="font-size:12px;padding:7px 10px;">🎪 イベント</button>
       </div>
@@ -6252,6 +6254,10 @@ function renderSettings(){
     if(b.dataset.opt==="events"){
       showEvents=!showEvents; localStorage.setItem("opt-events", showEvents?"1":"0");
       b.classList.toggle("on", showEvents); evtBtnPaint(); showEventMarkers(lastEvents); return;
+    }
+    if(b.dataset.opt==="ridepins"){
+      showRidePins=!showRidePins; localStorage.setItem("opt-ridepins", showRidePins?"1":"0");
+      b.classList.toggle("on", showRidePins); render(); return;
     }
     if(b.dataset.opt==="countbadge"){
       showCountBadge=!showCountBadge;
