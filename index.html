@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.25-6";
+const APP_VER = "2026.11.26-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9891,9 +9891,9 @@ function atDropTs(r,ts){ if(!r.et) return null; let d=new Date(r.d+"T"+r.et.padS
 let atView="all", atWho="all", atRows=[], atCool="all", atMapAuto=false, atRecsByG=new Map(), atPainted=null;
 const AT_FEW=5;
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
-// 色: 単価も回転も=赤 / 回転型=黄 / 単価型=緑 / 平均並み=青 / 弱い=グレー
-const AT_COL={best:"#f06262",kaiten:"#ffd54f",tanka:"#7dd87d",mid:"#7db3f0",weak:"#8a93a3"};
-const AT_SHADES={best:["#f06262","#c62828","#ffb3b3"],kaiten:["#ffd54f","#e0a400","#fff3a8"],tanka:["#7dd87d","#2f9e50","#c4f5b0"],mid:["#7db3f0","#3b6fd4","#c2dcff"],weak:["#8a93a3","#5d697e","#c3c9d3"]};
+// 色: 単価も回転も=赤 / 回転型=黄 / 単価型=青 / 平均並み=緑 / 弱い=グレー
+const AT_COL={best:"#f06262",kaiten:"#ffd54f",tanka:"#7db3f0",mid:"#7dd87d",weak:"#8a93a3"};
+const AT_SHADES={best:["#f06262","#c62828","#ffb3b3"],kaiten:["#ffd54f","#e0a400","#fff3a8"],tanka:["#7db3f0","#3b6fd4","#c2dcff"],mid:["#7dd87d","#2f9e50","#c4f5b0"],weak:["#8a93a3","#5d697e","#c3c9d3"]};
 const AT_KN0={best:"⭐ 単価も回転も強い",kaiten:"🔄 回転型",tanka:"💴 単価型",mid:"平均並み",weak:"▽ 弱い"};
 const AT_KN_D={best:"⭐ すぐ乗れて次も高い",kaiten:"🔄 すぐ乗れる",tanka:"💴 待つが次が高い",mid:"平均並み",weak:"▽ つかまりにくい"};
 const AT_KN=new Proxy({},{get:(o,k)=>(atBase==="drop"?AT_KN_D:AT_KN0)[k]});
