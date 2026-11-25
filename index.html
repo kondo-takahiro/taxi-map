@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.25-1";
+const APP_VER = "2026.11.25-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -5698,11 +5698,15 @@ function aiReviewHtml(ds){
     ${o.next&&o.next.length?`<div style="font-size:11px;color:var(--amber);font-weight:800;margin-top:7px;">次にやること</div>${li(o.next,"var(--amber)")}`:""}
   </div>`;
 }
+var diaryYPick=null;   // 前回タブで表示中の乗務日(null=最新)
 function renderDiaryY(pick){
   const byDay=diaryByDay();
   const days=[...byDay.keys()].sort();
   if(!days.length) return "データがありません";
+  pick=pick||diaryYPick;
   const target=(pick && byDay.has(pick)) ? pick : days[days.length-1];
+  const tIdx=days.indexOf(target), prevDay=days[tIdx-1]||null, nextDay=days[tIdx+1]||null;
+  diaryYPick = nextDay ? target : null;
   const rs=byDay.get(target);
   const dw=dDow(target);
   const peers=days.filter(d=>d!==target && dDow(d)===dw);
@@ -5734,7 +5738,12 @@ function renderDiaryY(pick){
      <div${extra||` style="font-size:16px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;"`}>${val}</div></div>`;
   const C1="#a9c7ec", C2="#f2b8c6", C3="#b6e0c4", C4="#cfc0ee";
   let h=`<div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:11px 10px 10px;margin-bottom:12px;">
-    <div style="display:flex;align-items:center;gap:6px;"><b style="font-size:14px;">${target.slice(0,4)}.${target.slice(5,7)}.${target.slice(8)}(${D_DN[dw]}) 営業日報</b><span style="flex:1"></span>${pctTag(total,peerAvg)}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <button class="chip dy-nav" data-d="${prevDay||""}" ${prevDay?"":"disabled"} style="flex:1;padding:9px 4px;font-size:13px;font-weight:800;${prevDay?"":"opacity:.35;"}">◀ ${prevDay?prevDay.slice(5,7)*1+"/"+prevDay.slice(8)*1+"("+D_DN[dDow(prevDay)]+")":"前の乗務"}</button>
+      ${nextDay?`<button class="chip dy-nav" data-d="${days[days.length-1]}" style="padding:9px 10px;font-size:12px;font-weight:800;color:var(--amber);">最新</button>`:""}
+      <button class="chip dy-nav" data-d="${nextDay||""}" ${nextDay?"":"disabled"} style="flex:1;padding:9px 4px;font-size:13px;font-weight:800;${nextDay?"":"opacity:.35;"}">${nextDay?nextDay.slice(5,7)*1+"/"+nextDay.slice(8)*1+"("+D_DN[dDow(nextDay)]+")":"次の乗務"} ▶</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;"><b style="font-size:14px;">${target.slice(0,4)}.${target.slice(5,7)}.${target.slice(8)}(${D_DN[dw]}) 営業日報</b>${tIdx<days.length-1?`<span style="font-size:10.5px;color:var(--muted);">${days.length-1-tIdx}乗務前</span>`:""}<span style="flex:1"></span>${pctTag(total,peerAvg)}</div>
     <div style="display:flex;margin:8px 0 10px;">
       <div style="flex:1;padding-right:8px;"><div style="font-size:11.5px;color:var(--muted);font-weight:700;">営収(税込)</div><div style="font-size:27px;font-weight:900;color:#7dd8b0;font-variant-numeric:tabular-nums;line-height:1.15;">${total.toLocaleString()}<span style="font-size:15px;">円</span></div></div>
       <div style="flex:1;padding-left:10px;border-left:1px solid var(--line);"><div style="font-size:11.5px;color:var(--muted);font-weight:700;">営収(税抜)</div><div style="font-size:27px;font-weight:900;color:#7dd8b0;font-variant-numeric:tabular-nums;line-height:1.15;">${ex.toLocaleString()}<span style="font-size:15px;">円</span></div></div>
@@ -7244,6 +7253,7 @@ map.on("contextmenu", e=>{ openMemo([e.latlng.lat, e.latlng.lng]); });
 
 function bindDiaryY(){
   const body=document.getElementById("diaryBody");
+  body.querySelectorAll(".dy-nav").forEach(b=>b.onclick=()=>{ if(b.dataset.d) showDayReport(b.dataset.d); });
   try{ bindMyReview(); }catch(e){}
     body.querySelectorAll(".ts-row").forEach(tr=>tr.onclick=()=>{
       const r=(window._tsRows||[])[+tr.dataset.i]; if(!r) return;
@@ -7617,6 +7627,7 @@ function renderDiary(tab){
 document.querySelectorAll(".diary-tab").forEach(c=>{
   c.onclick=()=>{
     document.querySelectorAll(".diary-tab").forEach(x=>x.classList.remove("on"));
+    if(c.dataset.t==="y") diaryYPick=null;   // 「前回」タブを押したら最新の乗務へ戻る
     c.classList.add("on"); renderDiary(c.dataset.t);
   };
 });
