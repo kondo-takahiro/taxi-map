@@ -1155,7 +1155,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.25-2";
+const APP_VER = "2026.11.25-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -6175,6 +6175,17 @@ function renderSettings(){
         <div style="display:flex;flex-wrap:wrap;gap:5px;">`
         + TAB_LIST.map(([t,label])=>`<button class="chip tab-vis${loadHiddenTabs().has(t)?"":" on"}" data-t="${t}" style="font-size:12px;padding:7px 10px;">${label}</button>`).join("")
         + `</div><div style="font-size:10px;color:var(--muted);margin-top:4px;">🗺 地図と⚙️ 設定はいつも表示します。「すべて表示」「最小構成」はタブには影響しません。</div>`
+    + `<div style="font-size:12px;color:var(--amber);margin:14px 0 5px;">下のタブの並び順(左→右)</div>
+        <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;">`
+        + (()=>{ const o=loadTabOrder(), hidT=loadHiddenTabs(), lab=Object.fromEntries(TAB_ALL);
+            return o.map((t,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;${i?"border-top:1px solid var(--line);":""}${hidT.has(t)?"opacity:.45;":""}">
+              <span style="width:18px;font-size:11px;color:var(--muted);text-align:right;">${i+1}</span>
+              <span style="flex:1;font-size:13.5px;font-weight:700;">${lab[t]}${hidT.has(t)?`<span style="font-size:10px;color:var(--muted);font-weight:400;"> (非表示)</span>`:""}</span>
+              <button class="chip tab-mv" data-t="${t}" data-d="-1" ${i?"":"disabled"} style="width:44px;padding:7px 0;font-size:14px;${i?"":"opacity:.3;"}">▲</button>
+              <button class="chip tab-mv" data-t="${t}" data-d="1" ${i<o.length-1?"":"disabled"} style="width:44px;padding:7px 0;font-size:14px;${i<o.length-1?"":"opacity:.3;"}">▼</button>
+            </div>`).join(""); })()
+        + `</div>
+        <button class="chip" id="tabOrderReset" style="margin-top:6px;font-size:12px;padding:7px 10px;">↩︎ 既定の並びに戻す</button>`
     + BTN_GROUPS.map(g=>`<div style="font-size:12px;color:var(--amber);margin:12px 0 5px;">${g.g}</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;">`
         + g.items.map(([id,label])=>`<button class="chip set-btn${hid.has(id)?"":" on"}" data-id="${id}" style="font-size:12px;padding:7px 10px;">${label}</button>`).join("")
@@ -6199,6 +6210,16 @@ function renderSettings(){
       <button class="btn" id="setResetView" style="width:100%;padding:11px;">🔄 初期状態に戻す</button>
       <div style="font-size:10px;color:var(--muted);margin-top:5px;">フィルター・重ねた情報・地図の位置を、起動直後の状態(単価=全て/ヒートON/今の時間帯/今日の曜日)に戻します。乗車データやメモは消えません。</div>
       <div style="font-size:10px;color:var(--muted);margin-top:8px;">「最小構成」は走行中によく使うものだけを残します(ヒート・指標・現在地・立ち回り・アプリ営業・日誌・分析)。</div>`;
+  body.querySelectorAll(".tab-mv").forEach(b=>b.onclick=()=>{
+    const o=loadTabOrder(), i=o.indexOf(b.dataset.t), j=i+ +b.dataset.d;
+    if(i<0||j<0||j>=o.length) return;
+    [o[i],o[j]]=[o[j],o[i]];
+    try{ localStorage.setItem("tab-order", JSON.stringify(o)); }catch(e){}
+    const sc=document.getElementById("settingsPanel"), y=sc?sc.scrollTop:0;
+    applyTabOrder(); renderSettings(); if(sc) sc.scrollTop=y;
+  });
+  const tor=document.getElementById("tabOrderReset");
+  if(tor) tor.onclick=()=>{ try{ localStorage.removeItem("tab-order"); }catch(e){} applyTabOrder(); renderSettings(); };
   body.querySelectorAll(".tab-vis").forEach(b=>b.onclick=()=>{
     const h=loadHiddenTabs();
     if(h.has(b.dataset.t)) h.delete(b.dataset.t); else h.add(b.dataset.t);
@@ -7674,6 +7695,21 @@ function applyHiddenTabs(){
   document.querySelectorAll(".tab-btn").forEach(b=>{ b.style.display = hid.has(b.dataset.tab) ? "none" : "flex"; });
 }
 applyHiddenTabs();
+// 下のタブの並び順(設定の▲▼で変更)。地図・設定も含めて全部動かせる
+const TAB_ALL=[["map","🗺 地図"],...TAB_LIST,["settings","⚙️ 設定"]];
+function loadTabOrder(){
+  const def=TAB_ALL.map(x=>x[0]);
+  let o=[]; try{ o=(JSON.parse(localStorage.getItem("tab-order"))||[]).filter(t=>def.includes(t)); }catch(e){}
+  o=[...new Set(o)];
+  // 後から増えたタブは、既定の並びで直前にあるタブの後ろに入れる
+  def.forEach((t,i)=>{ if(o.includes(t)) return; const prev=def.slice(0,i).reverse().find(x=>o.includes(x)); o.splice(prev?o.indexOf(prev)+1:0,0,t); });
+  return o;
+}
+function applyTabOrder(){
+  const bar=document.getElementById("tabBar"); if(!bar) return;
+  loadTabOrder().forEach(t=>{ const b=bar.querySelector(`.tab-btn[data-tab="${t}"]`); if(b) bar.appendChild(b); });
+}
+applyTabOrder();
 ["diaryClose","reviewClose","briefClose","settingsClose","flowClose"].forEach(id=>{
   const el=document.getElementById(id);
   if(el) el.onclick=()=>showTab("map");
