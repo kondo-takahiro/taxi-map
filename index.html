@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.26-2";
+const APP_VER = "2026.11.26-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9896,10 +9896,18 @@ function atSetNow(){
   if(h<5){ h+=24; t.setDate(t.getDate()-1); }
   try{ atDay=atDayType(atDs(t)); }catch(e){}
   atView="all";
-  const cr=AT_COOLS.find(c=>c[0]!=="all"&&h>=c[2]&&h<c[3]);
+  const cr=atNowCool();
   atCool=cr?cr[0]:"all";
 }
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
+// 「細かく」: 各クールを前半・後半に2分割(キーは親クール+a/b)。[キー,名前,開始,終了,表示用の時間]
+const AT_COOLS_FINE=[["c1a","第1前",5,9,"5-9時"],["c1b","第1後",9,13,"9-13時"],["c2a","第2前",13,15.5,"13-15:30"],["c2b","第2後",15.5,18,"15:30-18"],
+  ["c3a","第3前",18,20,"18-20時"],["c3b","第3後",20,22,"20-22時"],["aoa","青タン前",22,25,"22-1時"],["aob","青タン後",25,29,"1時〜"]];
+let atFine=localStorage.getItem("at-fine")==="1";
+function atCoolList(){ return atFine?[AT_COOLS[0],...AT_COOLS_FINE]:AT_COOLS; }
+function atCoolOf(k){ return [...AT_COOLS,...AT_COOLS_FINE].find(c=>c[0]===k)||AT_COOLS[0]; }
+function atNowCool(){ const d=new Date(); let h=d.getHours()+d.getMinutes()/60; if(h<5) h+=24;
+  return atCoolList().find(c=>c[0]!=="all"&&h>=c[2]&&h<c[3]); }
 // 色: 単価も回転も=赤 / 回転型=黄 / 単価型=青 / 平均並み=緑 / 弱い=グレー
 const AT_COL={best:"#f06262",kaiten:"#ffd54f",tanka:"#7db3f0",mid:"#7dd87d",weak:"#8a93a3"};
 const AT_SHADES={best:["#f06262","#c62828","#ffb3b3"],kaiten:["#ffd54f","#e0a400","#fff3a8"],tanka:["#7db3f0","#3b6fd4","#c2dcff"],mid:["#7dd87d","#2f9e50","#c4f5b0"],weak:["#8a93a3","#5d697e","#c3c9d3"]};
@@ -9930,7 +9938,7 @@ function renderAtype(){
       recs.push({g:atGroup(x.r.p),f:+x.r.f||0,c,h:hh<5?hh+24:hh,r:x.r}); }); });
   const DROP=atBase==="drop";
   // クールで絞る(乗車した時刻で判定。1本あたりの時間は次の乗車までなので、クールをまたぐこともある)
-  const cr=AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0];
+  const cr=atCoolOf(atCool);
   if(atCool!=="all"){ const keep=recs.filter(x=>x.h>=cr[2]&&x.h<cr[3]); recs.length=0; recs.push(...keep); }
   const cv=recs.filter(x=>x.c);
   const U=recs.length?recs.reduce((s,x)=>s+x.f,0)/recs.length:0;
@@ -9974,7 +9982,11 @@ function renderAtype(){
    +`
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atBase==="pick","乗せた場所で見る",'data-b="pick"')}${chip(atBase==="drop","降ろした場所で見る",'data-b="drop"')}</div>
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atWho==="all","全乗務員",'data-w="all"')}${chip(atWho==="me","自分だけ",'data-w="me"')}</div>
-   <div style="display:flex;gap:4px;margin-bottom:10px;">${AT_COOLS.map(([k,lab,a,b])=>chip(atCool===k,lab+(k==="all"?"":`<br><span style="font-size:9.5px;font-weight:400;">${b===29?a+"時〜":a%24+"-"+b%24+"時"}</span>`),`data-c="${k}"`)).join("")}</div>
+   ${atFine
+     ?`<div style="display:flex;gap:4px;margin-bottom:4px;">${chip(atCool==="all","全体",'data-c="all"')}${chip(true,"⏱ 細かく ✓",'data-fine="0"')}</div>`
+      +[AT_COOLS_FINE.slice(0,4),AT_COOLS_FINE.slice(4)].map((row,i)=>`<div style="display:flex;gap:4px;margin-bottom:${i?10:4}px;">${row.map(([k,lab,a,b,tl])=>chip(atCool===k,lab+`<br><span style="font-size:9.5px;font-weight:400;">${tl}</span>`,`data-c="${k}"`)).join("")}</div>`).join("")
+     :`<div style="display:flex;gap:4px;margin-bottom:4px;">${AT_COOLS.map(([k,lab,a,b])=>chip(atCool===k,lab+(k==="all"?"":`<br><span style="font-size:9.5px;font-weight:400;">${b===29?a+"時〜":a%24+"-"+b%24+"時"}</span>`),`data-c="${k}"`)).join("")}</div>
+      <button class="btn at-sel" data-fine="1" style="width:100%;padding:5px 0;margin-bottom:10px;font-size:11.5px;color:var(--muted);">⏱ 細かく(各クールを前半・後半に2分割)</button>`}
    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin-bottom:10px;font-size:12.5px;line-height:1.6;">
     ${DROP?`<b>${cr[1]}</b> ・ ${shifts}乗務・降車${recs.length}回 ・ 降ろしてから次まで平均<b>${Math.round(W)}分</b> ・ ${AT_QUICK}分以内に乗れた<b>${Math.round(Q*100)}%</b> ・ 次の1本 平均<b>¥${Math.round(U).toLocaleString()}</b> ・ 降車後時給<b>¥${Math.round(E).toLocaleString()}</b>`
      :`<b>${cr[1]}</b> ・ ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b>`}</div>`;
@@ -9994,10 +10006,15 @@ function renderAtype(){
   if(DROP) h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">降ろした場所で見る = 客を降ろした町ごとに、降車時刻から次の客を乗せるまでの空車時間を集計(降車時刻が入っている乗車だけ。${AT_GAP}分を超える空白は休憩・回送とみなして除外)。クールは降ろした時刻で判定。次の1本 = その後に乗せた客の料金。降車後時給 = 次の料金 ÷ (空車時間+次の乗車時間)。分類は平均との比較(🔄空車が平均の8割以下/⭐さらに次の単価が平均の1.1倍以上/💴次の単価が1.2倍以上/▽空車が平均の1.25倍以上)。</div>`;
   h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">平日 = その日も翌日も平日(主に月〜木)。金曜型 = 平日で翌日が土日祝(金曜・祝日の前日)。土曜型 = 土日祝で翌日も休み(土曜・連休中)。日曜型 = 土日祝で翌日が平日(日曜・連休最終日)。乗務日は朝5時で区切っています。1本あたり = その乗車から次の乗車までの時間(乗車中+空車)。${AT_GAP}分を超える空白は休憩・回送とみなして外しています。時給換算 = 売上 ÷ 1本あたりの時間。分類は平均との比較(⭐単価も時給も平均の1.1倍以上/💴単価だけ1.1倍以上/🔄時給が平均以上/▽時給が平均の8割未満)。金額は税込。</div>`;
   body.innerHTML=h;
-  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.d) atDay=b.dataset.d; if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.b) atBase=b.dataset.b; if(b.dataset.c) atCool=b.dataset.c; renderAtype(); });
+  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.d) atDay=b.dataset.d; if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.b) atBase=b.dataset.b; if(b.dataset.c) atCool=b.dataset.c;
+    if(b.dataset.fine){ atFine=b.dataset.fine==="1"; try{ localStorage.setItem("at-fine",atFine?"1":"0"); }catch(e){}
+      // 切り替えたら、今のクールに当たる区分を選び直す(全体のときは全体のまま)
+      if(atCool!=="all"){ const parent=atCool.length===3?atCool.slice(0,2):atCool, nc=atNowCool();
+        atCool = atFine ? (nc&&nc[0].slice(0,2)===parent.slice(0,2)?nc[0]:parent+"a") : parent; } }
+    renderAtype(); });
   body.querySelectorAll(".at-map").forEach(b=>b.onclick=()=>{
     const sel=b.dataset.all?atRows:b.dataset.k?atRows.filter(x=>x.k===b.dataset.k):atRows.filter(x=>x.g===b.dataset.g);
-    const cn=(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1];
+    const cn=atCoolOf(atCool)[1];
     const lab=(atCool==="all"?"":cn+" ")+(b.dataset.all?"全エリア":b.dataset.k?AT_KN[b.dataset.k]:((sel[0]&&sel[0].lab)||b.dataset.g));
     atPaint(sel,lab).then(()=>{ if(b.dataset.g) atShowRides(b.dataset.g); });
   });
@@ -10007,7 +10024,7 @@ function renderAtype(){
 function atFillOp(n){ return n>=20?.68:n>=10?.52:n>=AT_FEW?.34:.1; }
 // エリアの乗車実績一覧(どこからどこまで・いくら)。地図のエリアやタブの行を押すと出る
 function atShowRides(g){
-  const P=atPainted||{base:atBase,recs:atRecsByG,cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1],who:atWho,view:atView,day:atDayLabel()};
+  const P=atPainted||{base:atBase,recs:atRecsByG,cool:atCoolOf(atCool)[1],who:atWho,view:atView,day:atDayLabel()};
   const DR=P.base==="drop";
   const v=(P.recs.get(g)||[]).slice().sort(DR?(a,b)=>a.w-b.w:(a,b)=>b.f-a.f);
   let pn=document.getElementById("atRidePanel");
@@ -10064,7 +10081,7 @@ function atBtnPaint(){ const b=document.getElementById("btnAtype"); if(!b) retur
 async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗り直す(自動切替用)
   if(!sel.length) return;
   // 塗った時点の集計を保存(あとでタブの条件を変えても、地図のエリアを押した時の一覧は塗った時の条件で出す)
-  atPainted={base:atBase, recs:atRecsByG, cool:(AT_COOLS.find(c=>c[0]===atCool)||AT_COOLS[0])[1], who:atWho, view:atView, day:atDayLabel()};
+  atPainted={base:atBase, recs:atRecsByG, cool:atCoolOf(atCool)[1], who:atWho, view:atView, day:atDayLabel()};
   const byG=new Map(sel.map(x=>[x.g,x]));
   let gj=null; try{ gj=await atLoadTowns(); }catch(e){}
   if(!gj){ alert("町の境界データを読み込めませんでした。電波状況を確認してください"); return; }
@@ -10121,8 +10138,7 @@ document.getElementById("atypeClose").onclick=()=>showTab("map");
 document.getElementById("longClose").onclick=()=>showTab("map");
 // 地図の🏷ボタン: 塗っていなければ「今のクール」の全エリアを塗る。塗っていれば消す(地図の位置はそのまま)
 function atPaintNowCool(stay){
-  const d=new Date(); let h=d.getHours()+d.getMinutes()/60; if(h<5) h+=24;
-  const cr=AT_COOLS.find(c=>c[0]!=="all"&&h>=c[2]&&h<c[3]);
+  const cr=atNowCool();
   atCool=cr?cr[0]:"all";
   renderAtype();   // 選んだクールで集計し直す(atRowsが更新される)
   if(!atRows.length){ alert("このクールは"+atDayLabel()+"のデータが足りず、塗れるエリアがありません"); return; }
@@ -10132,8 +10148,7 @@ document.getElementById("btnAtype").onclick=()=>{ if(atLayer){ atClear(); return
 // 🏷ボタンで塗っているときは、クールが変わったら自動で塗り直す(1分ごとに確認)
 setInterval(()=>{
   if(!atMapAuto||!atLayer) return;
-  const d=new Date(); let h=d.getHours()+d.getMinutes()/60; if(h<5) h+=24;
-  const cr=AT_COOLS.find(c=>c[0]!=="all"&&h>=c[2]&&h<c[3]);
+  const cr=atNowCool();
   if(cr&&cr[0]!==atCool) atPaintNowCool(true);
 },60000);
 function renderStrat(){
