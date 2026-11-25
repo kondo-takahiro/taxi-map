@@ -483,6 +483,14 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
   </div>
   <div id="stratBody"></div>
 </div>
+<div id="longPanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
+  background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 10px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;background:var(--bg);padding:2px 0 6px;z-index:3;">
+    <b style="font-size:16px;">🚀 ロング研究</b><span style="flex:1"></span>
+    <span id="longClose" style="cursor:pointer;color:var(--muted);font-weight:700;font-size:20px;padding:0 6px;">✕</span>
+  </div>
+  <div id="longBody"></div>
+</div>
 <div id="atypePanel" style="display:none;position:fixed;inset:0 0 62px 0;z-index:1400;
   background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 12px 14px;overflow-y:auto;-webkit-overflow-scrolling:touch;">
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -727,6 +735,8 @@ if((localStorage.getItem("taxi-map-style")||"light") !== "google"){
     <span style="font-size:18px;line-height:1;">🧭</span>戦略</button>
   <button class="tab-btn" data-tab="atype" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">🏷</span>エリア型</button>
+  <button class="tab-btn" data-tab="long" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
+    <span style="font-size:18px;line-height:1;">🚀</span>ロング</button>
   <button class="tab-btn" data-tab="settings" style="flex:1;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:9.5px;">
     <span style="font-size:18px;line-height:1;">⚙️</span>設定</button>
 </nav>
@@ -1155,7 +1165,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.25-3";
+const APP_VER = "2026.11.25-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7654,7 +7664,7 @@ document.querySelectorAll(".diary-tab").forEach(c=>{
 });
 // ===== 下部タブによる画面切替 =====
 function showTab(name){
-  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel", event:"eventPanel", strat:"stratPanel", atype:"atypePanel"};
+  const panels={diary:"diaryPanel", review:"reviewPanel", brief:"briefPanel", settings:"settingsPanel", flow:"flowPanel", live:"livePanel", event:"eventPanel", strat:"stratPanel", atype:"atypePanel", long:"longPanel"};
   Object.values(panels).forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display="none"; });
   ["spAnaPanel","airAnaPanel","livePanel"].forEach(id=>{ const sa=document.getElementById(id); if(sa) sa.style.display="none"; });
   document.getElementById("panel").style.display = name==="map" ? "" : "none";
@@ -7674,6 +7684,7 @@ function showTab(name){
   if(name==="event") renderEventBoard();
   if(name==="strat") renderStrat();
   if(name==="atype") renderAtype();
+  if(name==="long") renderLong();
   if(name==="settings") renderSettings();
   if(name==="live") openLive();
   if(name==="flow"){
@@ -7688,7 +7699,7 @@ function showTab(name){
 }
 document.querySelectorAll(".tab-btn").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 // 下のタブの表示/非表示(設定で切り替え)。地図と設定は常に表示
-const TAB_LIST=[["diary","📓 日誌"],["review","📊 分析"],["flow","🌊 流れ"],["brief","📋 今日"],["event","🎪 イベント"],["live","📹 ライブ"],["strat","🧭 戦略"],["atype","🏷 エリア型"]];
+const TAB_LIST=[["diary","📓 日誌"],["review","📊 分析"],["flow","🌊 流れ"],["brief","📋 今日"],["event","🎪 イベント"],["live","📹 ライブ"],["strat","🧭 戦略"],["atype","🏷 エリア型"],["long","🚀 ロング"]];
 function loadHiddenTabs(){ try{ return new Set(JSON.parse(localStorage.getItem("hidden-tabs"))||[]); }catch(e){ return new Set(); } }
 function applyHiddenTabs(){
   const hid=loadHiddenTabs();
@@ -7799,6 +7810,126 @@ function airMkHint(n){
 document.getElementById("btnAirMk").onclick=e=>{
   airMkOn=!airMkOn; e.target.classList.toggle("on",airMkOn); const n=drawAirMk(); if(airMkOn) airMkHint(n);
 };
+// ===== 🚀 ロング研究(どのエリアから何時ごろロングが出るか・当たり率) =====
+// 本人の乗車のみ・空転(乗車地=降車地・¥1,000)は除く。当たり率 = そのエリア×時間帯で乗せた回数のうちロングの割合
+const LG_BINS=[[5,8,"5-8"],[8,11,"8-11"],[11,14,"11-14"],[14,17,"14-17"],[17,20,"17-20"],[20,23,"20-23"],[23,26,"23-2"],[26,29,"2-5"]];
+const LG_TH=[5000,7000,10000,15000];
+let lgTh=10000, lgMode="all", lgGran="ku", lgDow="all", lgSel=null;
+try{ const o=JSON.parse(localStorage.getItem("long-v1"))||{}; if(LG_TH.includes(o.th)) lgTh=o.th; if(o.mode) lgMode=o.mode; if(o.gran) lgGran=o.gran; if(o.dow) lgDow=o.dow; }catch(e){}
+function lgArea(p){
+  if(!p) return "不明";
+  if(lgGran==="ku"){ const m=p.match(/^(.+?[区市町村])/); return m?m[1]:p; }
+  return p.replace(/[0-9０-９]+(丁目)?$/,"");
+}
+function lgDowOk(r){
+  if(lgDow==="all") return true;
+  const w=new Date(shiftDateStr(r)+"T12:00:00").getDay();
+  return lgDow==="wd" ? (w>=1&&w<=4) : lgDow==="fri" ? w===5 : lgDow==="sat" ? w===6 : w===0;
+}
+function renderLong(){
+  const body=document.getElementById("longBody"); if(!body) return;
+  try{ localStorage.setItem("long-v1", JSON.stringify({th:lgTh,mode:lgMode,gran:lgGran,dow:lgDow})); }catch(e){}
+  const all=myRides().filter(r=>r.p && r.f>0 && r.t && !(r.f===1000&&r.dst===r.p))
+    .filter(r=>lgMode==="all" || (r.m||"app")===lgMode).filter(lgDowOk);
+  const binOf=r=>{ const h=shiftHour(r.t); return LG_BINS.findIndex(([a,b])=>h>=a&&h<b); };
+  const isL=r=>r.f>=lgTh;
+  const longs=all.filter(isL);
+  const baseRate=all.length? longs.length/all.length : 0;
+  // 集計: area -> bins[{N,n}]
+  const g=new Map();
+  const tot=LG_BINS.map(()=>({N:0,n:0}));
+  all.forEach(r=>{ const b=binOf(r); if(b<0) return; const a=lgArea(r.p);
+    if(!g.has(a)) g.set(a,{a,cells:LG_BINS.map(()=>({N:0,n:0})),N:0,n:0});
+    const x=g.get(a); x.cells[b].N++; x.N++; tot[b].N++; if(isL(r)){ x.cells[b].n++; x.n++; tot[b].n++; } });
+  const minN=lgGran==="ku"?40:25, maxRows=lgGran==="ku"?24:22;
+  const rows=[...g.values()].filter(x=>x.n>0||x.N>=minN).sort((a,b)=>b.n-a.n||b.N-a.N).slice(0,maxRows);
+  const days=new Set(all.map(shiftDateStr)).size||1;
+  const chip=(cls,key,val,lab,on)=>`<button class="chip lg-sel${on?" on":""}" data-k="${key}" data-v="${val}" style="font-size:12px;padding:6px 9px;">${lab}</button>`;
+  let h=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">ロングの線引き</div>
+    <div style="display:flex;gap:5px;margin-bottom:8px;">${LG_TH.map(t=>chip("","th",t,"¥"+(t/1000)+"千"+(t>=10000?"":"")+"〜",lgTh===t).replace("¥10千","¥1万").replace("¥15千","¥1.5万")).join("")}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">
+      ${chip("","mode","all","全部",lgMode==="all")}${chip("","mode","app","配車",lgMode==="app")}${chip("","mode","st","流し",lgMode==="st")}
+      <span style="width:6px"></span>${chip("","gran","ku","区",lgGran==="ku")}${chip("","gran","cho","町",lgGran==="cho")}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+      ${chip("","dow","all","全曜日",lgDow==="all")}${chip("","dow","wd","月〜木",lgDow==="wd")}${chip("","dow","fri","金",lgDow==="fri")}${chip("","dow","sat","土",lgDow==="sat")}${chip("","dow","sun","日",lgDow==="sun")}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <div style="flex:1;background:var(--panel2);border-radius:10px;padding:8px;text-align:center;"><div style="font-size:10px;color:var(--muted);">ロング</div><div style="font-size:18px;font-weight:800;color:#ffd54f;">${longs.length}本</div><div style="font-size:10px;color:var(--muted);">${(longs.length/days).toFixed(2)}本/乗務</div></div>
+      <div style="flex:1;background:var(--panel2);border-radius:10px;padding:8px;text-align:center;"><div style="font-size:10px;color:var(--muted);">全体の当たり率</div><div style="font-size:18px;font-weight:800;">${(baseRate*100).toFixed(1)}%</div><div style="font-size:10px;color:var(--muted);">${all.length}回中</div></div>
+      <div style="flex:1;background:var(--panel2);border-radius:10px;padding:8px;text-align:center;"><div style="font-size:10px;color:var(--muted);">ロング平均</div><div style="font-size:18px;font-weight:800;">${longs.length?yen(Math.round(longs.reduce((s,r)=>s+r.f,0)/longs.length)):"—"}</div><div style="font-size:10px;color:var(--muted);">${days}乗務</div></div>
+    </div>`;
+  if(!all.length){ body.innerHTML=h+`<div style="color:var(--muted);font-size:13px;">この条件の乗車がありません。</div>`; bindLong(); return; }
+  // 表
+  const maxRate=Math.max(0.0001,...rows.flatMap(x=>x.cells.filter(c=>c.N>=5).map(c=>c.n/c.N)), ...tot.filter(c=>c.N>=5).map(c=>c.n/c.N));
+  const cellHtml=(c,key)=>{
+    const sel=lgSel===key;
+    if(!c.N) return `<td class="lg-cell" data-key="${key}" style="padding:0;border:1px solid var(--line);${sel?"outline:2px solid var(--amber);":""}"></td>`;
+    const r=c.n/c.N, few=c.N<5, a=c.n? (few?0.18:0.15+0.75*Math.min(1,r/maxRate)) : 0;
+    return `<td class="lg-cell" data-key="${key}" style="padding:3px 0;border:1px solid var(--line);text-align:center;cursor:pointer;background:rgba(255,190,60,${a.toFixed(2)});${sel?"outline:2px solid #fff;outline-offset:-2px;":""}">
+      <div style="font-size:12px;font-weight:800;line-height:1.1;color:${c.n?(few?"var(--muted)":"#fff"):"rgba(255,255,255,.28)"};">${c.n?Math.round(r*100)+"%":"·"}</div>
+      <div style="font-size:9px;color:${c.n?"rgba(255,255,255,.75)":"rgba(255,255,255,.3)"};line-height:1.1;">${c.n}/${c.N}</div></td>`;
+  };
+  h+=sectionTitle("エリア × 時間帯の当たり率");
+  h+=`<div style="font-size:10px;color:var(--muted);margin:-2px 0 6px;line-height:1.5;">上段=当たり率 / 下段=ロング本数/乗せた回数。濃いほど当たりやすい。母数5回未満は灰色(参考)。セルをタップで中身</div>
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;width:100%;min-width:350px;table-layout:fixed;font-variant-numeric:tabular-nums;">
+    <colgroup><col style="width:68px">${LG_BINS.map(()=>"<col>").join("")}</colgroup>
+    <tr><th style="font-size:9.5px;color:var(--muted);font-weight:700;text-align:left;padding:2px;">時</th>${LG_BINS.map(b=>`<th style="font-size:9.5px;color:var(--muted);font-weight:700;padding:2px 0;">${b[2]}</th>`).join("")}</tr>
+    <tr><td style="font-size:11px;font-weight:800;padding:3px 2px;color:var(--amber);">全エリア</td>${tot.map((c,i)=>cellHtml(c,"*|"+i)).join("")}</tr>`;
+  rows.forEach(x=>{
+    const lab=x.a.replace(/^東京都/,"");
+    h+=`<tr><td class="lg-cell" data-key="${x.a}|*" style="font-size:11px;font-weight:700;padding:3px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;${lgSel===x.a+"|*"?"color:var(--amber);":""}">${lab}<div style="font-size:9px;color:var(--muted);font-weight:400;">${x.n}/${x.N}</div></td>${x.cells.map((c,i)=>cellHtml(c,x.a+"|"+i)).join("")}</tr>`;
+  });
+  h+=`</table></div>`;
+  // 選択セルの中身
+  if(lgSel){
+    const [a,bs]=lgSel.split("|"), bi=bs==="*"?-1:+bs;
+    const pool=all.filter(r=>(a==="*"||lgArea(r.p)===a)&&(bi<0||binOf(r)===bi));
+    const ls=pool.filter(isL).sort((p,q)=>shiftHour(p.t)*60+ +p.t.slice(3,5)-(shiftHour(q.t)*60+ +q.t.slice(3,5)));
+    const avgAll=pool.length?Math.round(pool.reduce((s,r)=>s+r.f,0)/pool.length):0;
+    h+=`<div id="lgDetail" style="margin-top:10px;background:var(--panel);border:1px solid var(--amber);border-radius:12px;padding:9px 10px;">
+      <div style="display:flex;align-items:baseline;gap:6px;"><b style="font-size:13.5px;">${a==="*"?"全エリア":a.replace(/^東京都/,"")} ${bi<0?"全時間":LG_BINS[bi][2]+"時"}</b><span style="flex:1"></span><span id="lgClr" style="color:var(--muted);cursor:pointer;padding:0 4px;">✕</span></div>
+      <div style="font-size:11px;color:var(--muted);margin:2px 0 6px;">乗せた${pool.length}回・ロング${ls.length}本(${pool.length?Math.round(ls.length/pool.length*100):0}%)・この枠の平均単価${yen(avgAll)}</div>`;
+    if(!ls.length) h+=`<div style="font-size:12px;color:var(--muted);">ロングはまだ出ていません。</div>`;
+    ls.slice(0,40).forEach(r=>{
+      const d=shiftDateStr(r);
+      h+=`<div style="display:flex;gap:6px;align-items:baseline;border-top:1px solid var(--line);padding:5px 0;font-size:12px;">
+        <span style="width:36px;color:var(--amber);font-weight:700;">${r.t.slice(0,5)}</span>
+        <span style="flex:1;min-width:0;">${r.p}<span style="color:var(--muted);font-size:11px;"> → ${r.dst||"?"}</span><div style="font-size:10px;color:var(--muted);">${+d.slice(5,7)}/${+d.slice(8)}(${D_DN[new Date(d+"T12:00:00").getDay()]})・${(r.m||"app")==="app"?"配車":"流し"}</div></span>
+        <b style="white-space:nowrap;">${yen(r.f)}</b></div>`;
+    });
+    h+=`</div>`;
+  }
+  // ランキング(母数が少ない枠は全体の当たり率に寄せて並べる)
+  const K=8, cand=[];
+  rows.forEach(x=>x.cells.forEach((c,i)=>{ if(c.n>=2&&c.N>=5) cand.push({a:x.a,i,c,sc:(c.n+baseRate*K)/(c.N+K)}); }));
+  cand.sort((p,q)=>q.sc-p.sc);
+  h+=sectionTitle("当たりやすい組み合わせ TOP10");
+  h+=`<div style="font-size:10px;color:var(--muted);margin:-2px 0 4px;">ロング2本以上・母数5回以上。回数の少ない枠が偶然上に来ないよう補正して並べています</div>`;
+  if(!cand.length) h+=`<div style="font-size:12px;color:var(--muted);">条件を満たす枠がまだありません。線引きを下げると見えてきます。</div>`;
+  cand.slice(0,10).forEach((x,k)=>{
+    h+=`<div class="lg-cell" data-key="${x.a}|${x.i}" style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:7px 2px;cursor:pointer;">
+      <span style="width:16px;color:var(--muted);font-size:11px;">${k+1}</span>
+      <span style="flex:1;font-size:13px;font-weight:700;">${x.a.replace(/^東京都/,"")} <span style="color:var(--amber);">${LG_BINS[x.i][2]}時</span></span>
+      <span style="font-size:14px;font-weight:800;color:#ffd54f;">${Math.round(x.c.n/x.c.N*100)}%</span>
+      <span style="font-size:10.5px;color:var(--muted);width:44px;text-align:right;">${x.c.n}/${x.c.N}</span></div>`;
+  });
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">本人の乗車のみ・空転は除く。時間帯は乗車時刻(23-2=23時〜翌2時)。区モードは乗車地の区・市、町モードは丁目を除いた町名でまとめます。</div>`;
+  body.innerHTML=h; bindLong();
+}
+function bindLong(){
+  const body=document.getElementById("longBody");
+  body.querySelectorAll(".lg-sel").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k, v=b.dataset.v;
+    if(k==="th") lgTh=+v; if(k==="mode") lgMode=v; if(k==="gran"){ lgGran=v; lgSel=null; } if(k==="dow") lgDow=v;
+    const pn=document.getElementById("longPanel"), y=pn.scrollTop; renderLong(); pn.scrollTop=y;
+  });
+  body.querySelectorAll(".lg-cell").forEach(c=>c.onclick=()=>{
+    lgSel = lgSel===c.dataset.key ? null : c.dataset.key; renderLong();
+    const d=document.getElementById("lgDetail"); if(d) d.scrollIntoView({block:"nearest",behavior:"smooth"});
+  });
+  const cl=document.getElementById("lgClr"); if(cl) cl.onclick=()=>{ lgSel=null; const pn=document.getElementById("longPanel"), y=pn.scrollTop; renderLong(); pn.scrollTop=y; };
+}
 // ===== 🧭 開拓エリア(自分が1〜2回しか拾っていないのに単価が高い乗車地) =====
 // 本人の乗車だけで集計し、空転(乗車地=降車地・¥1,000)は除く。フィルターには連動させず、全期間で判定する
 const EXPLORE_MAX_N=2, EXPLORE_MIN_AVG=7000;
@@ -9971,6 +10102,7 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
   setTimeout(()=>{ try{ if(sel.length<atRows.length) map.fitBounds(atLayer.getBounds(),{padding:[30,30],maxZoom:14}); }catch(e){} },120);
 }
 document.getElementById("atypeClose").onclick=()=>showTab("map");
+document.getElementById("longClose").onclick=()=>showTab("map");
 // 地図の🏷ボタン: 塗っていなければ「今のクール」の全エリアを塗る。塗っていれば消す(地図の位置はそのまま)
 function atPaintNowCool(stay){
   const d=new Date(); let h=d.getHours()+d.getMinutes()/60; if(h<5) h+=24;
