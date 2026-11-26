@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.26-3";
+const APP_VER = "2026.11.26-4";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9940,27 +9940,33 @@ function renderAtype(){
   // クールで絞る(乗車した時刻で判定。1本あたりの時間は次の乗車までなので、クールをまたぐこともある)
   const cr=atCoolOf(atCool);
   if(atCool!=="all"){ const keep=recs.filter(x=>x.h>=cr[2]&&x.h<cr[3]); recs.length=0; recs.push(...keep); }
+  // 外れ値対策: 料金・時間は、今の条件の全体の上位10%(90パーセンタイル)で頭打ちにしてから平均する
+  //  例: ふだん¥2,700の場所で¥26,000が1本あっても、その1本は上限(¥5,000前後)として数える。万収の本数・5千円以上の率は元の料金で数える
+  const atP90=a=>{ if(!a.length) return Infinity; const t=a.slice().sort((x,y)=>x-y); return t[Math.min(t.length-1,Math.floor(t.length*0.9))]; };
+  const capF=atP90(recs.map(x=>x.f)), capC=atP90(recs.filter(x=>x.c).map(x=>x.c));
+  const capW=atP90(recs.filter(x=>x.w!=null).map(x=>x.w)), capN=atP90(recs.filter(x=>x.nrun!=null).map(x=>x.nrun));
+  recs.forEach(x=>{ x.fa=Math.min(x.f,capF); x.ca=x.c?Math.min(x.c,capC):x.c; if(x.w!=null) x.wa=Math.min(x.w,capW); if(x.nrun!=null) x.na=Math.min(x.nrun,capN); });
   const cv=recs.filter(x=>x.c);
-  const U=recs.length?recs.reduce((s,x)=>s+x.f,0)/recs.length:0;
-  const H=cv.length?cv.reduce((s,x)=>s+x.f,0)/cv.reduce((s,x)=>s+x.c,0)*60:0;
-  const C=cv.length?cv.reduce((s,x)=>s+x.c,0)/cv.length:0;
+  const U=recs.length?recs.reduce((s,x)=>s+x.fa,0)/recs.length:0;
+  const H=cv.length?cv.reduce((s,x)=>s+x.fa,0)/cv.reduce((s,x)=>s+x.ca,0)*60:0;
+  const C=cv.length?cv.reduce((s,x)=>s+x.ca,0)/cv.length:0;
   // 降ろした場所で見るときの全体平均: 空車時間W・すぐ乗れた率Q・降車後時給E(次の料金÷(空車+次の乗車時間))
-  const W=DROP&&recs.length?recs.reduce((s,x)=>s+x.w,0)/recs.length:0;
+  const W=DROP&&recs.length?recs.reduce((s,x)=>s+x.wa,0)/recs.length:0;
   const Q=DROP&&recs.length?recs.filter(x=>x.w<=AT_QUICK).length/recs.length:0;
-  const eff=v=>{ const e=v.filter(x=>x.nrun!=null&&x.w+x.nrun>0); return e.length?e.reduce((s,x)=>s+x.f,0)/e.reduce((s,x)=>s+x.w+x.nrun,0)*60:0; };
+  const eff=v=>{ const e=v.filter(x=>x.nrun!=null&&x.wa+x.na>0); return e.length?e.reduce((s,x)=>s+x.fa,0)/e.reduce((s,x)=>s+x.wa+x.na,0)*60:0; };
   const E=DROP?eff(recs):0;
   const agg=new Map(); recs.forEach(x=>{ if(!agg.has(x.g)) agg.set(x.g,[]); agg.get(x.g).push(x); });
   atRecsByG=agg;   // エリアを押した時の実績一覧に使う
   const minN=1;   // 1本でも表示する。AT_FEW本未満は「データ少(参考)」と明記し、地図では薄い点線で塗る
   const rowsA=DROP?[...agg].map(([g,v])=>{
-    const u=v.reduce((s,x)=>s+x.f,0)/v.length, w=v.reduce((s,x)=>s+x.w,0)/v.length, q=v.filter(x=>x.w<=AT_QUICK).length/v.length, hr=eff(v);
+    const u=v.reduce((s,x)=>s+x.fa,0)/v.length, w=v.reduce((s,x)=>s+x.wa,0)/v.length, q=v.filter(x=>x.w<=AT_QUICK).length/v.length, hr=eff(v);
     const fast=w<=W*0.8, slow=w>=W*1.25; let k;
     if(fast&&u>=U*1.1) k="best"; else if(fast) k="kaiten"; else if(u>=U*1.2) k="tanka"; else if(slow) k="weak"; else k="mid";
     return {g,lab:atLab(g,v,true),n:v.length,u,cyc:w,hr,q,k,mode:"drop"};
   }).sort((a,b)=>((b.n>=AT_FEW)-(a.n>=AT_FEW))||(a.cyc-b.cyc))
   :[...agg].filter(([g,v])=>v.length>=minN).map(([g,v])=>{
-    const u=v.reduce((s,x)=>s+x.f,0)/v.length, vc=v.filter(x=>x.c);
-    const cyc=vc.length?vc.reduce((s,x)=>s+x.c,0)/vc.length:0, hr=vc.length?vc.reduce((s,x)=>s+x.f,0)/vc.reduce((s,x)=>s+x.c,0)*60:0;
+    const u=v.reduce((s,x)=>s+x.fa,0)/v.length, vc=v.filter(x=>x.c);
+    const cyc=vc.length?vc.reduce((s,x)=>s+x.ca,0)/vc.length:0, hr=vc.length?vc.reduce((s,x)=>s+x.fa,0)/vc.reduce((s,x)=>s+x.ca,0)*60:0;
     const r5=v.filter(x=>x.f>=5000).length/v.length, big=v.filter(x=>x.f>=10000).length;
     let k;
     if(u>=U*1.1&&hr>=H*1.1) k="best"; else if(u>=U*1.1) k="tanka"; else if(hr>=H) k="kaiten"; else if(hr<H*0.8) k="weak"; else k="mid";
@@ -9989,7 +9995,7 @@ function renderAtype(){
       <button class="btn at-sel" data-fine="1" style="width:100%;padding:5px 0;margin-bottom:10px;font-size:11.5px;color:var(--muted);">⏱ 細かく(各クールを前半・後半に2分割)</button>`}
    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin-bottom:10px;font-size:12.5px;line-height:1.6;">
     ${DROP?`<b>${cr[1]}</b> ・ ${shifts}乗務・降車${recs.length}回 ・ 降ろしてから次まで平均<b>${Math.round(W)}分</b> ・ ${AT_QUICK}分以内に乗れた<b>${Math.round(Q*100)}%</b> ・ 次の1本 平均<b>¥${Math.round(U).toLocaleString()}</b> ・ 降車後時給<b>¥${Math.round(E).toLocaleString()}</b>`
-     :`<b>${cr[1]}</b> ・ ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b>`}</div>`;
+     :`<b>${cr[1]}</b> ・ ${shifts}乗務・${recs.length}本 ・ 平均 単価<b>¥${Math.round(U).toLocaleString()}</b> ・ 1本あたり<b>${Math.round(C)}分</b> ・ 時給換算<b>¥${Math.round(H).toLocaleString()}</b>`}${isFinite(capF)?`<div style="font-size:10px;color:var(--muted);margin-top:3px;">※平均は外れ値に引っ張られないよう、1本の料金は¥${capF.toLocaleString()}・時間は${Math.round(DROP?capW:capC)}分(上位10%)で頭打ちにして計算。万収の本数は実際の料金で数えます</div>`:""}</div>`;
   if(rowsA.length) h+=`<button class="btn at-map" data-all="1" style="width:100%;padding:10px;margin-bottom:4px;font-weight:800;">🗺 全エリアを分類ごとに地図に塗る</button>
    <div style="font-size:10.5px;color:var(--muted);margin-bottom:4px;">分類の見出しやエリア名をタップすると、そこだけ地図に塗ります</div>`;
   if(!rowsA.length) h+=`<div style="font-size:13px;color:var(--muted);padding:12px 2px;">データが足りません(${minN}本以上のエリアがありません)</div>`;
