@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.26-4";
+const APP_VER = "2026.11.26-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7818,10 +7818,16 @@ document.getElementById("btnAirMk").onclick=e=>{
 };
 // ===== 🚀 ロング研究(どのエリアから何時ごろロングが出るか・当たり率) =====
 // 本人の乗車のみ・空転(乗車地=降車地・¥1,000)は除く。当たり率 = そのエリア×時間帯で乗せた回数のうちロングの割合
-const LG_BINS=[[5,8,"5-8"],[8,11,"8-11"],[11,14,"11-14"],[14,17,"14-17"],[17,20,"17-20"],[20,23,"20-23"],[23,26,"23-2"],[26,29,"2-5"]];
+// 横軸の区切り: 1・2・3時間ごとを切替(5時始まり〜翌5時)。LG_BINSは選んだ区切りで作り直す
+let lgStep=3;
+function lgMakeBins(st){ const o=[]; for(let a=5;a<29;a+=st){ const b=Math.min(29,a+st); o.push([a,b, st===1?String(a%24):(a%24)+"-"+(b%24)]); } return o; }
+let LG_BINS=lgMakeBins(3);
+// 今の時刻が入る列(5時前は前日の営業として24時以降で数える)
+function lgNowBin(){ const d=new Date(); let h=d.getHours()+d.getMinutes()/60; if(h<5) h+=24; return LG_BINS.findIndex(([a,b])=>h>=a&&h<b); }
 const LG_TH=[5000,7000,10000,15000];
 let lgTh=10000, lgMode="all", lgGran="ku", lgDow="all", lgSel=null;
-try{ const o=JSON.parse(localStorage.getItem("long-v1"))||{}; if(LG_TH.includes(o.th)) lgTh=o.th; if(o.mode) lgMode=o.mode; if(o.gran) lgGran=o.gran; if(o.dow) lgDow=o.dow; }catch(e){}
+try{ const o=JSON.parse(localStorage.getItem("long-v1"))||{}; if(LG_TH.includes(o.th)) lgTh=o.th; if(o.mode) lgMode=o.mode; if(o.gran) lgGran=o.gran; if(o.dow) lgDow=o.dow; if([1,2,3].includes(o.step)) lgStep=o.step; }catch(e){}
+LG_BINS=lgMakeBins(lgStep);
 function lgArea(p){
   if(!p) return "不明";
   if(lgGran==="ku"){ const m=p.match(/^(.+?[区市町村])/); return m?m[1]:p; }
@@ -7834,7 +7840,7 @@ function lgDowOk(r){
 }
 function renderLong(){
   const body=document.getElementById("longBody"); if(!body) return;
-  try{ localStorage.setItem("long-v1", JSON.stringify({th:lgTh,mode:lgMode,gran:lgGran,dow:lgDow})); }catch(e){}
+  try{ localStorage.setItem("long-v1", JSON.stringify({th:lgTh,mode:lgMode,gran:lgGran,dow:lgDow,step:lgStep})); }catch(e){}
   const all=myRides().filter(r=>r.p && r.f>0 && r.t && !(r.f===1000&&r.dst===r.p))
     .filter(r=>lgMode==="all" || (r.m||"app")===lgMode).filter(lgDowOk);
   const binOf=r=>{ const h=shiftHour(r.t); return LG_BINS.findIndex(([a,b])=>h>=a&&h<b); };
@@ -7860,6 +7866,9 @@ function renderLong(){
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
       ${chip("","dow","all","全曜日",lgDow==="all")}${chip("","dow","wd","月〜木",lgDow==="wd")}${chip("","dow","fri","金",lgDow==="fri")}${chip("","dow","sat","土",lgDow==="sat")}${chip("","dow","sun","日",lgDow==="sun")}
     </div>
+    <div style="display:flex;align-items:center;gap:5px;margin:-4px 0 10px;"><span style="font-size:11px;color:var(--muted);">時間の区切り</span>
+      ${[1,2,3].map(st=>chip("","step",st,st+"時間",lgStep===st)).join("")}
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <div style="flex:1;background:var(--panel2);border-radius:10px;padding:8px;text-align:center;"><div style="font-size:10px;color:var(--muted);">ロング</div><div style="font-size:18px;font-weight:800;color:#ffd54f;">${longs.length}本</div><div style="font-size:10px;color:var(--muted);">${(longs.length/days).toFixed(2)}本/乗務</div></div>
       <div style="flex:1;background:var(--panel2);border-radius:10px;padding:8px;text-align:center;"><div style="font-size:10px;color:var(--muted);">全体の当たり率</div><div style="font-size:18px;font-weight:800;">${(baseRate*100).toFixed(1)}%</div><div style="font-size:10px;color:var(--muted);">${all.length}回中</div></div>
@@ -7868,19 +7877,21 @@ function renderLong(){
   if(!all.length){ body.innerHTML=h+`<div style="color:var(--muted);font-size:13px;">この条件の乗車がありません。</div>`; bindLong(); return; }
   // 表
   const maxRate=Math.max(0.0001,...rows.flatMap(x=>x.cells.filter(c=>c.N>=5).map(c=>c.n/c.N)), ...tot.filter(c=>c.N>=5).map(c=>c.n/c.N));
+  const nowB=lgNowBin(), NOWC="#4fc3f7";
+  const nowSt=key=>+key.split("|")[1]===nowB?`box-shadow:inset 0 0 0 999px rgba(79,195,247,.16);border-left:2px solid ${NOWC};border-right:2px solid ${NOWC};`:"";
   const cellHtml=(c,key)=>{
     const sel=lgSel===key;
-    if(!c.N) return `<td class="lg-cell" data-key="${key}" style="padding:0;border:1px solid var(--line);${sel?"outline:2px solid var(--amber);":""}"></td>`;
+    if(!c.N) return `<td class="lg-cell" data-key="${key}" style="padding:0;border:1px solid var(--line);${nowSt(key)}${sel?"outline:2px solid var(--amber);":""}"></td>`;
     const r=c.n/c.N, few=c.N<5, a=c.n? (few?0.18:0.15+0.75*Math.min(1,r/maxRate)) : 0;
-    return `<td class="lg-cell" data-key="${key}" style="padding:3px 0;border:1px solid var(--line);text-align:center;cursor:pointer;background:rgba(255,190,60,${a.toFixed(2)});${sel?"outline:2px solid #fff;outline-offset:-2px;":""}">
+    return `<td class="lg-cell" data-key="${key}" style="padding:3px 0;border:1px solid var(--line);text-align:center;cursor:pointer;background:rgba(255,190,60,${a.toFixed(2)});${nowSt(key)}${sel?"outline:2px solid #fff;outline-offset:-2px;":""}">
       <div style="font-size:12px;font-weight:800;line-height:1.1;color:${c.n?(few?"var(--muted)":"#fff"):"rgba(255,255,255,.28)"};">${c.n?Math.round(r*100)+"%":"·"}</div>
       <div style="font-size:9px;color:${c.n?"rgba(255,255,255,.75)":"rgba(255,255,255,.3)"};line-height:1.1;">${c.n}/${c.N}</div></td>`;
   };
   h+=sectionTitle("エリア × 時間帯の当たり率");
   h+=`<div style="font-size:10px;color:var(--muted);margin:-2px 0 6px;line-height:1.5;">上段=当たり率 / 下段=ロング本数/乗せた回数。濃いほど当たりやすい。母数5回未満は灰色(参考)。セルをタップで中身</div>
-  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;width:100%;min-width:350px;table-layout:fixed;font-variant-numeric:tabular-nums;">
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;"><table style="border-collapse:collapse;width:100%;min-width:${68+LG_BINS.length*(lgStep===1?30:lgStep===2?34:36)}px;table-layout:fixed;font-variant-numeric:tabular-nums;">
     <colgroup><col style="width:68px">${LG_BINS.map(()=>"<col>").join("")}</colgroup>
-    <tr><th style="font-size:9.5px;color:var(--muted);font-weight:700;text-align:left;padding:2px;">時</th>${LG_BINS.map(b=>`<th style="font-size:9.5px;color:var(--muted);font-weight:700;padding:2px 0;">${b[2]}</th>`).join("")}</tr>
+    <tr><th style="font-size:9.5px;color:var(--muted);font-weight:700;text-align:left;padding:2px;">時</th>${LG_BINS.map((b,i)=>i===nowB?`<th style="font-size:9.5px;font-weight:800;padding:2px 0;background:${NOWC};color:#06202c;border-radius:4px 4px 0 0;">${b[2]}<div style="font-size:8.5px;line-height:1;">今</div></th>`:`<th style="font-size:9.5px;color:var(--muted);font-weight:700;padding:2px 0;">${b[2]}</th>`).join("")}</tr>
     <tr><td style="font-size:11px;font-weight:800;padding:3px 2px;color:var(--amber);">全エリア</td>${tot.map((c,i)=>cellHtml(c,"*|"+i)).join("")}</tr>`;
   rows.forEach(x=>{
     const lab=x.a.replace(/^東京都/,"");
@@ -7894,7 +7905,7 @@ function renderLong(){
     const ls=pool.filter(isL).sort((p,q)=>shiftHour(p.t)*60+ +p.t.slice(3,5)-(shiftHour(q.t)*60+ +q.t.slice(3,5)));
     const avgAll=pool.length?Math.round(pool.reduce((s,r)=>s+r.f,0)/pool.length):0;
     h+=`<div id="lgDetail" style="margin-top:10px;background:var(--panel);border:1px solid var(--amber);border-radius:12px;padding:9px 10px;">
-      <div style="display:flex;align-items:baseline;gap:6px;"><b style="font-size:13.5px;">${a==="*"?"全エリア":a.replace(/^東京都/,"")} ${bi<0?"全時間":LG_BINS[bi][2]+"時"}</b><span style="flex:1"></span><span id="lgClr" style="color:var(--muted);cursor:pointer;padding:0 4px;">✕</span></div>
+      <div style="display:flex;align-items:baseline;gap:6px;"><b style="font-size:13.5px;">${a==="*"?"全エリア":a.replace(/^東京都/,"")} ${bi<0?"全時間":LG_BINS[bi][2]+(lgStep===1?"時台":"時")}</b><span style="flex:1"></span><span id="lgClr" style="color:var(--muted);cursor:pointer;padding:0 4px;">✕</span></div>
       <div style="font-size:11px;color:var(--muted);margin:2px 0 6px;">乗せた${pool.length}回・ロング${ls.length}本(${pool.length?Math.round(ls.length/pool.length*100):0}%)・この枠の平均単価${yen(avgAll)}</div>`;
     if(!ls.length) h+=`<div style="font-size:12px;color:var(--muted);">ロングはまだ出ていません。</div>`;
     ls.slice(0,40).forEach(r=>{
@@ -7916,11 +7927,11 @@ function renderLong(){
   cand.slice(0,10).forEach((x,k)=>{
     h+=`<div class="lg-cell" data-key="${x.a}|${x.i}" style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:7px 2px;cursor:pointer;">
       <span style="width:16px;color:var(--muted);font-size:11px;">${k+1}</span>
-      <span style="flex:1;font-size:13px;font-weight:700;">${x.a.replace(/^東京都/,"")} <span style="color:var(--amber);">${LG_BINS[x.i][2]}時</span></span>
+      <span style="flex:1;font-size:13px;font-weight:700;">${x.a.replace(/^東京都/,"")} <span style="color:var(--amber);">${LG_BINS[x.i][2]}${lgStep===1?"時台":"時"}</span></span>
       <span style="font-size:14px;font-weight:800;color:#ffd54f;">${Math.round(x.c.n/x.c.N*100)}%</span>
       <span style="font-size:10.5px;color:var(--muted);width:44px;text-align:right;">${x.c.n}/${x.c.N}</span></div>`;
   });
-  h+=`<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">本人の乗車のみ・空転は除く。時間帯は乗車時刻(23-2=23時〜翌2時)。区モードは乗車地の区・市、町モードは丁目を除いた町名でまとめます。</div>`;
+  h+=`<div style="font-size:10px;color:var(--muted);margin-top:10px;line-height:1.6;">本人の乗車のみ・空転は除く。時間帯は乗車時刻(23-2=23時〜翌2時、1時間区切りの「0」=0時台)。水色の列が今の時間帯。区モードは乗車地の区・市、町モードは丁目を除いた町名でまとめます。</div>`;
   body.innerHTML=h; bindLong();
 }
 function bindLong(){
@@ -7928,6 +7939,7 @@ function bindLong(){
   body.querySelectorAll(".lg-sel").forEach(b=>b.onclick=()=>{
     const k=b.dataset.k, v=b.dataset.v;
     if(k==="th") lgTh=+v; if(k==="mode") lgMode=v; if(k==="gran"){ lgGran=v; lgSel=null; } if(k==="dow") lgDow=v;
+    if(k==="step"){ lgStep=+v; LG_BINS=lgMakeBins(lgStep); if(lgSel&&!lgSel.endsWith("|*")) lgSel=null; }
     const pn=document.getElementById("longPanel"), y=pn.scrollTop; renderLong(); pn.scrollTop=y;
   });
   body.querySelectorAll(".lg-cell").forEach(c=>c.onclick=()=>{
