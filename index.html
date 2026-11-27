@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.27-3";
+const APP_VER = "2026.11.27-5";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9919,11 +9919,15 @@ function atDayType(ds){ const n=new Date(ds+"T12:00:00"); n.setDate(n.getDate()+
   return a?(b?"sat":"sunType"):(b?"fri":"wd"); }
 const AT_DAYS=[["wd","平日"],["fri","金曜型"],["sat","土曜型"],["sunType","日曜型"],["any","全"]];
 let atDay=(()=>{ const t=new Date(); if(t.getHours()<5) t.setDate(t.getDate()-1); try{ return atDayType(atDs(t)); }catch(e){ return "sunType"; } })();   // 最初は今日の型
-function atDayLabel(){ const x=AT_DAYS.find(d=>d[0]===atDay); return atDay==="any"?"全曜日":x?x[1]:"日曜型"; }
+// 曜日の型は押すたびに足したり外したりでき、複数選ぶとまとめて集計する(atDayは "sat+sunType" のように+でつなぐ)。「全」は単独
+let atDayAuto=true;   // 今日の型を自動で選んだ直後は、最初に押した型に置き換える(足さない)
+function atDayList(){ return atDay.split("+"); }
+function atDayLabel(){ if(atDay==="any") return "全曜日"; return atDayList().map(k=>{ const x=AT_DAYS.find(d=>d[0]===k); return x?x[1]:k; }).join("+"); }
 function atDayOk(ds){
   if(atDay==="any") return "any";
-  if(atDayType(ds)!==atDay) return null;
-  return atDay==="sunType"?atSunType(ds):"day";
+  const ty=atDayType(ds);
+  if(!atDayList().includes(ty)) return null;
+  return ty==="sunType"?atSunType(ds):"day";
 }
 let atBase="pick";   // "pick"=乗った場所で見る / "drop"=降ろした場所で見る(降ろしてから次に乗るまでの空車時間)
 const AT_QUICK=10;   // 降ろしてから何分以内に次が乗れたら「すぐ乗れた」とするか
@@ -9935,7 +9939,7 @@ const AT_FEW=5;
 function atSetNow(){
   const t=new Date(); let h=t.getHours()+t.getMinutes()/60;
   if(h<5){ h+=24; t.setDate(t.getDate()-1); }
-  try{ atDay=atDayType(atDs(t)); }catch(e){}
+  try{ atDay=atDayType(atDs(t)); atDayAuto=true; }catch(e){}
   atView="all";
   const cr=atNowCool();
   atCool=cr?cr[0]:"all";
@@ -10027,7 +10031,7 @@ function renderAtype(){
     KIND.weak=["▽ つかまりにくい",AT_COL.weak,"降ろしてから次まで時間がかかる。降ろしたらすぐ移動を"]; }
   const chip=(on,lab,attr)=>`<button class="btn at-sel" ${attr} style="flex:1;padding:7px 0;font-size:13px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}">${lab}</button>`;
   { const tt=document.getElementById("atypeTitle"); if(tt) tt.textContent=atBase==="drop"?`🏷 ${atDayLabel()} 降ろした場所の空車時間`:`🏷 ${atDayLabel()} エリアの単価と回転`; }
-  let h=`<div style="display:flex;gap:3px;margin-bottom:6px;">${AT_DAYS.map(([k,lab])=>{ const on=atDay===k; return `<button class="btn at-sel" data-d="${k}" style="flex:${k==="any"?0.7:1};min-width:0;padding:7px 0;font-size:12.5px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}">${lab}</button>`; }).join("")}</div>`
+  let h=`<div style="display:flex;gap:3px;margin-bottom:6px;">${AT_DAYS.map(([k,lab])=>{ const on=atDayList().includes(k); return `<button class="btn at-sel" data-d="${k}" style="flex:${k==="any"?0.7:1};min-width:0;padding:7px 0;font-size:12.5px;font-weight:800;${on?"background:#b39ddb;color:#1a1206;border-color:#b39ddb;":""}">${lab}</button>`; }).join("")}</div>`
    +(atDay==="sunType"?`<div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atView==="all","日曜型すべて",'data-v="all"')}${chip(atView==="sun","日曜",'data-v="sun"')}${chip(atView==="holi","祝日",'data-v="holi"')}</div>`:"")
    +`
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atBase==="pick","乗せた場所で見る",'data-b="pick"')}${chip(atBase==="drop","降ろした場所で見る",'data-b="drop"')}</div>
@@ -10057,7 +10061,14 @@ function renderAtype(){
   if(DROP) h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">降ろした場所で見る = 客を降ろした町ごとに、降車時刻から次の客を乗せるまでの空車時間を集計(降車時刻が入っている乗車だけ。${AT_GAP}分を超える空白は休憩・回送とみなして除外)。クールは降ろした時刻で判定。次の1本 = その後に乗せた客の料金。降車後時給 = 次の料金 ÷ (空車時間+次の乗車時間)。分類は平均との比較(🔄空車が平均の8割以下/⭐さらに次の単価が平均の1.1倍以上/💴次の単価が1.2倍以上/▽空車が平均の1.25倍以上)。</div>`;
   h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">平日 = その日も翌日も平日(主に月〜木)。金曜型 = 平日で翌日が土日祝(金曜・祝日の前日)。土曜型 = 土日祝で翌日も休み(土曜・連休中)。日曜型 = 土日祝で翌日が平日(日曜・連休最終日)。乗務日は朝5時で区切っています。1本あたり = その乗車から次の乗車までの時間(乗車中+空車)。${AT_GAP}分を超える空白は休憩・回送とみなして外しています。時給換算 = 売上 ÷ 1本あたりの時間。分類は平均との比較(⭐単価も時給も平均の1.1倍以上/💴単価だけ1.1倍以上/🔄時給が平均以上/▽時給が平均の8割未満)。金額は税込。</div>`;
   body.innerHTML=h;
-  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.d) atDay=b.dataset.d; if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.b) atBase=b.dataset.b; if(b.dataset.c) atCool=b.dataset.c;
+  body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{
+    if(b.dataset.d){ const k=b.dataset.d;
+      if(k!=="any"&&atDay!=="any"&&!atDayAuto){ const L=atDayList(), i=L.indexOf(k);
+        if(i>=0){ if(L.length>1) L.splice(i,1); } else L.push(k);
+        atDay=AT_DAYS.map(d=>d[0]).filter(x=>L.includes(x)).join("+");
+      } else atDay=k;
+      atDayAuto=false;
+      if(atDay!=="sunType") atView="all"; } if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.b) atBase=b.dataset.b; if(b.dataset.c) atCool=b.dataset.c;
     if(b.dataset.t){ atUnit=b.dataset.t; try{ localStorage.setItem("at-unit",atUnit); }catch(e){} }
     if(b.dataset.fine){ atFine=b.dataset.fine==="1"; try{ localStorage.setItem("at-fine",atFine?"1":"0"); }catch(e){}
       // 切り替えたら、今のクールに当たる区分を選び直す(全体のときは全体のまま)
