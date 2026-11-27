@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.27-1";
+const APP_VER = "2026.11.27-3";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9884,13 +9884,18 @@ const AT_GROUPS=[["浅草橋・岩本町・馬喰町",/^(台東区(浅草橋|柳
  ["北千住",/^足立区千住/],["竹ノ塚・保木間・花畑",/^足立区(竹の塚|西竹の塚|保木間|東保木間|西保木間|花畑|南花畑|六月|伊興|東伊興|西伊興|一ツ家|入谷|古千谷|舎人|西伊興町)/],["西新井・梅島・江北",/^足立区(西新井|梅島|梅田|関原|栗原|江北|鹿浜|扇|興野|本木|皿沼|谷在家|加賀|椿|宮城|新田|小台|堀之内|島根|西新井栄町|西新井本町)/],["綾瀬・青井・五反野",/^足立区(綾瀬|東綾瀬|青井|足立|中央本町|弘道|大谷田|谷中|佐野|辰沼|東和|中川|加平|北加平|六町|平野|神明|一ツ家)/],["足立(その他)",/^足立区/],["錦糸町・両国",/^墨田区(江東橋|錦糸|両国|横網|亀沢|石原|緑|菊川|千歳|太平|立川)/],["墨田(その他)",/^墨田区/],
  ["神田・秋葉原",/^千代田区(外神田|神田|内神田|鍛冶町)/],["後楽・春日・水道(ドーム周辺)",/^文京区(後楽|春日|水道)/],["本郷・根津・千駄木",/^文京区(本郷|弥生|根津|千駄木|向丘|西片)/],["小石川・音羽・千石",/^文京区(小石川|音羽|小日向|関口|千石|白山|本駒込|大塚|目白台)/],["文京(その他)",/^文京区/],["中野・杉並",/^(中野区|杉並区)/],["羽田空港",/^大田区羽田空港/],
  ["大久保・百人町・高田馬場",/^新宿区(大久保|百人町|北新宿|高田馬場|戸山|西早稲田|上落合|下落合|中落合|西落合)/],["四谷・市谷・神楽坂",/^新宿区/],["豊島区(池袋駅前以外)",/^豊島区/]];
-// 町ごと(atTown=true): まとめずに町名(丁目を除く)を1エリアとして扱う。例: 港区新橋2 → 港区新橋
-let atTown=localStorage.getItem("at-town")!=="0";
+// 町ごと: まとめずに町名(丁目を除く)を1エリアとして扱う。例: 港区新橋2 → 港区新橋
+// エリアの単位: "km1"=1km圏(Goの配車が届く半径1kmに収まるよう町をまとめたもの・km1.json) / "town"=町ごと / "group"=まとめ(旧)
+let atUnit=localStorage.getItem("at-unit")||"km1";
+let KM1=null;
+function atLoadKm1(){ if(KM1) return Promise.resolve(KM1);
+  return fetch("km1.json?v="+APP_VER).then(r=>r.ok?r.json():null).then(j=>{ KM1=j; return j; }).catch(()=>null); }
 function atTownKey(p){ return (p||"?").replace(/[0-9０-９]+(丁目)?$/,"")||"?"; }
-function atGroup(p){ if(atTown) return atTownKey(p); for(const [n,re] of AT_GROUPS) if(re.test(p||"")) return n; const m=(p||"").match(/^(.+?[区市町])/); return (m?m[1]:(p||"?"))+"(その他)"; }
+function atGroup(p){ if(atUnit==="km1"){ const t=atTownKey(p); return (KM1&&KM1.town[t])||t; } if(atUnit==="town") return atTownKey(p); for(const [n,re] of AT_GROUPS) if(re.test(p||"")) return n; const m=(p||"").match(/^(.+?[区市町])/); return (m?m[1]:(p||"?"))+"(その他)"; }
 // 「(その他)」のエリアは、実際に入っている町名を上位3つまで出して分かりやすくする(例: 渋谷区(恵比寿・神宮前・広尾など))
 function atLab(g,v,drop){
-  if(atTown) return g.replace(/^.+?[区市]/,"")||g;
+  if(atUnit==="km1") return g;
+  if(atUnit==="town") return g.replace(/^.+?[区市]/,"")||g;
   if(!/\(その他\)/.test(g)||!v||!v.length) return g;
   const base=g.replace("(その他)",""), cnt=new Map();
   v.forEach(x=>{ const p=(drop?x.r.dst:x.r.p)||""; const t=p.replace(/^.+?[区市]/,"").replace(/[0-9０-９]+$/,"")||p; cnt.set(t,(cnt.get(t)||0)+1); });
@@ -9952,6 +9957,7 @@ const AT_KN_D={best:"⭐ すぐ乗れて次も高い",kaiten:"🔄 すぐ乗れ�
 const AT_KN=new Proxy({},{get:(o,k)=>(atBase==="drop"?AT_KN_D:AT_KN0)[k]});
 function renderAtype(){
   const body=document.getElementById("atypeBody"); if(!body) return;
+  if(atUnit==="km1"&&!KM1){ body.innerHTML=`<div style="padding:14px;color:var(--muted);">1km圏のエリアを読み込み中…</div>`; atLoadKm1().then(j=>{ if(!j){ atUnit="town"; } renderAtype(); }); return; }
   const src=atWho==="me"?myRides():rides;
   const byShift=new Map();
   src.forEach(r=>{ const ds=shiftDateStr(r), ty=atDayOk(ds); if(!ty) return;
@@ -10008,7 +10014,7 @@ function renderAtype(){
     if(u>=U*1.1&&hr>=H*1.1) k="best"; else if(u>=U*1.1) k="tanka"; else if(hr>=H) k="kaiten"; else if(hr<H*0.8) k="weak"; else k="mid";
     return {g,lab:atLab(g,v,false),n:v.length,u,cyc,hr,r5,big,k};
   }).sort((a,b)=>((b.n>=AT_FEW)-(a.n>=AT_FEW))||(b.hr-a.hr));   // データが十分なエリアを先に、その中で時給順
-  if(atTown){ const cnt=new Map(); rowsA.forEach(x=>cnt.set(x.lab,(cnt.get(x.lab)||0)+1));
+  if(atUnit==="town"){ const cnt=new Map(); rowsA.forEach(x=>cnt.set(x.lab,(cnt.get(x.lab)||0)+1));
     rowsA.forEach(x=>{ if(cnt.get(x.lab)>1) x.lab=x.g; }); }   // 同じ町名が別の区にあるときは区名つきで出す
   atRows=rowsA;
   const KIND={best:["⭐ 単価も回転も強い",AT_COL.best,"稼ぎ頭。ここで待つ・ここへ向かう客を優先"],
@@ -10025,7 +10031,7 @@ function renderAtype(){
    +(atDay==="sunType"?`<div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atView==="all","日曜型すべて",'data-v="all"')}${chip(atView==="sun","日曜",'data-v="sun"')}${chip(atView==="holi","祝日",'data-v="holi"')}</div>`:"")
    +`
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atBase==="pick","乗せた場所で見る",'data-b="pick"')}${chip(atBase==="drop","降ろした場所で見る",'data-b="drop"')}</div>
-   <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atTown,"🧩 町ごと",'data-t="1"')}${chip(!atTown,"まとめて見る",'data-t="0"')}</div>
+   <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atUnit==="km1","📡 1km圏",'data-t="km1"')}${chip(atUnit==="town","🧩 町ごと",'data-t="town"')}${chip(atUnit==="group","まとめ",'data-t="group"')}</div>
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atWho==="all","全乗務員",'data-w="all"')}${chip(atWho==="me","自分だけ",'data-w="me"')}</div>
    ${atFine
      ?`<div style="display:flex;gap:4px;margin-bottom:4px;">${chip(atCool==="all","全体",'data-c="all"')}${chip(true,"⏱ 細かく ✓",'data-fine="0"')}</div>`
@@ -10052,7 +10058,7 @@ function renderAtype(){
   h+=`<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.6;">平日 = その日も翌日も平日(主に月〜木)。金曜型 = 平日で翌日が土日祝(金曜・祝日の前日)。土曜型 = 土日祝で翌日も休み(土曜・連休中)。日曜型 = 土日祝で翌日が平日(日曜・連休最終日)。乗務日は朝5時で区切っています。1本あたり = その乗車から次の乗車までの時間(乗車中+空車)。${AT_GAP}分を超える空白は休憩・回送とみなして外しています。時給換算 = 売上 ÷ 1本あたりの時間。分類は平均との比較(⭐単価も時給も平均の1.1倍以上/💴単価だけ1.1倍以上/🔄時給が平均以上/▽時給が平均の8割未満)。金額は税込。</div>`;
   body.innerHTML=h;
   body.querySelectorAll(".at-sel").forEach(b=>b.onclick=()=>{ if(b.dataset.d) atDay=b.dataset.d; if(b.dataset.v) atView=b.dataset.v; if(b.dataset.w) atWho=b.dataset.w; if(b.dataset.b) atBase=b.dataset.b; if(b.dataset.c) atCool=b.dataset.c;
-    if(b.dataset.t){ atTown=b.dataset.t==="1"; try{ localStorage.setItem("at-town",atTown?"1":"0"); }catch(e){} }
+    if(b.dataset.t){ atUnit=b.dataset.t; try{ localStorage.setItem("at-unit",atUnit); }catch(e){} }
     if(b.dataset.fine){ atFine=b.dataset.fine==="1"; try{ localStorage.setItem("at-fine",atFine?"1":"0"); }catch(e){}
       // 切り替えたら、今のクールに当たる区分を選び直す(全体のときは全体のまま)
       if(atCool!=="all"){ const parent=atCool.length===3?atCool.slice(0,2):atCool, nc=atNowCool();
@@ -10110,12 +10116,17 @@ function atLoadTowns(){
 }
 // エリアごとの外周線(町をエリア単位でまとめた輪郭)。AT_GROUPSの分け方を変えたら atgroups.json を作り直すこと
 let atOutlines=null;
+let atKm1Ol=null;
+function atLoadKm1Outline(){ if(atKm1Ol) return Promise.resolve(atKm1Ol);
+  return fetch("km1-outline.json?v="+APP_VER).then(r=>r.ok?r.json():null).then(gj=>{ atKm1Ol=gj; return gj; }).catch(()=>null); }
 function atLoadOutlines(){
   if(atOutlines) return Promise.resolve(atOutlines);
   return fetch("atgroups.json?v="+APP_VER).then(r=>r.ok?r.json():null).then(gj=>{ atOutlines=gj; return gj; }).catch(()=>null);
 }
+let atLabelFn=null;
 function atClear(){
   atMapAuto=false;
+  if(atLabelFn){ map.off("zoomend",atLabelFn); atLabelFn=null; }
   { const pn=document.getElementById("atRidePanel"); if(pn) pn.style.display="none"; }
   if(atLayer){ map.removeLayer(atLayer); atLayer=null; }
   const c=document.getElementById("atClearBtn"); if(c) c.style.display="none";
@@ -10161,11 +10172,21 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
   const big=new Map();
   geo.eachLayer(ly=>{ const g=gOf(ly.feature), b=ly.getBounds(), a=(b.getEast()-b.getWest())*(b.getNorth()-b.getSouth());
     if(!big.has(g)||big.get(g).a<a) big.set(g,{a,c:b.getCenter()}); });
-  const labels=[...big].filter(([g])=>!atTown||byG.get(g).n>=AT_FEW).map(([g,v])=>{ const x=byG.get(g), nm=atTown?(x.lab||g):g.replace(/\(.*?\)/g,"").replace("の住宅地","");
-    return L.marker(v.c,{interactive:false,icon:L.divIcon({className:"",iconSize:null,
-      html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:10.5px;font-weight:800;color:#1a1206;background:${colOf(x)};border:1px solid #1b2436;border-radius:8px;padding:1px 5px;opacity:${x.n<AT_FEW?.6:x.n>=10?.95:.82};${x.n<AT_FEW?"border-style:dashed;":""}">${nm}${x.n<AT_FEW?` ⚠${x.n}本`:""}</div>`})}); });
+  // エリア名のラベル: 重なるものは出さない(本数の多いエリアを優先)。ズームが遠いときは名前を短く(「新橋・西新橋など」→「新橋」)、データ少のエリアは近づいたときだけ出す
+  const labItems=[...big].map(([g,v])=>{ const x=byG.get(g), nm=(atUnit!=="group"?(x.lab||g):g.replace(/\(.*?\)/g,"").replace("の住宅地","")).replace(/など$/,"");
+    return {c:v.c,x,nm}; }).sort((a,b)=>b.x.n-a.x.n);
+  const labL=L.layerGroup();
+  atLabelFn=()=>{ labL.clearLayers(); const z=map.getZoom(), boxes=[];
+    labItems.forEach(it=>{ const x=it.x; if(x.n<AT_FEW&&z<14) return;
+      const nm=z<14?it.nm.split("・")[0]:it.nm, fs=z<13?11:12;
+      const p=map.latLngToContainerPoint(it.c), w=nm.length*fs+14, h=fs+8, b=[p.x-w/2-2,p.y-h/2-2,p.x+w/2+2,p.y+h/2+2];
+      if(boxes.some(o=>!(b[2]<o[0]||b[0]>o[2]||b[3]<o[1]||b[1]>o[3]))) return; boxes.push(b);
+      labL.addLayer(L.marker(it.c,{interactive:false,icon:L.divIcon({className:"",iconSize:null,
+        html:`<div style="transform:translate(-50%,-50%);white-space:nowrap;font-size:${fs}px;font-weight:800;color:#1a1206;background:${colOf(x)};border:1.5px solid #1b2436;border-radius:8px;padding:1px 6px;box-shadow:0 1px 3px rgba(0,0,0,.35);${x.n<AT_FEW?"border-style:dashed;opacity:.75;":""}">${nm}</div>`})})); }); };
+  atLabelFn(); map.on("zoomend",atLabelFn);
+  const labels=[labL];
   // エリアの境目: 白いふち + 濃い線の2重線で、隣が同じ色でも境目が分かるようにする
-  const outs=[]; const ol=atTown?{features:feats.map(f=>({type:"Feature",geometry:f.geometry,properties:{g:gOf(f)}}))}:await atLoadOutlines();   // 町ごとのときは町の境界がそのままエリアの境目
+  const outs=[]; const ol=atUnit==="km1"?await atLoadKm1Outline():atUnit==="town"?{features:feats.map(f=>({type:"Feature",geometry:f.geometry,properties:{g:gOf(f)}}))}:await atLoadOutlines();   // 町ごとのときは町の境界がそのままエリアの境目
   if(ol){ const fs=ol.features.filter(f=>byG.has(f.properties.g));
     outs.push(L.geoJSON({type:"FeatureCollection",features:fs},{interactive:false,style:{color:"#ffffff",weight:4.5,opacity:.85}}));
     outs.push(L.geoJSON({type:"FeatureCollection",features:fs},{interactive:false,style:f=>({color:"#1b2436",weight:2,opacity:.95,dashArray:(byG.get(f.properties.g)||{}).n<AT_FEW?"5 4":null})})); }
@@ -10183,7 +10204,8 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
 document.getElementById("atypeClose").onclick=()=>showTab("map");
 document.getElementById("longClose").onclick=()=>showTab("map");
 // 地図の🏷ボタン: 塗っていなければ「今のクール」の全エリアを塗る。塗っていれば消す(地図の位置はそのまま)
-function atPaintNowCool(stay){
+async function atPaintNowCool(stay){
+  if(atUnit==="km1"&&!KM1){ await atLoadKm1(); if(!KM1) atUnit="town"; }
   const cr=atNowCool();
   atCool=cr?cr[0]:"all";
   renderAtype();   // 選んだクールで集計し直す(atRowsが更新される)
