@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.27-5";
+const APP_VER = "2026.11.28-1";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -9945,9 +9945,11 @@ function atSetNow(){
   atCool=cr?cr[0]:"all";
 }
 const AT_COOLS=[["all","全体",5,29],["c1","第1",5,13],["c2","第2",13,18],["c3","第3",18,22],["ao","青タン",22,29]];
-// 「細かく」: 各クールを前半・後半に2分割(キーは親クール+a/b)。[キー,名前,開始,終了,表示用の時間]
-const AT_COOLS_FINE=[["c1a","第1前",5,9,"5-9時"],["c1b","第1後",9,13,"9-13時"],["c2a","第2前",13,15.5,"13-15:30"],["c2b","第2後",15.5,18,"15:30-18"],
-  ["c3a","第3前",18,20,"18-20時"],["c3b","第3後",20,22,"20-22時"],["aoa","青タン前",22,25,"22-1時"],["aob","青タン後",25,29,"1時〜"]];
+// 「細かく」: 営業の時間帯で9つに区切る(クールの境目はまたがない)。[キー,名前,開始,終了,表示用の時間,親クール]
+const AT_COOLS_FINE=[["t1","早朝",5,8,"5-8時","c1"],["t2","朝ラッシュ",8,10,"8-10時","c1"],["t3","昼前",10,13,"10-13時","c1"],
+  ["t4","昼過ぎ",13,16,"13-16時","c2"],["t5","夕方",16,18,"16-18時","c2"],
+  ["t6","夜",18,20,"18-20時","c3"],["t7","1次会帰り",20,22,"20-22時","c3"],
+  ["t8","終電前",22,24,"22-0時","ao"],["t9","深夜",24,29,"0時〜","ao"]];
 let atFine=localStorage.getItem("at-fine")==="1";
 function atCoolList(){ return atFine?[AT_COOLS[0],...AT_COOLS_FINE]:AT_COOLS; }
 function atCoolOf(k){ return [...AT_COOLS,...AT_COOLS_FINE].find(c=>c[0]===k)||AT_COOLS[0]; }
@@ -10039,7 +10041,7 @@ function renderAtype(){
    <div style="display:flex;gap:4px;margin-bottom:6px;">${chip(atWho==="all","全乗務員",'data-w="all"')}${chip(atWho==="me","自分だけ",'data-w="me"')}</div>
    ${atFine
      ?`<div style="display:flex;gap:4px;margin-bottom:4px;">${chip(atCool==="all","全体",'data-c="all"')}${chip(true,"⏱ 細かく ✓",'data-fine="0"')}</div>`
-      +[AT_COOLS_FINE.slice(0,4),AT_COOLS_FINE.slice(4)].map((row,i)=>`<div style="display:flex;gap:4px;margin-bottom:${i?10:4}px;">${row.map(([k,lab,a,b,tl])=>chip(atCool===k,lab+`<br><span style="font-size:9.5px;font-weight:400;">${tl}</span>`,`data-c="${k}"`)).join("")}</div>`).join("")
+      +[AT_COOLS_FINE.slice(0,5),AT_COOLS_FINE.slice(5)].map((row,i)=>`<div style="display:flex;gap:4px;margin-bottom:${i?10:4}px;">${row.map(([k,lab,a,b,tl])=>chip(atCool===k,lab+`<br><span style="font-size:9.5px;font-weight:400;">${tl}</span>`,`data-c="${k}"`)).join("")}</div>`).join("")
      :`<div style="display:flex;gap:4px;margin-bottom:4px;">${AT_COOLS.map(([k,lab,a,b])=>chip(atCool===k,lab+(k==="all"?"":`<br><span style="font-size:9.5px;font-weight:400;">${b===29?a+"時〜":a%24+"-"+b%24+"時"}</span>`),`data-c="${k}"`)).join("")}</div>
       <button class="btn at-sel" data-fine="1" style="width:100%;padding:5px 0;margin-bottom:10px;font-size:11.5px;color:var(--muted);">⏱ 細かく(各クールを前半・後半に2分割)</button>`}
    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 11px;margin-bottom:10px;font-size:12.5px;line-height:1.6;">
@@ -10072,8 +10074,8 @@ function renderAtype(){
     if(b.dataset.t){ atUnit=b.dataset.t; try{ localStorage.setItem("at-unit",atUnit); }catch(e){} }
     if(b.dataset.fine){ atFine=b.dataset.fine==="1"; try{ localStorage.setItem("at-fine",atFine?"1":"0"); }catch(e){}
       // 切り替えたら、今のクールに当たる区分を選び直す(全体のときは全体のまま)
-      if(atCool!=="all"){ const parent=atCool.length===3?atCool.slice(0,2):atCool, nc=atNowCool();
-        atCool = atFine ? (nc&&nc[0].slice(0,2)===parent.slice(0,2)?nc[0]:parent+"a") : parent; } }
+      if(atCool!=="all"){ const fx=AT_COOLS_FINE.find(c=>c[0]===atCool), parent=fx?fx[5]:atCool, nc=atNowCool();
+        atCool = atFine ? (nc&&nc[5]===parent?nc[0]:AT_COOLS_FINE.find(c=>c[5]===parent)[0]) : parent; } }
     renderAtype(); });
   body.querySelectorAll(".at-map").forEach(b=>b.onclick=()=>{
     const sel=b.dataset.all?atRows:b.dataset.k?atRows.filter(x=>x.k===b.dataset.k):atRows.filter(x=>x.g===b.dataset.g);
