@@ -1166,7 +1166,7 @@ function fareTierColor(avg){
 }
 
 // アプリのバージョン(更新のたびに末尾の連番が増えます。同日内の複数回更新も判別可能)
-const APP_VER = "2026.11.28-1";
+const APP_VER = "2026.11.28-2";
 document.getElementById("verTag").textContent = "v" + APP_VER;
 
 // 町丁目境界(chome.json)と区市境界(wards.json)はヒートマップ初回オン時に裏で読み込む
@@ -7680,6 +7680,7 @@ function showTab(name){
     b.style.color = on ? "var(--amber)" : "var(--muted)";
   });
   { const ac=document.getElementById("atClearBtn"); if(ac) ac.style.display=(name==="map"&&typeof atLayer!=="undefined"&&atLayer)?"":"none";
+    const fb=document.getElementById("atFilterBox"); if(fb) fb.style.display=ac?ac.style.display:"none";
     const pn=document.getElementById("atRidePanel"); if(pn&&name!=="map") pn.style.display="none"; }   // 塗り分けの解除ボタンは地図でだけ出す
   if(name==="map"){ setTimeout(()=>map.invalidateSize(),50); return; }
   const el=document.getElementById(panels[name]);
@@ -10143,6 +10144,7 @@ function atClear(){
   { const pn=document.getElementById("atRidePanel"); if(pn) pn.style.display="none"; }
   if(atLayer){ map.removeLayer(atLayer); atLayer=null; }
   const c=document.getElementById("atClearBtn"); if(c) c.style.display="none";
+  const fb=document.getElementById("atFilterBox"); if(fb) fb.style.display="none";
   atBtnPaint();
 }
 // 地図の左の🏷ボタン: 塗っている間は紫に光らせる
@@ -10209,9 +10211,19 @@ async function atPaint(sel,label,stay){   // stay=true: 今のタブのまま塗
     c.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));z-index:1500;padding:8px 14px;font-size:12.5px;font-weight:800;background:rgba(13,19,32,.95);border:1px solid #b39ddb;color:#b39ddb;border-radius:20px;white-space:nowrap;";
     c.onclick=atClear; document.body.appendChild(c); }
   c.textContent=`🏷 ${label} を表示中 ✕`; c.style.display="";
+  // 塗ったときのフィルター条件を地図の右下に出す(塗った時点の条件で固定)
+  let fb=document.getElementById("atFilterBox");
+  if(!fb){ fb=document.createElement("div"); fb.id="atFilterBox";
+    fb.style.cssText="position:fixed;right:8px;bottom:calc(122px + env(safe-area-inset-bottom));z-index:1400;max-width:170px;padding:6px 9px;font-size:11px;line-height:1.5;background:rgba(13,19,32,.88);border:1px solid #b39ddb;border-radius:10px;color:#e6e9f0;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.35);";
+    document.body.appendChild(fb); }
+  { const cc=atCoolOf(atCool), tm=atCool==="all"?"全時間":cc[1]+"（"+(cc[4]||(cc[3]===29?cc[2]+"時〜":cc[2]%24+"-"+cc[3]%24+"時"))+"）";
+    const dv=atDay==="sunType"&&atView!=="all"?(atView==="sun"?"（日曜のみ）":"（祝日のみ）"):"";
+    const rows=[["曜日",atDayLabel()+dv],["時間",tm],["単位",{km1:"1km圏",town:"町ごと",group:"まとめ"}[atUnit]||atUnit],["場所",atBase==="drop"?"降ろした場所":"乗せた場所"],["乗務員",atWho==="me"?"自分だけ":"全乗務員"]];
+    fb.innerHTML=`<div style="font-weight:800;color:#b39ddb;margin-bottom:1px;">🏷 フィルター</div>`+rows.map(([k,v])=>`<div><span style="color:#9aa5b8;">${k}</span> ${v}</div>`).join(""); }
+  fb.style.display=c.style.display;
   atBtnPaint();
   if(!stay) showTab("map");
-  else { const onMap=(document.querySelector(".tab-btn.on")||{}).dataset; if(!(onMap&&onMap.tab==="map")) c.style.display="none"; }   // 地図以外を見ている間は解除ボタンを隠す
+  else { const onMap=(document.querySelector(".tab-btn.on")||{}).dataset; if(!(onMap&&onMap.tab==="map")){ c.style.display="none"; fb.style.display="none"; } }   // 地図以外を見ている間は解除ボタンを隠す
   setTimeout(()=>{ try{ if(sel.length<atRows.length) map.fitBounds(atLayer.getBounds(),{padding:[30,30],maxZoom:14}); }catch(e){} },120);
 }
 document.getElementById("atypeClose").onclick=()=>showTab("map");
